@@ -8,9 +8,14 @@
 !.devcontainer/
 !.devcontainer/**
 
-# ── Claude Code shared skills & config ────────────
+# Claude Code shared skills & config
 !.claude/
 !.claude/**
 
+# But never commit local machine-specific permissions
+.claude/settings.local.json
+
 # ── This file ─────────────────────────────────────
 !.gitignore
+
+.claude/.DS_Store

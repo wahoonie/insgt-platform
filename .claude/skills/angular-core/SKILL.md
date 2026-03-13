@@ -237,10 +237,33 @@ Optional field properties: `type` (`'textarea' | 'number' | 'select' | 'toggle' 
 
 ## 5. API Services
 
+Three generations of API service exist across the codebase. Always identify which generation a file uses before editing it.
+
+### Generation 3 — Composition (target for all new code)
+
+`ResourceApiService` is `@Injectable({ providedIn: 'root' })` and acts as a factory. Feature services inject it and call `createClient()` — they extend nothing. Method names have no underscore prefix.
+
 ```ts
+// ────────────────────────────────
+// 🅰️ Angular
+// ────────────────────────────────
+import { Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+
+// ────────────────────────────────
+// 🧱 Application
+// ────────────────────────────────
+import { ResourceApiService } from '@app/shared/api/resource-api.service.refactored';
+
+// ────────────────────────────────
+// 📦 Data Models
+// ────────────────────────────────
+import { Thing, ThingCollection, ThingSearch } from './thing.model';
+
 @Injectable()
 export class ThingService {
   private api = this.resourceApi.createClient({ endpoint: 'things', nameSpace: 'thing' });
+
   constructor(private resourceApi: ResourceApiService) {}
 
   all(params?: ThingSearch): Observable<ThingCollection> { return this.api.all(params); }
@@ -251,7 +274,40 @@ export class ThingService {
 }
 ```
 
-Services are thin HTTP adapters — no business logic, no state. The facade and store own the state; the service just maps to/from the API.
+For non-standard endpoints (nested resources, custom actions), use `setUrl()` before the call:
+```ts
+getPhotosForOrder(orderId: string): Observable<PhotoCollection> {
+  this.api.setUrl(`orders/${orderId}/photos`);
+  return this.api.all<PhotoCollection>();
+}
+```
+
+### Generation 2 — Typed inheritance (intermediate — edit to match, don't extend further)
+
+`ResourceApiService` (non-refactored) is an inheritance base class. Feature services extend it, pass `instanceClass`/`collectionClass` via constructor, and call underscore-prefixed protected methods. You'll encounter this in partially-migrated code.
+
+```ts
+export class ThingService extends ResourceApiService {
+  constructor(public injector: Injector) {
+    super({ endpoint: 'things', nameSpace: 'thing', injector });
+  }
+  all(params?: ThingSearch)  { return this._all<ThingCollection>(params); }
+  one(id: string)            { return this._one<Thing>(id); }
+  create(thing: Thing)       { return this._create<Thing>(thing); }
+  update(thing: Thing)       { return this._update<Thing>(thing); }
+  destroy(thing: Thing)      { return this._destroy(thing.id); }
+}
+```
+
+### Generation 1 — Legacy inheritance (edit to match, migrate when touching)
+
+`ApiService` (or `InsightApiService` in insgt-app) — same underscore-method inheritance pattern but requires `instanceClass` and `collectionClass` constructor params and uses `Injector`. Auth is attached manually via `httpOptions()`. When you encounter this pattern, match it for the edit but flag it as a migration candidate.
+
+---
+
+**Rule:** New services always use Generation 3. When editing a Gen 1 or Gen 2 service, match the existing pattern for the edit — don't partially migrate a service mid-task. If the task is explicitly a migration, convert the entire service file at once.
+
+Services are thin HTTP adapters — no business logic, no state. The facade and store own state; the service only maps to/from the API.
 
 ---
 
@@ -296,7 +352,7 @@ No `Component` suffix anywhere — not in class names, not in file names. The co
 
 ## 8. Testing
 
-All apps use Cypress for e2e testing only — there is no unit test framework (no Jasmine, Jest, or Karma). This makes e2e tests the only automated regression safety net, so every new feature must include them.
+Both apps use **Cypress only** for automated testing — no unit test framework (no Jasmine, Jest, or Karma). Cypress e2e tests are the only automated safety net, so every new feature must include them.
 
 Test user flows, not implementation details. A test that breaks when you rename a CSS class is not useful.
 

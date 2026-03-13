@@ -1,5 +1,6 @@
 {
   "folders": [
+    { "path": ".", "name": "⚙️ platform" },
     { "path": "./docs", "name": "📄 docs" },
     { "path": "./design", "name": "🎨 design" },
     { "path": "./apps/insgt-api", "name": "api" },
@@ -9,7 +10,11 @@
     "files.exclude": {
       "**/node_modules": true,
       "**/tmp": true,
-      "**/log": true
+      "**/log": true,
+      "**/apps": true,
+      "**/functions": true,
+      "**/design": true,
+      "**/docs": true
     }
   }
 }

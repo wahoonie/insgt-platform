@@ -1,5 +1,6 @@
 {
   "folders": [
+    { "path": ".", "name": "⚙️ platform" },
     { "path": "./docs", "name": "📄 docs" },
     { "path": "./functions/insgt-import", "name": "fn:import" },
     { "path": "./functions/insgt-order-archiver", "name": "fn:order-archiver" },
@@ -12,7 +13,11 @@
     "files.exclude": {
       "**/node_modules": true,
       "**/tmp": true,
-      "**/log": true
+      "**/log": true,
+      "apps": true,
+      "functions": true,
+      "docs": true,
+      "design": true
     }
   }
 }
