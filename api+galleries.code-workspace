@@ -1,0 +1,15 @@
+{
+  "folders": [
+    { "path": "./docs", "name": "📄 docs" },
+    { "path": "./design", "name": "🎨 design" },
+    { "path": "./apps/insgt-api", "name": "api" },
+    { "path": "./apps/insgt-galleries", "name": "galleries" }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/tmp": true,
+      "**/log": true
+    }
+  }
+}

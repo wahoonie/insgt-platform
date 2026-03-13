@@ -1,0 +1,16 @@
+# Ignore everything by default
+*
+
+# ── Workspace config ──────────────────────────────
+!*.code-workspace
+
+# ── Dev container ─────────────────────────────────
+!.devcontainer/
+!.devcontainer/**
+
+# ── Claude Code shared skills & config ────────────
+!.claude/
+!.claude/**
+
+# ── This file ─────────────────────────────────────
+!.gitignore

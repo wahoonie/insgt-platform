@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -A 60 'create_table \"\"orders\"\"' /workspace/apps/insgt-api/db/schema.rb)",
+      "Bash(grep -A 40 'create_table \"\"transactions\"\"' /workspace/apps/insgt-api/db/schema.rb)",
+      "Bash(npx @11ty/eleventy --dryrun)",
+      "Bash(ls -la /workspace/*.json)",
+      "Bash(find /workspace -maxdepth 1 -name .* -type f)",
+      "Bash(grep -r nvmrc /workspace --include=*.yml --include=*.yaml --include=*.json --include=*.js --include=*.ts)",
+      "Bash(find /workspace -maxdepth 3 -name *.yml -o -name *.yaml)",
+      "Bash(grep -r \"runtime\\\\|nodejs\" /workspace/functions/*/serverless.yml)"
+    ]
+  }
+}

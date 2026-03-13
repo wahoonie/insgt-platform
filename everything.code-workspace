@@ -1,0 +1,26 @@
+{
+  "folders": [
+    { "path": "./docs", "name": "📄 docs" },
+    { "path": "./design", "name": "🎨 design" },
+    { "path": "./apps/insgt-api", "name": "api" },
+    { "path": "./apps/insgt-app", "name": "app" },
+    { "path": "./apps/insgt-disclosure-gallery", "name": "disclosure-gallery" },
+    { "path": "./apps/insgt-galleries", "name": "galleries" },
+    { "path": "./apps/insgt-ops", "name": "ops" },
+    { "path": "./apps/insgt-photographers", "name": "photographers" },
+    { "path": "./apps/insgt-virtual-tour", "name": "virtual-tour" },
+    { "path": "./functions/insgt-import", "name": "fn:import" },
+    { "path": "./functions/insgt-order-archiver", "name": "fn:order-archiver" },
+    { "path": "./functions/insgt-photographer-uploader", "name": "fn:photographer-uploader" },
+    { "path": "./functions/insgt-raw-archiver", "name": "fn:raw-archiver" },
+    { "path": "./functions/insgt-resource-downloader", "name": "fn:resource-downloader" },
+    { "path": "./functions/insgt-site-sls", "name": "fn:site-sls" }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/tmp": true,
+      "**/log": true
+    }
+  }
+}
