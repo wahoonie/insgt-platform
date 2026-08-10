@@ -67,6 +67,22 @@ coverage of the logic that fails silently is.
 If a test needs a browser, a fixture, or a rendered template, it belongs in
 Cypress. Stop and write it there instead.
 
+**The disqualifier is machinery, not collaborators.** A file drops out of scope
+when testing it requires TestBed, Angular DI, `jasmine-marbles`, a
+`TestScheduler`, or fake timers. It does *not* drop out merely because you have
+to hand it a stand-in collaborator. An object literal supplying the two or three
+methods the code calls, and `of()` / `Subject` / `throwError` supplying the
+streams, are **fixtures** — the same category as a hand-written state object.
+
+The line matters because the duck-typed helpers in both repos take an `object`
+with `actions$` and `resourceService` rather than injecting anything. Reading
+that as "needs a mocked service" would exclude `state-effects.helper`, whose
+error-recovery contract (§5) is the single highest-value assertion in either
+codebase's state layer.
+
+If an assertion turns out to need real machinery, drop that assertion and report
+it — do not install the machinery.
+
 ---
 
 ## 2. The load-bearing rule — assert through selectors
@@ -93,6 +109,28 @@ becoming casualties of them.
 Use `.projector()` to test selector logic in isolation. It calls the selector's
 final projection function directly with the inputs you supply, skipping the
 store and memoization entirely.
+
+**Where a file produces no state, compose its output through a minimal in-spec
+reducer rather than asserting action shape.** Action-creator factories and effect
+factories emit actions, not state. Asserting the literal type string or the props
+key pins the thing most likely to be rewritten — the `createActionGroup`
+migration churns every one — while telling you nothing about behaviour.
+
+Wire the creators into a `createReducer`/`on` pair written **in the spec file**,
+dispatch, and assert the resulting state. That survives a rename, because the
+creator is referenced by identity and never by name, and it still catches the two
+failures that are otherwise silent: a factory returning its tuple in the wrong
+order, and two factories in one feature colliding onto the same action.
+
+The in-spec qualifier is the whole point. Import a real feature reducer and the
+spec stops testing the factory and starts testing that slice — it will then break
+for reasons that have nothing to do with the file under test. For the same reason
+the handlers should be plain inline functions, not calls into a shared reducer
+helper.
+
+Emission *count* is the exception: it is a property of the stream, not of any
+action's shape, so assert it directly (`expect(emitted).toHaveLength(2)` is how
+you prove an effect survived an error).
 
 ---
 
