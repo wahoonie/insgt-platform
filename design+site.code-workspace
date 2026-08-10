@@ -3,9 +3,7 @@
     { "path": ".", "name": "⚙️ platform" },
     { "path": "./docs", "name": "📄 docs" },
     { "path": "./design", "name": "🎨 design" },
-    { "path": "./apps/insgt-api", "name": "api" },
-    { "path": "./apps/insgt-ops", "name": "ops" },
-    { "path": "./lib/insgt-ui", "name": "ui" },
+    { "path": "./functions/insgt-site-sls", "name": "fn:site-sls" }
   ],
   "settings": {
     "files.exclude": {

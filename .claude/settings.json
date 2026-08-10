@@ -1,0 +1,50 @@
+{
+  "env": { "ELECTRON_RUN_AS_NODE": "" },
+  "permissions": {
+    "allow": [
+      "Bash(rg *)",
+      "Bash(awk *)",
+      "Bash(sort *)",
+      "Bash(jq *)",
+      "Bash(mkdir -p *)",
+      "Bash(bundle exec rspec *)",
+      "Bash(bundle exec rubocop *)",
+      "Bash(bundle exec rails test*)",
+      "Bash(npm ls *)",
+      "Bash(npm view *)",
+      "Bash(npm run *)",
+      "Bash(npm test)",
+      "Bash(node -c *)",
+      "Bash(npx ng lint *)",
+      "Bash(npx ng build *)",
+      "Bash(npx ng test *)",
+      "Bash(npx cypress run *)",
+      "Bash(npx html-validate *)",
+      "Bash(npx cspell *)",
+      "Skill(insgt-api:*)",
+      "Skill(angular-core:*)",
+      "Skill(angular-import-organization:*)",
+      "Skill(claude-api:*)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/.npmrc)",
+      "Read(**/config/master.key)",
+      "Read(**/config/credentials/*.key)",
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean *)",
+      "Bash(rm -rf *)",
+      "Bash(heroku *)",
+      "Bash(aws *)",
+      "Bash(render *)",
+      "Bash(stripe *)",
+      "Bash(psql *)",
+      "Bash(bundle exec rails db*)",
+      "Bash(bin/rails db*)",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ]
+  }
+}

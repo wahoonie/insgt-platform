@@ -127,6 +127,7 @@ import { faPlus, faTrash, faPencil } from '@fortawesome/pro-regular-svg-icons';
 
 - **Never add new categories.** If something doesn't cleanly fit, use the closest existing one. When genuinely ambiguous, prefer the more specific category (e.g., a facade goes under State, not Application).
 - **Omit empty categories** — don't leave a divider with no imports under it.
+- **Skip dividers in thin files** — omit all section headers when the file has fewer than 3 populated categories *or* fewer than 6 total imports (routes files and simple providers typically qualify). In these cases, preserve the implicit ordering — Angular → State → Application → Models → Components — but write the imports as a flat block without comments.
 - **One blank line** between the closing divider of one section and the opening divider of the next. No blank lines within a section between individual imports.
 - **Keep the divider format exact** — 32 dashes, emoji, label. Don't abbreviate or reformat.
 - **Apply to the whole file** when reorganizing — don't partially organize a file and leave the rest unsorted.

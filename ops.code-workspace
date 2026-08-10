@@ -1,11 +1,9 @@
 {
   "folders": [
+    { "path": "./apps/insgt-ops", "name": "ops" },
     { "path": ".", "name": "⚙️ platform" },
     { "path": "./docs", "name": "📄 docs" },
-    { "path": "./design", "name": "🎨 design" },
-    { "path": "./apps/insgt-api", "name": "api" },
-    { "path": "./apps/insgt-ops", "name": "ops" },
-    { "path": "./lib/insgt-ui", "name": "ui" },
+    { "path": "./design", "name": "🎨 design" }
   ],
   "settings": {
     "files.exclude": {

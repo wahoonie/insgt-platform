@@ -164,3 +164,46 @@ const count = items.length;    // number — obvious
 // ✅ annotate at boundaries
 export function processItems(items: string[]): ProcessedItem[] { ... }
 ```
+
+---
+
+## Inline Documentation
+
+TypeScript's type system carries a lot of intent — but not all of it. When a type alone doesn't explain the *why*, add a comment. The target is a future reader (human or AI) who sees the code cold and needs to understand the constraint before touching it.
+
+### JSDoc on public service methods
+Public methods on services and facades should have a JSDoc comment when the behavior is non-obvious or constrained by a business rule:
+```ts
+/**
+ * Resolves the active copy of the listing description.
+ * Returns the user-edited version if one exists; falls back to the AI-generated
+ * original. Never mutates ai_description — the edited copy is always a separate field.
+ */
+resolveActiveDescription(listing: Listing): string {
+  return listing.editedDescription ?? listing.aiDescription;
+}
+```
+
+### Document non-obvious type choices
+When a type shape encodes a business rule, say so:
+```ts
+// Immutable after creation — only new records are appended on regeneration.
+// Never reassign or update this field after the initial INSERT.
+type AiFeatures = Readonly<string[]>;
+
+// Null means "user has not yet edited this copy" — distinct from an empty string,
+// which would mean the user intentionally cleared the content.
+type EditedDescription = string | null;
+```
+
+### Document rejected alternatives
+When a simpler approach was considered and rejected, a brief note prevents future sessions from re-litigating the decision:
+```ts
+// Using a boolean gate rather than a usage counter because billing is prepaid
+// per-listing access. A counter would require tracking generation costs with
+// no corresponding business value under the current model.
+descriptionUnlocked: boolean;
+```
+
+### Keep it proportional
+Short, stable utility functions need no comment. Document in proportion to the non-obviousness of the design — not in proportion to the complexity of the implementation.

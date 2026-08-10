@@ -1,5 +1,4 @@
 name: insgt-platform
-version: "3.8"
 
 services:
   app:
@@ -8,6 +7,71 @@ services:
       dockerfile: .devcontainer/Dockerfile
     volumes:
       - ..:/workspace:cached
+      - ${HOME}/.insight-data:/host-data:cached
+      - cypress-cache:/home/vscode/.cache/Cypress
+      - claude-home:/home/vscode/.claude
     command: sleep infinity
+
+    # Chromium/Electron crash mid-run on the 64M Docker default
+    shm_size: 2gb
+    environment:
+      DATABASE_HOST: db
+      DATABASE_PORT: "5432"
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: postgres
+      REDIS_URL: redis://redis:6379/0
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  db:
+    image: postgres:15
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: insgt_api_development
+
+    ports:
+      - "127.0.0.1:5433:5432"
+
+    volumes:
+      - insgt_postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U postgres -d insgt_api_development"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis-data:/data
+
+volumes:
+  insgt_postgres_data:
+    name: insgt-platform-postgres-data
+  redis-data:
+    name: insgt-platform-redis-data
+  cypress-cache:
+    name: insgt-platform-cypress-cache
+  claude-home:
+    name: insgt-platform-claude-home
