@@ -195,6 +195,32 @@ Event names are space-separated strings — NgRx auto-generates camelCase creato
 
 **Legacy: helper factory pattern** — existing features use `createLoadAllActions`, `createAddActions` etc. from `@app/core/services/state-actions.helper`. When editing a legacy actions file, match the existing pattern. When creating a new feature or migrating an existing one, use `createActionGroup`.
 
+### `ReducerService` is forked, not shared
+
+Both apps have a `ReducerService` — `insgt-ops/src/app/core/reducer.service.ts` and
+`insgt-app/src/app/core/services/reducer.service.ts`. Same class name, same method names,
+**independent copies that have drifted.** There is no shared package; nothing keeps them in
+sync.
+
+The divergence that bites:
+
+| | insgt-ops | insgt-app |
+|---|---|---|
+| `updateResourceSuccess` on a collection record | **replaces** it wholesale | **merges** the payload into it |
+| `ReducerHelperOptions` | no `resourceId` | has `resourceId`, so it can match on a key other than `id` |
+
+So the same action against the same-shaped state produces different results per app. A partial
+payload — the three-key body a `PUT /orders/:id/order_event` returns, say — leaves the other
+fields intact in insgt-app and wipes them in insgt-ops.
+
+**Never port a fix between the two by copying the method.** Read the target app's version first
+and re-derive the change. A patch that is correct in one is silently wrong in the other, and
+neither app's tests will catch it, because each spec only exercises its own copy.
+
+The same applies to `state-actions.helper` and `state-effects.helper`, which are also duplicated
+rather than shared. Treat any `core/` helper with a twin in the sibling repo as forked until you
+have diffed them.
+
 ### Facade pattern
 
 ```ts
