@@ -1,6 +1,6 @@
 ---
 name: angular-core
-description: Shared Angular conventions for all InsightPhotos Angular apps (insgt-ops, insgt-app). Use this skill for any task involving components, state management, NgRx, facades, signals, forms, routing, services, or testing across these repos. Load alongside an app-specific skill when working in a particular repo — this skill defines the target pattern both apps are converging toward.
+description: Shared Angular conventions for all InsightPhotos Angular apps (insgt-ops, insgt-app). Use this skill for any task involving components, facades, signals, forms, routing, services, naming, or testing across these repos. Load alongside an app-specific skill when working in a particular repo, and alongside angular-ngrx-state for any work touching the state layer — this skill defines the target pattern both apps are converging toward.
 ---
 
 # Angular Core — InsightPhotos Shared Conventions
@@ -8,6 +8,11 @@ description: Shared Angular conventions for all InsightPhotos Angular apps (insg
 This skill defines the **target patterns** shared across all InsightPhotos Angular apps. App-specific skills (insgt-ops, insgt-app) handle per-repo constraints and divergences — but those constraints are the exception. When in doubt, follow what's here.
 
 All apps share one backend: **insgt-api** (Rails 7.2, PostgreSQL, Sidekiq/Redis).
+
+**Related skills:**
+- `angular-ngrx-state` — actions, reducers, selectors, effects, facades, count semantics. Load for any state-layer work.
+- `angular-unit-testing` — Vitest specs for state-layer logic.
+- `angular-import-organization` — import block structure.
 
 ---
 
@@ -136,121 +141,7 @@ Always use the block control flow syntax (`@if`, `@for`, `@switch`) in new templ
 
 ---
 
-## 3. State Management (NgRx → Facade → Component)
-
-```
-Component → Facade → NgRx Store (actions / reducers / selectors / effects)
-               ↕
-           API Service (ResourceApiService)
-```
-
-The facade is the only entry point into the store from the component layer. Components never import selectors or dispatch actions directly — this keeps components testable and the state layer swappable.
-
-### Feature file layout
-```
-feature/
-├── data-access/
-│   ├── feature.model.ts            # Interface, collection, search, fields
-│   ├── feature.service.ts          # HTTP (ResourceApiService)
-│   ├── feature-facade.service.ts   # Facade extending BaseFacade
-│   ├── feature.provider.ts         # provideState + provideEffects + Service
-│   └── state/
-│       ├── feature.state.ts
-│       ├── feature.actions.ts
-│       ├── feature.reducer.ts
-│       ├── feature.selectors.ts
-│       └── feature.effects.ts
-├── pages/feature-list/
-├── dialogs/feature-upsert/
-├── components/feature-card/
-└── feature.routes.ts
-```
-
-### Actions — two generations
-
-**Target: `createActionGroup`** (first-party NgRx, no custom helper library required)
-
-```ts
-export const ThingActions = createActionGroup({
-  source: 'Things',
-  events: {
-    'Load All':         props<{ params: ThingSearch }>(),
-    'Load All Success': props<{ collection: ThingCollection }>(),
-    'Load All Error':   props<{ error: ApiError }>(),
-    'Add':              props<{ resource: Thing }>(),
-    'Add Success':      props<{ resource: Thing }>(),
-    'Add Error':        props<{ error: ApiError }>(),
-    'Update':           props<{ resource: Thing }>(),
-    'Update Success':   props<{ resource: Thing }>(),
-    'Update Error':     props<{ error: ApiError }>(),
-    'Delete':           props<{ resource: Thing }>(),
-    'Delete Success':   props<{ resource: Thing }>(),
-    'Delete Error':     props<{ error: ApiError }>(),
-    'Set Current Id':   props<{ id: string }>(),
-  },
-});
-```
-
-Event names are space-separated strings — NgRx auto-generates camelCase creators (`ThingActions.loadAll`, `ThingActions.loadAllSuccess`, etc.). Use `emptyProps()` for actions with no payload.
-
-**Legacy: helper factory pattern** — existing features use `createLoadAllActions`, `createAddActions` etc. from `@app/core/services/state-actions.helper`. When editing a legacy actions file, match the existing pattern. When creating a new feature or migrating an existing one, use `createActionGroup`.
-
-### `ReducerService` is forked, not shared
-
-Both apps have a `ReducerService` — `insgt-ops/src/app/core/reducer.service.ts` and
-`insgt-app/src/app/core/services/reducer.service.ts`. Same class name, same method names,
-**independent copies that have drifted.** There is no shared package; nothing keeps them in
-sync.
-
-The divergence that bites:
-
-| | insgt-ops | insgt-app |
-|---|---|---|
-| `updateResourceSuccess` on a collection record | **replaces** it wholesale | **merges** the payload into it |
-| `ReducerHelperOptions` | no `resourceId` | has `resourceId`, so it can match on a key other than `id` |
-
-So the same action against the same-shaped state produces different results per app. A partial
-payload — the three-key body a `PUT /orders/:id/order_event` returns, say — leaves the other
-fields intact in insgt-app and wipes them in insgt-ops.
-
-**Never port a fix between the two by copying the method.** Read the target app's version first
-and re-derive the change. A patch that is correct in one is silently wrong in the other, and
-neither app's tests will catch it, because each spec only exercises its own copy.
-
-The same applies to `state-actions.helper` and `state-effects.helper`, which are also duplicated
-rather than shared. Treat any `core/` helper with a twin in the sibling repo as forked until you
-have diffed them.
-
-### Facade pattern
-
-```ts
-@Injectable({ providedIn: 'root' })
-export class ThingFacade extends withSelectOptions(BaseFacade) {
-  readonly all$        = this.select(selectAll);
-  readonly loadingAll$ = this.select(selectLoadingAll);
-  readonly loadingOne$ = this.select(selectLoadingOne);
-  readonly current$    = this.select(selectCurrent);
-  readonly meta$       = this.select(selectMeta);
-  readonly metaTotal$  = this.select(selectMetaTotal);
-  readonly collection$ = this.select(selectCollection);
-  readonly actions     = ThingActions; // action group — components dispatch through this
-}
-```
-
-Dispatch from components via the facade — components never import the action group directly:
-```ts
-this.facade.dispatch(this.facade.actions.loadAll({ params }));
-this.facade.dispatch(this.facade.actions.add({ resource: thing }));
-this.facade.dispatch(this.facade.actions.update({ resource: thing }));
-this.facade.dispatch(this.facade.actions.delete({ resource: thing }));
-this.facade.dispatch(this.facade.actions.setCurrentId({ id }));
-```
-
-> For full NgRx boilerplate — actions, reducer, effects, selectors, provider — see `references/ngrx-patterns.md`.
-
----
-
-## 4. Entity Models
+## 3. Entity Models
 
 New entities use interfaces (not classes). Classes are a legacy pattern.
 
@@ -266,6 +157,8 @@ export interface ThingSearch     { id?: string; perPage?: number; page?: number;
 ```
 
 **API responses are camelCase.** insgt-api serializes every response to camelCase (its Rails/jbuilder source is snake_case, but keys are camelized on the way out), so response interfaces use camelCase keys — `monthlyTrend`, `lifetimeValueCents`, never `monthly_trend`. Match the wire, not the Rails template. A snake_case key on a response model is a *silent* bug: it reads `undefined` with no compile or runtime error, so the data just never binds.
+
+**Count fields are nullable.** `metadata: Meta | null`, and counts inside `Meta` are `number | null`. Absence is a real state — see `angular-ngrx-state` for how it propagates.
 
 Fields config is used to drive form construction and validation error display — centralize it in the model file so the form and its error messages stay in sync:
 ```ts
@@ -293,9 +186,11 @@ Optional field properties: `type` (`'textarea' | 'number' | 'select' | 'toggle' 
 
 ---
 
-## 5. API Services
+## 4. API Services
 
 Three generations of API service exist across the codebase. Always identify which generation a file uses before editing it.
+
+> Generation docs are deleted as generations die. When Gen 1 has no remaining call sites, remove its subsection rather than leaving it as reference.
 
 ### Generation 3 — Composition (target for all new code)
 
@@ -369,7 +264,7 @@ Services are thin HTTP adapters — no business logic, no state. The facade and 
 
 ---
 
-## 6. Routing
+## 5. Routing
 
 ```ts
 // feature.routes.ts
@@ -390,7 +285,7 @@ App-specific routing constraints (hash routing, module-based router registration
 
 ---
 
-## 7. Naming Conventions
+## 6. Naming Conventions
 
 ### Core principle
 
@@ -456,18 +351,20 @@ The primary organizational boundary is **the feature**. `pages/`, `components/`,
 src/app/features/
   users/
     pages/
-      users-list/      users-list-page.ts        -> UsersListPage
-      user-detail/     user-detail-page.ts       -> UserDetailPage
+      users-list-page/      users-list-page.ts        -> UsersListPage
+      user-detail-page/     user-detail-page.ts       -> UserDetailPage
     components/
       avatar/          avatar.ts                 -> Avatar
       status-badge/    status-badge.ts           -> StatusBadge
     dialogs/
-      user-settings/   user-settings-dialog.ts   -> UserSettingsDialog
-      delete-user/     delete-user-dialog.ts     -> DeleteUserDialog
+      user-settings-dialog/   user-settings-dialog.ts   -> UserSettingsDialog
+      delete-user-dialog/     delete-user-dialog.ts     -> DeleteUserDialog
   orders/
   clients/
   shoots/
 ```
+
+The `data-access/` subtree inside a feature is documented in `angular-ngrx-state`.
 
 **Not permitted** — type-based directories at the app root, which scatter each feature across the tree:
 
@@ -480,34 +377,19 @@ This deliberately differs from Angular's recommendation against type-based direc
 
 ### Current state — migration in progress, not a sweep
 
-**Target: every feature lives under `src/app/features/`.** Neither repo is there yet, and the gap is a half-finished move rather than an empty tree — many features currently exist in *both* locations at once:
+**Target: every feature lives under `src/app/features/`.** Neither repo is there yet, and the gap is a half-finished move rather than an empty tree — many features currently exist in *both* locations at once. Most class names are already correct; the **filenames** lag, and for the large majority the gap is only the separator (`.` → `-`).
 
-| | insgt-ops | insgt-app |
-|---|---|---|
-| Features split across `src/app/<f>/` **and** `src/app/features/<f>/` | **8** — `accounts`, `cities`, `listings`, `order-types`, `orders`, `photos`, `postal-codes`, `tags` | **12** — `billing`, `cart`, `floor-plans`, `flyers`, `help`, `legal`, `listings`, `marketing-sources`, `orders`, `photos`, `properties`, `sessions` |
-| Only under `features/` (fully migrated) | 5 | 1 |
-| Only outside `features/` (not started) | 32 | 11 |
-| Classes still named `*Component` | 122 | 40 |
-| Files still named `*.component.ts` | 118 | 38 |
-
-Filename conformance for the `Page`/`Dialog`/`Card` components that already carry a correct class name:
-
-| Filename form | insgt-ops | insgt-app |
-|---|---|---|
-| `thing-list-page.ts` — **hyphen, conforming** | **2** | **0** |
-| `thing-list.page.ts` — dot form, needs separator change | **85** | **72** |
-| `thing-list.ts` — no role in filename, needs the role added | **11** | 0 |
-| **Total `Page`/`Dialog`/`Card` components** | **98** | **72** |
-
-So the class names are largely already right; it is the **filenames** that lag, and for 157 of 170 files the gap is only the separator (`.` → `-`). Renaming a component file means updating its `templateUrl`, `styleUrls`, and every import path, so this is not a find-and-replace.
+Renaming a component file means updating its `templateUrl`, `styleUrls`, and every import path, so this is not a find-and-replace.
 
 **Existing names are legacy, not violations.** Do not open rename PRs against them — not for `*Component` classes, not for dot-form filenames. New code follows the convention; existing code migrates when you are already touching it for another reason. When consolidating a split feature, move the whole feature in one commit rather than leaving a third partial copy.
+
+> Do not record migration counts here. They decay with every commit and a stale number reads as a live decision gate. Grep when you need one.
 
 ### Not enforced by lint
 
 `@angular-eslint/component-class-suffix` can only *whitelist* suffixes, so it cannot express "must not end in `Component`." Both `component-class-suffix` and `directive-class-suffix` are therefore `"off"` in each repo's `.eslintrc.json`, with a comment pointing here. They must be explicitly `"off"` rather than omitted — both are `"error"` in `plugin:@angular-eslint/recommended`, whose default suffix list is just `["Component"]`, so deleting the entry silently re-enables a stricter rule.
 
-This convention is upheld by review. If it needs teeth later, a `no-restricted-syntax` rule matching `ClassDeclaration[id.name=/Component$/]` would do it — but only once the 162 existing `*Component` classes are migrated.
+This convention is upheld by review. If it needs teeth later, a `no-restricted-syntax` rule matching `ClassDeclaration[id.name=/Component$/]` would do it — but only once the existing `*Component` classes are migrated.
 
 ### Variable naming
 - **Signals:** no suffix — `selectedId`, `loading`, `things`
@@ -516,12 +398,12 @@ This convention is upheld by review. If it needs teeth later, a `no-restricted-s
 
 ---
 
-## 8. Testing
+## 7. Testing
 
 Both apps use **Vitest** for unit tests and **Cypress** for end-to-end tests.
 No Karma, no Jasmine, no Jest.
 
-- **Unit tests** cover reducers, selectors, pure mappers, and validators.
+- **Unit tests** cover reducers, selectors, pure mappers, formatters, and validators.
   See the `angular-unit-testing` skill.
 - **E2E tests** cover user flows. Everything below applies to Cypress.
 
@@ -547,7 +429,7 @@ Every feature needs exactly these three specs — no more needed to cover 90% of
 
 ---
 
-## 9. General Rules
+## 8. General Rules
 
 - **No `any` in new code** — use proper interfaces or `unknown` with type guards. `any` disables the type safety that makes large-scale refactoring safe.
 - **Keep components thin** — business logic belongs in facades and services. A component's job is to translate between the ViewModel and the template.
@@ -561,7 +443,7 @@ All `.ts` files use a consistent categorized import block structure with labeled
 
 ---
 
-## 10. Inline Documentation
+## 9. Inline Documentation
 
 ### The dual-audience rule
 Every non-trivial comment has two readers: a human engineer onboarding to the feature, and a future Claude Code session that needs to understand intent before making changes. Write for both. Don't restate what the code does — explain *why* this approach was chosen, what invariants must be preserved, and what would break if the logic changed.
@@ -622,9 +504,4 @@ const listings = await this.facade.all$; // gets all listings
 // For large result sets, use collection$ which respects the current meta.page.
 ```
 
-### NgRx state layer documentation targets
-When writing or reviewing state files, document these specifically if they're present:
-- Why a particular loading flag exists (`loadingAll` vs `loadingOne`) and what triggers each
-- Why `selectedId` / `selectedIds` are separate fields
-- Non-standard adapter configuration (custom `sortComparer`, non-`id` `selectId`)
-- Any reducer case that does something other than set/upsert/remove an entity
+State-layer documentation targets are in `angular-ngrx-state`.
