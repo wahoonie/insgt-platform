@@ -20,6 +20,7 @@ Alterations currently in scope: sky replacement, grass repair, pool bluing, virt
 - Add a download, export, or share path that bypasses the labeled bundle set
 - Drop, default, or make optional a `watermark` flag or `watermark_label` without an explicit decision
 - Present an altered photo to a buyer-facing surface without its disclosure route
+- Rename `CompolianceModeIds` in passing (see below)
 - Describe altered images as "enhancements" in customer-facing copy — they are disclosed alterations
 
 ---
@@ -27,6 +28,8 @@ Alterations currently in scope: sky replacement, grass repair, pool bluing, virt
 ## Compliance mode
 
 Per-order, two modes: `legacy` (id 1) and `compliant` (id 2), via `ComplianceModes`.
+
+The enum is **misspelled** `CompolianceModeIds` in the insgt-ops model layer. It is referenced across repos. Renaming requires a coordinated multi-repo change — never do it as part of unrelated work.
 
 ## Alteration types
 
@@ -67,9 +70,19 @@ QR code pointing at the disclosure gallery URL, surfaced only when the order's c
 
 insgt-app and insgt-ops expose the download surfaces.
 
+<!-- FILL IN: insgt-app — which agent-facing download surfaces expose which bundles. -->
+
 ---
 
 ## Copy rules
+
+**Use disclosure-focused terminology, not "original" / "edited".** The pairing is not original-vs-edited, it is altered-vs-unaltered, and the labels should say what the agent needs to know:
+
+- Unaltered photos → "No Disclosures Required"
+- Altered photos with counterparts → "MLS Ready — Disclosures Included"
+- Hide compliance UI entirely when an order has no altered photos (progressive disclosure)
+
+The one deliberate exception is **consumer-facing** surfaces. insgt-disclosure-gallery labels unaltered photos "Original Photo" on purpose — a buyer reading a disclosure page needs plain language, not the agent-facing compliance vocabulary. Keep the agent-facing terminology everywhere else.
 
 AB 723 downloads are included free with every shoot. Permitted framing: the agent gets the files they need for MLS use, marketing, and disclosure requirements.
 

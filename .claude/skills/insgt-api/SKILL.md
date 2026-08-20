@@ -5,7 +5,7 @@ description: Rails conventions for insgt-api, the Rails 7.2 API-only backend for
 
 # insgt-api — Rails Conventions
 
-Rails 7.2 API-only backend. Ruby 3.4. PostgreSQL/PostGIS. Sidekiq/Redis. Hosted on Render.com (migrating from Heroku). AWS S3/SSM/STS for file storage and secrets.
+Rails 7.2 API-only backend. Ruby 3.4. PostgreSQL/PostGIS. Sidekiq/Redis. Hosted on Heroku (a move to Render.com is planned, not done — the runbooks in `insgt-platform/docs/runbooks/` deploy via `git push heroku`). AWS S3/SSM/STS for file storage and secrets.
 
 ---
 

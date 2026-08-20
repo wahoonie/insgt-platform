@@ -9,6 +9,7 @@
 !.devcontainer/**
 
 # Claude Code shared skills & config
+!CLAUDE.md
 !.claude/
 !.claude/**
 
