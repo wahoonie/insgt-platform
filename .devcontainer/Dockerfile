@@ -36,7 +36,7 @@ SHELL ["/bin/bash", "-c"]
 RUN eval "$(mise activate bash)" \
     && gem install bundler \
     && gem install foreman --no-document \
-    && npm install -g @anthropic-ai/claude-code
+    && npm install -g @anthropic-ai/claude-code @openai/codex
 
 # Cypress/Electron runtime dependencies
 # Debian 13 (trixie) renamed several of these in the 64-bit time_t transition, hence the
