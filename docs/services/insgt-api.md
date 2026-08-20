@@ -1,0 +1,1 @@
+# key endpoints, auth, conventions

@@ -15,7 +15,12 @@
 # But never commit local machine-specific permissions
 .claude/settings.local.json
 
+# ── Documentation ─────────────────────────────────
+!docs/
+!docs/**
+
 # ── This file ─────────────────────────────────────
 !.gitignore
 
 .claude/.DS_Store
+docs/**/.DS_Store
