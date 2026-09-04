@@ -21,6 +21,7 @@ Alterations currently in scope: sky replacement, grass repair, pool bluing, virt
 - Drop, default, or make optional a `watermark` flag or `watermark_label` without an explicit decision
 - Present an altered photo to a buyer-facing surface without its disclosure route
 - Rename `CompolianceModeIds` in passing (see below)
+- Key compliance reporting off an order type's category rather than its `key` (see below)
 - Describe altered images as "enhancements" in customer-facing copy — they are disclosed alterations
 
 ---
@@ -30,6 +31,22 @@ Alterations currently in scope: sky replacement, grass repair, pool bluing, virt
 Per-order, two modes: `legacy` (id 1) and `compliant` (id 2), via `ComplianceModes`.
 
 The enum is **misspelled** `CompolianceModeIds` in the insgt-ops model layer. It is referenced across repos. Renaming requires a coordinated multi-repo change — never do it as part of unrelated work.
+
+## Compliance reporting
+
+Any report, query, or metric counting AB 723 reprocess work must match on
+**`order_type.key == 'reprocess_disclosure_compliance'`** (id 207). Never match on the order
+type's category.
+
+`key` is an identity column. `OrderType` guards it with a `key_must_not_change` validation, so no
+ordinary save can move it — a deliberate rename needs a migration or something else that skips
+validations. A category is an editable classification with no such guard: this row has already been
+read as both `internal` (a maintenance reprocess) and `property` (paid work against a listing), and
+neither reading is wrong. A report keyed off category silently changes what it counts the next time
+someone reclassifies. A report keyed off `key` does not.
+
+The same holds for `name`, which is a display string and free to change independently — id 32 was
+created as "Stay at home" and is now "Quick Pics".
 
 ## Alteration types
 
