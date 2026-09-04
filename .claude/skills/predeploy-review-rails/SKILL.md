@@ -44,8 +44,19 @@ Reviewing the changes about to ship. Read only — do not edit, stage, or commit
     Spell out the ordering.
   - Index on a large table → `algorithm: :concurrently` + `disable_ddl_transaction!`.
   - Backfills belong in a Sidekiq job, not the migration.
-  - New FK column gets an index. `structure.sql` regenerated (not `schema.rb`),
-    for PostGIS.
+  - New FK column gets an index.
+  - `db/schema.rb` regenerated and committed — `schema_format` is unset, so Rails
+    dumps Ruby and there is no `db/structure.sql`. Asking for structure.sql is
+    wrong for this repo as it stands; schema.rb dumps check constraints and
+    concurrent/unique indexes fine.
+  - REVISIT AT THE RENDER CUTOVER. PostGIS is on the roadmap to land before it,
+    but is not installed yet — no extension in the database, no spatial columns,
+    no adapter gem. The "PostgreSQL/PostGIS" in both CLAUDE.md files describes
+    the target, not today; do not "correct" it. When PostGIS lands the dump
+    format becomes a real decision — an adapter that teaches the Ruby dumper the
+    spatial types, or a move to structure.sql — so re-derive this item then
+    rather than trusting it. Same revisit list as
+    `StrongMigrations.target_version`, already flagged in its initializer.
 - **Sidekiq**: job-arg signature changes must stay back-compat across a rolling
   deploy (jobs already enqueued with old args). Renamed/removed worker classes
   leave orphaned jobs in Redis. Idempotency. New queue declared in config + the
