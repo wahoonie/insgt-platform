@@ -40,6 +40,12 @@ California law (BPC § 10140.8, effective 2026-01-01) requires disclosure when l
 
 Load the **`ab-723-compliance`** skill before touching alteration labeling, watermarks, download bundles, or disclosure galleries. That skill owns the rules; do not reason about them from memory.
 
+## Packing a repo for an external AI
+
+`bin/repomix-pack [repo] [domain|overview]` writes `repomix-out/<repo>.domain.xml` (business layer, full fidelity) and `<repo>.overview.xml` (whole-repo structure, signatures only) for the seven `apps/*` repos. See `docs/repomix-packs.md`; `bin/repomix-pack --help` prints the per-repo globs.
+
+The `.xml` files are gitignored and regenerated on demand — never commit them, and never read one as a substitute for grepping the source. Every pack is scanned for secrets and deleted if anything is found; when that happens, fix the leak, do not bypass it.
+
 ## Where instructions live
 
 | Layer | Owns |
@@ -52,4 +58,4 @@ Load the **`ab-723-compliance`** skill before touching alteration labeling, wate
 
 Conventions are **owned by skills**, not by this file. To write a component, a reducer, a migration, or a commit message, load the relevant skill rather than inferring the pattern from code you happen to have open — several repos contain two coexisting patterns, and the older one is usually the more common.
 
-`docs/` holds `overview.md` (system, user types, order lifecycle), `data-model.md` (entities), `compliance/ab-723.md` (full requirements), `runbooks/` (one deploy procedure per feature), `decisions/` (ADRs), and `services/` (per-service reference, mostly stubs).
+`docs/` holds `overview.md` (system, user types, order lifecycle), `data-model.md` (entities), `compliance/ab-723.md` (full requirements), `repomix-packs.md` (packing a repo for an external AI), `runbooks/` (one deploy procedure per feature), `decisions/` (ADRs), and `services/` (per-service reference, mostly stubs).

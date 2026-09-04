@@ -1,0 +1,775 @@
+#!/usr/bin/env bash
+#
+# repomix-pack — pack an insgt app repo into a single file for an external AI tool.
+#
+# Writes two packs per repo into repomix-out/ :
+#
+#   <repo>.domain.xml     The business/domain layer at full fidelity — models,
+#                         NgRx state, schema. Deliberately NOT compressed: a
+#                         signature-only order.rb would be useless.
+#   <repo>.overview.xml   Whole-repo orientation — Tree-sitter signatures only,
+#                         assets and build output stripped, full directory tree.
+#
+# Every pack is scanned for secrets before the run is reported successful. A pack
+# that fails the scan is deleted and the run exits non-zero. There is no bypass
+# flag on purpose: these files get uploaded to a third party.
+#
+# Full instructions: docs/repomix-packs.md
+#
+set -euo pipefail
+
+WORKSPACE_DIRECTORY="/workspace"
+OUTPUT_DIRECTORY="$WORKSPACE_DIRECTORY/repomix-out"
+
+# The one place the repomix version is pinned. A floating version could silently
+# change glob semantics or the output format mid-project.
+REPOMIX_VERSION="repomix@1.18.0"
+
+# Warn above this many tokens — the point where a 200K context window stops
+# fitting the pack. Measured against repomix's own count, not estimated.
+TOKEN_WARNING_THRESHOLD=200000
+
+# Rough bytes-per-token for source under o200k_base. Only a fallback, for the
+# case where repomix changes its summary wording and the real count cannot be
+# read back.
+BYTES_PER_TOKEN_TIMES_TEN=36
+
+ALL_REPOS=(
+  insgt-api
+  insgt-app
+  insgt-ops
+  insgt-photographers
+  insgt-galleries
+  insgt-virtual-tour
+  insgt-disclosure-gallery
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared ignore set — applied to every pack, domain and overview alike.
+#
+# repomix already ignores node_modules, dist, tmp, vendor, logs and
+# package-lock.json via its default list, and honours each app's own .gitignore.
+# This list is the layer that depends on neither of those, because:
+#
+#   * repomix reads files with fs, so the Read(**/.env) and
+#     Read(**/config/master.key) deny rules in .claude/settings.json do not
+#     constrain it — those rules constrain Claude, not a subprocess.
+#   * apps/insgt-api/config/secrets.yml and secrets.yml.rb are TRACKED in git
+#     with literal dev/test secret_key_base values, so no .gitignore rule hides
+#     them.
+#   * apps/insgt-photographers/.gitignore has no .env line at all.
+# ─────────────────────────────────────────────────────────────────────────────
+SHARED_IGNORE_PATTERNS=(
+  # ── credentials ──
+  '**/.env'
+  '**/.env.*'
+  '**/.envrc'
+  '**/*.pem'
+  '**/*.key'
+  '**/*.p12'
+  '**/*.pfx'
+  '**/id_rsa*'
+  '**/config/master.key'
+  '**/config/credentials.yml.enc'
+  '**/config/credentials/*'
+  '**/config/secrets.yml'
+  '**/config/secrets.yml.rb'
+  '**/config/database.yml'
+  '**/cypress.env.json'
+  '**/.npmrc'
+  '**/.netrc'
+  '**/*.keystore'
+  '**/*.jks'
+
+  # ── build output and dependencies (belt and braces over repomix defaults) ──
+  '**/node_modules/**'
+  '**/dist/**'
+  '**/.angular/**'
+  '**/coverage/**'
+  'tmp/**'
+  'log/**'
+  'logs/**'
+  'vendor/**'
+
+  # ── binaries: no value to a language model, large token cost ──
+  '**/*.png'
+  '**/*.jpg'
+  '**/*.jpeg'
+  '**/*.gif'
+  '**/*.ico'
+  '**/*.webp'
+  '**/*.svg'
+  '**/*.avif'
+  '**/*.mp4'
+  '**/*.mov'
+  '**/*.pdf'
+  '**/*.zip'
+  '**/*.gz'
+  '**/*.rdb'
+  '**/*.psd'
+  '**/*.woff'
+  '**/*.woff2'
+  '**/*.ttf'
+  '**/*.eot'
+  '**/*.otf'
+  '**/.DS_Store'
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Secret guard, layer 4a — credential shapes matched against the finished pack.
+# High signal only: a guard that cries wolf is a guard that gets disabled.
+# ─────────────────────────────────────────────────────────────────────────────
+SECRET_PATTERNS=(
+  'BEGIN [A-Z ]*PRIVATE KEY'
+  'AKIA[0-9A-Z]{16}'
+  '(sk|rk)_live_[A-Za-z0-9]{16,}'
+  'whsec_[A-Za-z0-9]{16,}'
+  'xox[baprs]-[A-Za-z0-9-]{10,}'
+  'gh[pousr]_[A-Za-z0-9]{20,}'
+  'secret_key_base'
+  'AIza[0-9A-Za-z_-]{35}'
+  'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.'
+)
+
+join_with_commas() {
+  local internal_field_separator=','
+  local IFS="$internal_field_separator"
+  echo "$*"
+}
+
+# Fail closed. A scan that cannot run must never report "clean".
+#
+# Do not reach for ripgrep here: inside Claude Code `rg` is only a shell function
+# injected into interactive shells, not a binary on PATH, so a standalone script
+# silently gets "command not found" — and `if rg --quiet ...` then evaluates
+# false, which reads exactly like "no secrets found". That bug shipped once
+# already. grep -E and grep -F are in Debian's base image and are checked below.
+verify_scanner_works() {
+  if ! printf 'AKIAABCDEFGHIJKLMNOP\n' | grep -Eaq 'AKIA[0-9A-Z]{16}'; then
+    echo "repomix-pack: grep -E failed its self-test — the secret scanner is not working." >&2
+    echo "              Refusing to pack. A scan that cannot run must not report 'clean'." >&2
+    exit 3
+  fi
+  if ! printf 'canary-fixed-string\n' | grep -Faq -- 'canary-fixed-string'; then
+    echo "repomix-pack: grep -F failed its self-test — the secret scanner is not working." >&2
+    echo "              Refusing to pack." >&2
+    exit 3
+  fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-repo specs.
+#
+# Sets DOMAIN_INCLUDE, OVERVIEW_IGNORE and REPO_SUMMARY for the named repo.
+# Every glob below was verified against the real tree with `git ls-files`.
+#
+# Note: --include is comma-separated, so brace expansion must never appear in a
+# glob — src/**/*.{ts,html} would split at the inner comma.
+# ─────────────────────────────────────────────────────────────────────────────
+set_repo_spec() {
+  local repo="$1"
+
+  # Extra ignores applied to BOTH packs for this repo, on top of the shared set.
+  # Empty for most repos.
+  REPO_ALWAYS_IGNORE=""
+
+  case "$repo" in
+
+    insgt-api)
+      # Rails 7.2 API. app/models is 113 files / 15,242 lines — the densest
+      # domain layer in the polyrepo. db/schema.rb stands in for the 309 files
+      # of db/migrate. lib/*.rb is top-level-only by design: the glob shape
+      # itself excludes lib/assets/*.ttf and *.jpg.
+      #
+      # app/controllers/** is deliberately out: config/routes.rb plus the 158
+      # .json.jbuilder views already give the API surface and response shapes,
+      # and this is already the largest pack. Add it back here if needed.
+      DOMAIN_INCLUDE='app/models/**,app/services/**,app/workers/**,app/serializers/**,app/clients/**,app/mailers/**,app/views/**,lib/*.rb,lib/tasks/*.rake,db/schema.rb,config/routes.rb'
+
+      # public/ops/** is ~1.7 MB of COMMITTED built Angular bundles. It sits
+      # under public/, so no repomix default and no .gitignore rule touches it —
+      # without this line it becomes the largest thing in the pack.
+      # test/** is the dead Minitest suite; spec/** is RSpec (worth its own pack
+      # one day, too big for an overview).
+      # config/locales/** is ~10.7K tokens of translation YAML with no
+      # orientation value; the tree still lists every locale file by name.
+      OVERVIEW_IGNORE='public/ops/**,db/migrate/**,test/**,spec/**,app/assets/**,lib/assets/**,config/locales/**,dump.rdb'
+
+      REPO_SUMMARY='Rails 7.2 API-only backend. The system of record for orders, photos, listings and accounts; every other repo reads from it.'
+      ;;
+
+    insgt-ops)
+      # Angular 19 internal ops dashboard, and the repo with two coexisting NgRx
+      # conventions.
+      #
+      # src/app/**/store/** (recursive, NOT src/app/*/store/*) matches 309 files
+      # across 36 directories, including the nested listings/store/effects,
+      # orders/store/services, organizations/store/effects, users/store/effects
+      # subdirectories. A flat glob drops 40+ effects and service files.
+      #
+      # src/app/**/data-access/** matches 10 directories, and two of them are
+      # NOT under features/ — src/app/kpis/data-access and
+      # src/app/marketing-sources/data-access. A features/-scoped glob drops both.
+      DOMAIN_INCLUDE='src/app/**/store/**,src/app/**/data-access/**,src/app/shared/models/**,src/app/shared/api/**'
+
+      # Tree-sitter has no HTML grammar, so --compress leaves Angular templates
+      # verbatim — 832 KB of them here, which would become the largest thing in
+      # the overview. Ignoring **/*.html with --include-full-directory-structure
+      # on still lists every template by name in the tree, which is the right
+      # altitude for an orientation document.
+      OVERVIEW_IGNORE='docs/angular-upgrade-assessment.md,src/assets/**,cypress/**,scripts/**,**/*.html,**/*.spec.ts,**/*.cy.ts,**/*.scss,**/*.css'
+
+      REPO_SUMMARY='Angular 19 internal operations dashboard. Two coexisting NgRx conventions: legacy src/app/<feature>/store and modern src/app/<feature>/data-access. Both are in this pack.'
+      ;;
+
+    insgt-app)
+      # Angular 21 client PWA. Models live in store/, not shared/models/:
+      # shared/models/ is only 15 generic files (button.model.ts, icon.model.ts)
+      # while 31 of the repo's 46 *.model.ts sit under src/app/<feature>/store/.
+      # marketing-sources/data-access is the sole modern-convention directory.
+      DOMAIN_INCLUDE='src/app/**/store/**,src/app/**/data-access/**,src/app/shared/models/**,src/app/shared/api/**'
+      OVERVIEW_IGNORE='src/assets/**,cypress/**,**/*.html,**/*.spec.ts,**/*.cy.ts,**/*.scss,**/*.css'
+      REPO_SUMMARY='Angular 21 client PWA for real estate agents — ordering, checkout, galleries, downloads. Orders is the dominant domain.'
+      ;;
+
+    insgt-photographers)
+      # Angular 20 photographer PWA. The data-access glob matches nothing today
+      # (verified: zero such directories) — kept for uniformity across the three
+      # NgRx apps so a future migration needs no edit here. This repo has
+      # shared/services/ where ops and app have shared/api/.
+      DOMAIN_INCLUDE='src/app/**/store/**,src/app/**/data-access/**,src/app/shared/models/**,src/app/shared/services/**'
+
+      # src/assets is 1.5 MB against src/app at only 441 KB.
+      OVERVIEW_IGNORE='src/assets/**,cypress/**,scripts/**,tailwind.config.js,**/*.html,**/*.spec.ts,**/*.cy.ts,**/*.scss,**/*.css'
+      REPO_SUMMARY='Angular 20 photographer PWA — shoot schedules, arrival/departure times, availability. Scheduling is the domain core. Not the upload app; uploads happen in insgt-app.'
+      ;;
+
+    insgt-galleries)
+      # Rails 7.1 view layer over the API. app/models/ holds only concerns/.keep;
+      # the logic is in lib/image_handler.rb and the helpers.
+      DOMAIN_INCLUDE='app/controllers/**,app/helpers/**,app/views/**,lib/*.rb,config/routes.rb,db/schema.rb'
+      OVERVIEW_IGNORE='test/**,config/tailwind.config.js,app/assets/stylesheets/**'
+      REPO_SUMMARY='Rails 7.1 client photo galleries. A view layer over insgt-api with no real models of its own — logic lives in lib/image_handler.rb and app/helpers.'
+      ;;
+
+    insgt-virtual-tour)
+      # Rails 8.0, stateless. There is no app/models directory at all — app/
+      # contains only assets, controllers, helpers, views. .erb is kept in the
+      # overview (Tree-sitter cannot compress it, but at 13-68 KB that is fine,
+      # and here the views ARE the product).
+      DOMAIN_INCLUDE='app/controllers/**,app/helpers/**,app/views/**,lib/*.rb,config/routes.rb'
+      OVERVIEW_IGNORE='test/**,storage/**,app/assets/stylesheets/**'
+      REPO_SUMMARY='Rails 8.0 public listing pages (the MLS virtual tour URL). No database, no models — a pure view layer over insgt-api. Highest-stakes AB 723 disclosure surface.'
+      ;;
+
+    insgt-disclosure-gallery)
+      # Angular 21 standalone, no NgRx. The whole app is 20 KB of src/app, so
+      # the domain pack is simply all of it.
+      DOMAIN_INCLUDE='src/app/**,src/environments/**'
+      OVERVIEW_IGNORE='cypress/**,**/*.spec.ts,**/*.cy.ts'
+      REPO_SUMMARY='Angular 21 AB 723 disclosure gallery — shows buyers the unaltered counterpart of each digitally altered listing photo.'
+      ;;
+
+    *)
+      echo "repomix-pack: unknown repo '$repo'" >&2
+      echo "known repos: ${ALL_REPOS[*]}" >&2
+      return 1
+      ;;
+  esac
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Secret guard, layer 4b — collect the literal values of this repo's local
+# secrets so a value hardcoded into a SOURCE file is caught no matter which file
+# it came from. This is the check no ignore pattern can substitute for.
+#
+# A .env is mostly NOT secrets. insgt-api's holds bucket names, CDN endpoints,
+# support email addresses, a database name and a billing phone number, all of
+# which legitimately appear in source. Comparing every value blind produced 11
+# hits on insgt-api of which 2 were real — and a guard that cries wolf is a
+# guard that gets switched off. So values are classified first.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Names that mean "credential". Verified against insgt-api's real .env: this
+# flags CRMLS_USERNAME and ACCOUNT_PASSWORD, and passes over S3_RESOURCE_BUCKET,
+# ORDERS_EMAIL, OPERATIONS_EMAIL, CRMLS_LOGIN_URL, HEADSHOT_CLOUDFARE_ENDPOINT,
+# S3_MARKETING_EVENT_IMPORT_BUCKET_NAME, DEVELOPMENT_DATABASE, ZONE_BILLING_PHONE
+# and IMAGE_HANDLER_ENDPOINT.
+SECRET_NAME_PATTERN='SECRET|PASSWORD|PASSWD|PASSPHRASE|TOKEN|_KEY|^KEY|KEY_|CREDENTIAL|PRIVATE|AUTH|SALT|SIGNATURE|CERT|USERNAME|DSN|WEBHOOK'
+
+# Shortest credential-named value worth comparing. Deliberately low: the real
+# CRMLS password found in this codebase is 8 characters.
+MINIMUM_NAMED_SECRET_LENGTH=6
+
+# Shortest value worth comparing when the NAME gives nothing away and we are
+# relying on the value looking high-entropy.
+MINIMUM_ENTROPY_SECRET_LENGTH=20
+
+# Returns 0 if this name/value pair should be treated as a secret.
+value_is_secret() {
+  local name="$1"
+  local value="$2"
+
+  # Configuration, not credentials — whatever the name says.
+  case "$value" in
+    http://*|https://*) return 1 ;;
+    *@*.*)              return 1 ;;   # an email address
+  esac
+
+  # A single all-lowercase word is a dictionary word, not a credential —
+  # DEVELOPMENT_DATABASE_USERNAME holds something like "database", which then
+  # matches the prose in any Rails initializer. Real credentials carry a digit,
+  # a capital, punctuation, or length. INSIGHTPHOTOS (a real username here) is
+  # uppercase and survives; "adapter" and "postgres" do not.
+  if [ "${#value}" -lt 16 ] && printf '%s' "$value" | grep -Eq '^[a-z]+$'; then
+    return 1
+  fi
+
+  # Case-insensitive: .env names are SHOUTY (ACCOUNT_PASSWORD) but JSON keys are
+  # camelCase (adminUser.password). A case-sensitive match silently skipped every
+  # credential in cypress.env.json.
+  if [ "${#value}" -ge "$MINIMUM_NAMED_SECRET_LENGTH" ] \
+     && printf '%s' "$name" | grep -Eqi "$SECRET_NAME_PATTERN"; then
+    return 0
+  fi
+
+  # Or a high-entropy value: long, no spaces, mixing upper, lower and digits.
+  # Catches an API key whose variable name gives nothing away, while passing
+  # over kebab-case bucket and database names.
+  if [ "${#value}" -ge "$MINIMUM_ENTROPY_SECRET_LENGTH" ] \
+     && printf '%s' "$value" | grep -Eq '^[A-Za-z0-9+/=_.-]+$' \
+     && printf '%s' "$value" | grep -q '[A-Z]' \
+     && printf '%s' "$value" | grep -q '[a-z]' \
+     && printf '%s' "$value" | grep -q '[0-9]'; then
+    return 0
+  fi
+
+  return 1
+}
+
+collect_local_secret_values() {
+  local repo_path="$1"
+  local environment_file name value
+
+  # .env and friends: NAME=value, skipping comments and blank lines.
+  for environment_file in "$repo_path"/.env "$repo_path"/.env.*; do
+    [ -f "$environment_file" ] || continue
+    while IFS=$'\t' read -r name value; do
+      [ -n "${value:-}" ] || continue
+      if value_is_secret "$name" "$value"; then
+        printf '%s\t%s\n' "$name" "$value"
+      fi
+    done < <(awk '
+      /^[[:space:]]*#/ { next }
+      !/=/             { next }
+      {
+        equals_position = index($0, "=")
+        name  = substr($0, 1, equals_position - 1)
+        value = substr($0, equals_position + 1)
+        gsub(/^[[:space:]]*(export[[:space:]]+)?/, "", name)
+        gsub(/[[:space:]]*$/, "", name)
+        gsub(/^[[:space:]]*["'"'"']?/, "", value)
+        gsub(/["'"'"']?[[:space:]]*$/, "", value)
+        if (length(value) > 0) print name "\t" value
+      }
+    ' "$environment_file")
+  done
+
+  # Rails master key: the whole file is the secret, no classification needed.
+  if [ -f "$repo_path/config/master.key" ]; then
+    local master_key
+    master_key="$(tr -d '[:space:]' < "$repo_path/config/master.key")"
+    if [ "${#master_key}" -gt 12 ]; then
+      printf 'config/master.key\t%s\n' "$master_key"
+    fi
+  fi
+
+  # cypress.env.json: walk to every string leaf, at any depth. These files are
+  # NOT flat — insgt-ops nests one object per role ({"adminUser": {"email":…,
+  # "password":…}, …}), so an earlier `select(.value|type=="string")` on the top
+  # level matched nothing and silently skipped the file. leaf_paths reaches the
+  # nested passwords and names them "adminUser.password", which is also what the
+  # name classifier needs to see. Use paths(scalars), not leaf_paths — the
+  # latter is undefined in the jq 1.7 build shipped here.
+  if [ -f "$repo_path/cypress.env.json" ]; then
+    while IFS=$'\t' read -r name value; do
+      [ -n "${value:-}" ] || continue
+      if value_is_secret "$name" "$value"; then
+        printf '%s\t%s\n' "$name" "$value"
+      fi
+    done < <(jq -r '[paths(scalars) as $path | {name: ($path | join(".")), value: getpath($path)}]
+                    | .[]
+                    | select(.value | type == "string")
+                    | "\(.name)\t\(.value)"' "$repo_path/cypress.env.json" 2>/dev/null || true)
+  fi
+}
+
+# Given a pack and a line number, name the <file path="..."> block it falls in,
+# so the guard can point at the source file that leaked rather than just the pack.
+containing_file_in_pack() {
+  local pack_file="$1"
+  local target_line="$2"
+  awk -v target="$target_line" '
+    NR > target { exit }
+    /<file path="/ {
+      if (match($0, /path="[^"]*"/)) {
+        current_file = substr($0, RSTART + 6, RLENGTH - 7)
+      }
+    }
+    END { print (current_file == "" ? "(outside any file block)" : current_file) }
+  ' "$pack_file"
+}
+
+# Returns 0 if the pack is clean, 1 if anything was found.
+# Never prints a secret value — only the name of the variable that leaked.
+scan_pack_for_secrets() {
+  local pack_file="$1"
+  local repo_path="$2"
+  local repo="$3"
+  local found_something=0   # counted, not a flag: --self-test asserts the exact number
+
+  # grep exits 0 on a match, 1 on no match, 2+ on error. Anything above 1 is
+  # treated as a leak, not as "clean" — fail closed.
+  local pattern grep_status first_match_line offending_file
+  for pattern in "${SECRET_PATTERNS[@]}"; do
+    grep_status=0
+    grep -Eaq -- "$pattern" "$pack_file" || grep_status=$?
+    if [ "$grep_status" -eq 0 ]; then
+      first_match_line="$(grep -Ean -m1 -- "$pattern" "$pack_file" | cut -d: -f1)"
+      offending_file="$(containing_file_in_pack "$pack_file" "$first_match_line")"
+      printf '    LEAK  credential pattern /%s/ in %s\n' "$pattern" "$offending_file"
+      found_something=$((found_something + 1))
+    elif [ "$grep_status" -gt 1 ]; then
+      printf '    ERROR could not scan for /%s/ (grep exit %s) — treating as a failure\n' \
+        "$pattern" "$grep_status"
+      found_something=$((found_something + 1))
+    fi
+  done
+
+  local compared_value_count=0
+  local secret_name secret_value
+  while IFS=$'\t' read -r secret_name secret_value; do
+    [ -n "${secret_value:-}" ] || continue
+    compared_value_count=$((compared_value_count + 1))
+    grep_status=0
+    grep -Faq -- "$secret_value" "$pack_file" || grep_status=$?
+    if [ "$grep_status" -eq 0 ]; then
+      first_match_line="$(grep -Fan -m1 -- "$secret_value" "$pack_file" | cut -d: -f1)"
+      offending_file="$(containing_file_in_pack "$pack_file" "$first_match_line")"
+      # Report the variable name only. The value itself is never printed.
+      printf '    LEAK  the local value of %s appears in %s\n' "$secret_name" "$offending_file"
+      found_something=$((found_something + 1))
+    elif [ "$grep_status" -gt 1 ]; then
+      printf '    ERROR could not scan for the value of %s (grep exit %s) — treating as a failure\n' \
+        "$secret_name" "$grep_status"
+      found_something=$((found_something + 1))
+    fi
+  done < <(collect_local_secret_values "$repo_path")
+
+  if [ "$compared_value_count" -eq 0 ]; then
+    # Say which files were actually looked at, so "nothing to compare" cannot be
+    # mistaken for "nothing to find". An earlier version named files that were
+    # sitting right there on disk, which hid a bug for a full round of testing.
+    local secret_sources=""
+    [ -f "$repo_path/.env" ]                  && secret_sources="$secret_sources .env"
+    [ -f "$repo_path/config/master.key" ]     && secret_sources="$secret_sources config/master.key"
+    [ -f "$repo_path/cypress.env.json" ]      && secret_sources="$secret_sources cypress.env.json"
+    if [ -z "$secret_sources" ]; then
+      printf '    note  %s has no .env, master.key or cypress.env.json — only the pattern scan ran\n' "$repo"
+    else
+      printf '    note  %s: read%s but found no credential-shaped values in them — only the pattern scan ran\n' \
+        "$repo" "$secret_sources"
+    fi
+  fi
+
+  [ "$found_something" -gt 255 ] && found_something=255
+  return "$found_something"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Packing
+# ─────────────────────────────────────────────────────────────────────────────
+FAILED_PACKS=()
+
+pack_repo() {
+  local repo="$1"
+  local pack_kind="$2"          # domain | overview
+  local repo_path="$WORKSPACE_DIRECTORY/apps/$repo"
+
+  set_repo_spec "$repo"
+
+  local output_file="$OUTPUT_DIRECTORY/$repo.$pack_kind.xml"
+  local commit_sha generated_on
+  commit_sha="$(git -C "$repo_path" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  generated_on="$(date -u '+%Y-%m-%d %H:%M UTC')"
+
+  local ignore_patterns header_text
+  ignore_patterns="$(join_with_commas "${SHARED_IGNORE_PATTERNS[@]}")"
+  if [ -n "$REPO_ALWAYS_IGNORE" ]; then
+    ignore_patterns="$ignore_patterns,$REPO_ALWAYS_IGNORE"
+  fi
+
+  local -a repomix_arguments
+  repomix_arguments=(
+    "apps/$repo"
+    --output "$output_file"
+    --style xml
+    --truncate-base64
+    --include-full-directory-structure
+  )
+
+  if [ "$pack_kind" = "domain" ]; then
+    # No --compress here on purpose: "full fidelity" is the requirement, and a
+    # signature-only order.rb or reducer would be worthless.
+    header_text="$repo — DOMAIN layer, full fidelity. $REPO_SUMMARY This is a subset of the repo, not the whole thing: included paths are $DOMAIN_INCLUDE. Packed from commit $commit_sha on $generated_on. Part of the InsightPhotos polyrepo (insgt-platform); the Rails API is insgt-api."
+    repomix_arguments+=(--include "$DOMAIN_INCLUDE")
+  else
+    header_text="$repo — OVERVIEW, structure only. $REPO_SUMMARY Function and class bodies are stripped by Tree-sitter compression where the language supports it, and comments are removed; the directory tree is complete. Packed from commit $commit_sha on $generated_on. Part of the InsightPhotos polyrepo (insgt-platform); the Rails API is insgt-api."
+    # --remove-comments matters far more than it looks, because --compress is
+    # not uniform across languages. Measured on this codebase:
+    #   TypeScript  app/**/store/**   169,454 -> 51,006 tokens with --compress
+    #   Ruby        app/models/*.rb   102,011 -> 102,500 tokens with --compress
+    # Tree-sitter compression does nothing for Ruby in repomix 1.18.0 despite
+    # `rb` being a listed language. --remove-comments is the only lever that
+    # works there: 102,500 -> 81,127, about 21%. (--remove-empty-lines adds
+    # nothing on top: 81,140.) The domain packs keep comments — full fidelity.
+    repomix_arguments+=(--compress --remove-comments)
+    ignore_patterns="$ignore_patterns,$OVERVIEW_IGNORE"
+  fi
+
+  repomix_arguments+=(--ignore "$ignore_patterns" --header-text "$header_text")
+
+  if [ -n "${SPLIT_SIZE:-}" ]; then
+    repomix_arguments+=(--split-output "$SPLIT_SIZE")
+  fi
+
+  printf '\n── %s %s ──────────────────────────────────────\n' "$repo" "$pack_kind"
+
+  # Tee repomix's output so its own token count can be read back. Estimating
+  # from byte size overstated insgt-api.overview by 12% (421K estimated against
+  # 378K actual), and the size warning should not cry wolf either.
+  local repomix_log="$OUTPUT_DIRECTORY/.repomix-run.log"
+  npx --yes "$REPOMIX_VERSION" "${repomix_arguments[@]}" 2>&1 | tee "$repomix_log"
+
+  local reported_tokens
+  reported_tokens="$(grep -aoE 'Total Tokens: *[0-9,]+' "$repomix_log" \
+                     | head -1 | grep -oE '[0-9,]+$' | tr -d ',')"
+  rm -f "$repomix_log"
+
+  if [ ! -f "$output_file" ]; then
+    # --split-output renames the single-file case to <name>.1.xml, so a missing
+    # file here is expected under --split and not an error.
+    printf '  note  %s not found — under --split look for %s.1.xml\n' \
+      "$(basename "$output_file")" "$(basename "${output_file%.xml}")"
+    return 0
+  fi
+
+  printf '  scanning %s for secrets\n' "$(basename "$output_file")"
+  if ! scan_pack_for_secrets "$output_file" "$repo_path" "$repo"; then
+    rm -f "$output_file"
+    printf '  REJECTED  %s deleted. Fix the leak — do not upload this file.\n' "$(basename "$output_file")"
+    printf '            See the Secrets section of docs/repomix-packs.md.\n'
+    FAILED_PACKS+=("$repo.$pack_kind")
+    return 0
+  fi
+
+  local size_bytes
+  size_bytes="$(stat -c %s "$output_file")"
+
+  if [ -n "$reported_tokens" ]; then
+    printf '  ok  %s — %s KB, %s tokens\n' \
+      "$(basename "$output_file")" "$((size_bytes / 1024))" "$reported_tokens"
+  else
+    # repomix changed its summary wording; fall back to the byte estimate.
+    reported_tokens=$((size_bytes * 10 / BYTES_PER_TOKEN_TIMES_TEN))
+    printf '  ok  %s — %s KB, ~%s tokens (estimated)\n' \
+      "$(basename "$output_file")" "$((size_bytes / 1024))" "$reported_tokens"
+  fi
+
+  if [ "$reported_tokens" -gt "$TOKEN_WARNING_THRESHOLD" ]; then
+    printf '  WARNING  %s tokens will not fit a 200K context window. Use a 1M-context\n' "$reported_tokens"
+    printf '           tool, or re-run with --split 600kb.\n'
+  fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Self-test — prove the guard fires. A guard never seen to fail is not known to
+# work, and this one is the last thing standing between a hardcoded credential
+# and a third-party upload. Uses obviously-fake values; touches nothing real.
+# ─────────────────────────────────────────────────────────────────────────────
+run_self_test() {
+  verify_scanner_works
+  echo "scanner self-test passed (grep -E and grep -F both work)"
+  echo
+
+  local test_directory="${TMPDIR:-/tmp}/repomix-pack-self-test.$$"
+  local fake_repo="$test_directory/repo"
+  mkdir -p "$fake_repo/config"
+
+  # A fake .env whose value we will then plant in a "source file" inside the
+  # pack — this is the layer-4b case that no ignore pattern could ever catch.
+  printf 'export PARTNER_API_TOKEN=not-a-real-token-abcdefghijklmnop\n' > "$fake_repo/.env"
+  printf 'SHORT=yes\n' >> "$fake_repo/.env"
+
+  # Regression case: cypress.env.json nests one object per role and uses
+  # camelCase keys. A top-level-only walk, or a case-sensitive name match, both
+  # skip this silently — each of those shipped once.
+  cat > "$fake_repo/cypress.env.json" <<'FAKECYPRESS'
+{
+  "adminUser": {
+    "email": "admin@example.com",
+    "password": "not-a-real-cypress-password-9876"
+  }
+}
+FAKECYPRESS
+
+  local test_pack="$test_directory/fake.domain.xml"
+  cat > "$test_pack" <<'FAKEPACK'
+<file path="src/app/safe.ts">
+export const apiBase = "https://api.example.com";
+</file>
+<file path="src/app/leaky.ts">
+export const token = "not-a-real-token-abcdefghijklmnop";
+export const stripeKey = "sk_live_00000000000000000000abcd";
+</file>
+<file path="cypress/e2e/login.cy.ts">
+cy.login("admin@example.com", "not-a-real-cypress-password-9876");
+</file>
+FAKEPACK
+
+  echo "running the guard against a synthetic pack with three planted leaks:"
+  local guard_status=0
+  scan_pack_for_secrets "$test_pack" "$fake_repo" "self-test" || guard_status=$?
+
+  rm -rf "$test_directory"
+  echo
+
+  if [ "$guard_status" -eq 0 ]; then
+    echo "SELF-TEST FAILED: the guard reported a pack with planted secrets as clean." >&2
+    echo "                  Do not use this script until that is fixed." >&2
+    return 1
+  fi
+
+  # Three distinct leaks were planted; anything less means a collector is blind.
+  if [ "$guard_status" -ne 3 ]; then
+    echo "SELF-TEST FAILED: expected 3 findings, got $guard_status." >&2
+    echo "                  A secret source is not being read. Do not trust the guard." >&2
+    return 1
+  fi
+
+  echo "self-test passed: the guard caught the credential pattern, the literal"
+  echo ".env value hardcoded in a source file, and the nested camelCase password"
+  echo "from cypress.env.json — naming each offending file."
+  return 0
+}
+
+print_usage() {
+  cat <<'USAGE'
+repomix-pack — pack an insgt app repo into a single file for an external AI tool.
+
+  bin/repomix-pack                       all seven app repos, both packs
+  bin/repomix-pack insgt-ops             one repo, both packs
+  bin/repomix-pack insgt-ops domain      one repo, one pack (domain | overview)
+  bin/repomix-pack --tokens insgt-ops    per-file token tree, then the packs
+  bin/repomix-pack --split 600kb         split any pack over the given size
+  bin/repomix-pack --self-test           prove the secret guard actually fires
+  bin/repomix-pack --help                this message, plus the resolved globs
+
+Output lands in repomix-out/ and is gitignored. Never commit a pack; regenerate
+it instead. Every pack is scanned for secrets and deleted if anything is found.
+
+Full instructions: docs/repomix-packs.md
+
+USAGE
+
+  echo "Resolved globs"
+  echo
+  local repo
+  for repo in "${ALL_REPOS[@]}"; do
+    set_repo_spec "$repo"
+    printf '  %s\n' "$repo"
+    printf '    domain --include   %s\n' "$DOMAIN_INCLUDE"
+    printf '    overview --ignore  %s\n' "$OVERVIEW_IGNORE"
+    printf '                       (plus the shared ignore set, %s patterns)\n\n' "${#SHARED_IGNORE_PATTERNS[@]}"
+  done
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Arguments
+# ─────────────────────────────────────────────────────────────────────────────
+SHOW_TOKEN_TREE=0
+SPLIT_SIZE=""
+POSITIONAL_ARGUMENTS=()
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)   print_usage; exit 0 ;;
+    --self-test) run_self_test; exit $? ;;
+    --tokens)    SHOW_TOKEN_TREE=1; shift ;;
+    --split)     SPLIT_SIZE="${2:-}"; shift 2 ;;
+    -*)          echo "repomix-pack: unknown option '$1'" >&2; echo "try --help" >&2; exit 2 ;;
+    *)           POSITIONAL_ARGUMENTS+=("$1"); shift ;;
+  esac
+done
+
+if [ -n "$SPLIT_SIZE" ] && [ -z "${SPLIT_SIZE// }" ]; then
+  echo "repomix-pack: --split needs a size, e.g. --split 600kb" >&2
+  exit 2
+fi
+
+TARGET_REPOS=()
+TARGET_KINDS=(domain overview)
+
+if [ "${#POSITIONAL_ARGUMENTS[@]}" -eq 0 ]; then
+  TARGET_REPOS=("${ALL_REPOS[@]}")
+else
+  TARGET_REPOS=("${POSITIONAL_ARGUMENTS[0]}")
+  if [ "${#POSITIONAL_ARGUMENTS[@]}" -ge 2 ]; then
+    case "${POSITIONAL_ARGUMENTS[1]}" in
+      domain|overview) TARGET_KINDS=("${POSITIONAL_ARGUMENTS[1]}") ;;
+      *) echo "repomix-pack: pack kind must be 'domain' or 'overview'" >&2; exit 2 ;;
+    esac
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Run
+# ─────────────────────────────────────────────────────────────────────────────
+cd "$WORKSPACE_DIRECTORY"
+verify_scanner_works
+mkdir -p "$OUTPUT_DIRECTORY"
+
+for target_repo in "${TARGET_REPOS[@]}"; do
+  set_repo_spec "$target_repo"   # validates the name before doing any work
+
+  if [ "$SHOW_TOKEN_TREE" -eq 1 ]; then
+    printf '\n── %s token tree (files over 5,000 tokens) ─────\n' "$target_repo"
+    # Write to a scratch file rather than --stdout: the tree itself goes to
+    # stdout, so redirecting stdout to /dev/null throws the tree away too.
+    token_tree_scratch="$OUTPUT_DIRECTORY/.token-count-scratch.xml"
+    npx --yes "$REPOMIX_VERSION" "apps/$target_repo" \
+      --token-count-tree 5000 \
+      --compress \
+      --ignore "$(join_with_commas "${SHARED_IGNORE_PATTERNS[@]}"),$OVERVIEW_IGNORE" \
+      --output "$token_tree_scratch"
+    rm -f "$token_tree_scratch"
+  fi
+
+  for target_kind in "${TARGET_KINDS[@]}"; do
+    pack_repo "$target_repo" "$target_kind"
+  done
+done
+
+echo
+if [ "${#FAILED_PACKS[@]}" -gt 0 ]; then
+  echo "═══ SECRET SCAN FAILED ═══"
+  echo "These packs were deleted and must not be uploaded:"
+  for failed_pack in "${FAILED_PACKS[@]}"; do
+    echo "  $failed_pack"
+  done
+  echo
+  echo "Fix the leak, then re-run. See docs/repomix-packs.md."
+  exit 1
+fi
+
+echo "All packs written to $OUTPUT_DIRECTORY and passed the secret scan."

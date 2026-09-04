@@ -20,8 +20,19 @@
 !docs/
 !docs/**
 
+# ── Repo packing for external AI tools ────────────
+# !bin/ only lets git descend into bin/; the top-level * still matches
+# bin/dev and bin/api-*, so the foreman launchers stay untracked.
+!bin/
+!bin/repomix-pack
+
 # ── This file ─────────────────────────────────────
 !.gitignore
 
 .claude/.DS_Store
 docs/**/.DS_Store
+
+# ── repomix packs — regenerated on demand, never committed ──
+# Already covered by the leading *, stated explicitly so a future ! line
+# cannot expose them. Last matching pattern wins, so this stays last.
+/repomix-out/
