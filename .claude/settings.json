@@ -1,6 +1,8 @@
 {
   "env": {
-    "ELECTRON_RUN_AS_NODE": ""
+    "ELECTRON_RUN_AS_NODE": "",
+    "BASH_DEFAULT_TIMEOUT_MS": "600000",
+    "BASH_MAX_TIMEOUT_MS": "900000"
   },
   "permissions": {
     "allow": [
@@ -23,10 +25,14 @@
       "Bash(npx cypress run *)",
       "Bash(npx html-validate *)",
       "Bash(npx cspell *)",
+      "Bash(bin/repomix-pack *)",
+      "Bash(npx --yes repomix@1.18.0 *)",
       "Skill(insgt-api:*)",
       "Skill(angular-core:*)",
       "Skill(angular-import-organization:*)",
-      "Skill(claude-api:*)"
+      "Skill(claude-api:*)",
+      "Bash(codex exec:*)",
+      "Bash(codex exec --dangerously-bypass-approvals-and-sandbox:*)"
     ],
     "deny": [
       "Read(**/.env)",
