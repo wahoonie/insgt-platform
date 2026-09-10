@@ -16,7 +16,7 @@ without 1a's column and 1a alone changes nothing anyone sees:
   every consumer moved onto them: both metrics calculators, the teams dashboard order count and
   "only did one shoot" filter, the CSV export, the pending-shoots count, churn, joint ownership,
   the reshoot audit's linkage read-out, and the first-shoot KPI. Branch
-  `feat/account-classification-1b`, commits 1c1d464..04f3cb8.
+  `feat/account-classification-1b`, commits 7aa170b..afeb1f7.
 
 **Numbers move.** `docs/architecture/shift-memo-slice-1b-2026-09-10.md` says which and by how much
 on the 2026-09-08 restore. Step 5 regenerates it against production and step 6 hands it to Don

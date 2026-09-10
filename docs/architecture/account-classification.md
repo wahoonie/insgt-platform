@@ -207,7 +207,7 @@ value on create and update and permits it to admin and owner only; `OrderTypesHe
 it; the ops order-type form reads and writes it.
 
 **Slice 1b moved every predicate onto the column** through the §5.1 scopes
-(`feat/account-classification-1b`, 1c1d464..04f3cb8). `Order.shoots`,
+(`feat/account-classification-1b`, 7aa170b..afeb1f7). `Order.shoots`,
 `AccountQuery#join_shoots!`, both metrics calculators, `AccountPendingShootsService`,
 `ChurnReport`, `accounts:joint_ownership`, the `orders:audit_reshoots` linkage and the first-shoot
 KPI read the scopes; the only id list left is the margin-only
@@ -429,7 +429,7 @@ and debounce at the Pipedrive push boundary (§6), not in the database. Ops sees
 ### 5.1 Scopes
 
 Three scopes, one base. The split is **visit versus money**, not parent versus child. **Shipped
-in slice 1b** (`app/models/order.rb`, 1c1d464); the code below is the shipped shape, and the
+in slice 1b** (`app/models/order.rb`, 7aa170b); the code below is the shipped shape, and the
 contract spec pins it on the canonical fixtures.
 
 ```ruby
@@ -622,7 +622,7 @@ Write `IS NOT TRUE`, not `= false`. Every existing consumer does. No active chil
 stays true by construction.
 
 **Shipped in slice 1b.** `lifetime_value_cents` reads `billable` plus the order services on those
-rows in both calculators (01ef9c9). Measured on the 2026-09-08 restore (memo): the fleet total
+rows in both calculators (9e86a49). Measured on the 2026-09-08 restore (memo): the fleet total
 falls from $4,474,186 to $3,698,648. The $775,538 drop is $705,240 of `parent_pays` children
 (price plus services on all 3,843 of them; v3's $684,555 was `order_type_price` on the 3,726 that
 carry one), $70,293 of unpaid or refunded rows, and $5 of `internal`. Transactions confirm the
@@ -823,7 +823,7 @@ than $35 stubs. See §5.6.
 **Q6 — Fix shoot-value columns in slice 1? → Yes.**
 Deferring them to slice 2 would have shipped a deliberate window where counts exclude headshots
 and values do not. The extra work is mechanical: the same predicate substituted into SQL that
-already exists. Done in slice 1b (4b77d52).
+already exists. Done in slice 1b (e72d1ac).
 
 **Q7 — Account structure as a fifth axis? → No.**
 Proposed on the theory that joint accounts fragment value across rows, diluting the `anchor` tier
@@ -873,8 +873,8 @@ the `file:line` evidence.
 
 | # | Slice | Status 2026-09-08 | Unblocks |
 | :-- | :--- | :--- | :--- |
-| 1a | `order_types.category_type` + exhaustive backfill + the three §5.1 scopes | Column, backfill and API merged to `master` (1b88f09); the scopes landed in 1b (1c1d464). **Not deployed**; `docs/runbooks/deploy-account-classification-1a-1b.md` | 1b |
-| 1b | Rewrite existing `account_metrics` and `AccountQuery` consumers onto the scopes + shift memo | **Implemented** on `feat/account-classification-1b` (1c1d464..04f3cb8, 2026-09-10); memo `shift-memo-slice-1b-2026-09-10.md`; not merged, not deployed | everything |
+| 1a | `order_types.category_type` + exhaustive backfill + the three §5.1 scopes | Column, backfill and API merged to `master` (1b88f09); the scopes landed in 1b (7aa170b). **Not deployed**; `docs/runbooks/deploy-account-classification-1a-1b.md` | 1b |
+| 1b | Rewrite existing `account_metrics` and `AccountQuery` consumers onto the scopes + shift memo | **Implemented** on `feat/account-classification-1b` (7aa170b..afeb1f7, 2026-09-10); memo `shift-memo-slice-1b-2026-09-10.md`; not merged, not deployed | everything |
 | 2 | New `account_metrics` numeric columns incl. `active_user_count` + nightly recompute | Not started | 3, teams page |
 | 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | Not started | teams page, 7 |
 | 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates, filter, and ops UI on `feat/account-account-type` (unmerged, both repos); backfill and organization type audit not started | 7 |
@@ -1014,7 +1014,7 @@ evidence.
 
 ## 12. Changes from v3
 
-Sourced from slice 1b (`feat/account-classification-1b`, 1c1d464..04f3cb8) and its memo
+Sourced from slice 1b (`feat/account-classification-1b`, 7aa170b..afeb1f7) and its memo
 (`shift-memo-slice-1b-2026-09-10.md`).
 
 | Area | v3 | v4 | Why |
@@ -1030,7 +1030,7 @@ Sourced from slice 1b (`feat/account-classification-1b`, 1c1d464..04f3cb8) and i
 | §5.4 shoot value | Implicit | Parent's own price over `qualifying_parents`; the bridge to LTV stated and measured | Gap 2 of the slice |
 | §7 D4 | Open consequence | Resolved | Slice 1b |
 | §8 Q2 | Reshoot exclusion stays in the pending service | Leaves it; pending includes reshoots | Same universe as the completed count beside it |
-| §8 Q6 | Yes | Done | 4b77d52 |
+| §8 Q6 | Yes | Done | e72d1ac |
 | §9 | 1a partially landed, 1b not started | 1a and 1b implemented, deploy together; memo exists | Runbook written |
 | §2.1 cutover | Placeholder | 2026-09-02 12:01:26 UTC from the production restore | Runbook step 4 confirms |
 | §3.4 | "accounts:composition" | `accounts:joint_ownership`, now on the scope | The derivation was misattributed |

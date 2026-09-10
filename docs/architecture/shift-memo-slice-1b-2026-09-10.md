@@ -1,6 +1,6 @@
 # Account classification — slice 1b shift memo
 
-Generated 2026-09-10 00:38 UTC against `insgt_api_development` (latest order 2026-09-08 13:48 UTC), insgt-api `5b76493`. Reproduce: `bin/rails account_classification:shift_memo_1b OUT=<memo.md> CSV=<rows.csv>`.
+Generated 2026-09-10 11:06 UTC against `insgt_api_development` (latest order 2026-09-08 13:48 UTC), insgt-api `afeb1f7`. Reproduce: `bin/rails account_classification:shift_memo_1b OUT=<memo.md> CSV=<rows.csv>`.
 
 ## What changed
 
@@ -29,8 +29,8 @@ v3 measured the 2026-09-08 dev restore; this run measures a newer one on a later
 | Same, v3's property-only figure (dated by the completed log then; by the shoot date now) | 1,484 / 509 | — | as above |
 | Accounts with trailing-year work and none of it property | 428 | 437 | — |
 | Completed parents with no `paid_at` ("undated today") | 3,004 | 2,972 | **162 are property and gain a date; the rest leave the universe** |
-| `parent_pays` children carrying a price | 3,726 / $684,555 | 3,734 / $686,045 | — |
-| `internal`-category orders with a `paid_at` | 1 / $5 | 1 / $5 | — |
+| `parent_pays` children carrying a price | 3,726 / $684,555 | 3,734 / $686,045.00 | — |
+| `internal`-category orders with a `paid_at` | 1 / $5 | 1 / $5.00 | — |
 
 ## Counts
 
@@ -61,7 +61,7 @@ Lifecycle bucket (§4.2, as of today) transitions caused by the date change:
 | new | prospect | 10 |
 | new | active | 1 |
 | active | prospect | 4 |
-| active | cooling | 3 |
+| active | cooling | 2 |
 | cooling | prospect | 1 |
 | cooling | at_risk | 2 |
 | at_risk | prospect | 4 |
@@ -77,38 +77,38 @@ Lifecycle bucket (§4.2, as of today) transitions caused by the date change:
 
 | | Cents |
 | :-- | --: |
-| Σ `lifetime_value_cents`, old (every active order) | $4,474,186 |
-| Σ `lifetime_value_cents`, new (`Order.billable` plus services) | $3,698,648 |
-| Drop | $775,538 |
-| of which `parent_pays` children (3,843 rows; price plus services) | $705,240 |
-| of which unpaid or refunded rows (3,962 rows) | $70,293 |
-| of which `internal` rows with a `paid_at` (1 rows) | $5 |
-| Residual (must be $0) | $0 |
+| Σ `lifetime_value_cents`, old (every active order) | $4,474,186.00 |
+| Σ `lifetime_value_cents`, new (`Order.billable` plus services) | $3,698,648.00 |
+| Drop | $775,538.00 |
+| of which `parent_pays` children (3,843 rows; price plus services) | $705,240.00 |
+| of which unpaid or refunded rows (3,962 rows) | $70,293.00 |
+| of which `internal` rows with a `paid_at` (1 rows) | $5.00 |
+| Residual (must be $0) | $0.00 |
 
-The `parent_pays` bucket is price plus services on every parent-paid child; v3's $684,555 was `order_type_price` on the 3,734 children carrying one ($686,045 here), which is the same population measured two ways. Accounts whose `lifetime_value_cents` falls: 768; rises: 0.
+The `parent_pays` bucket is price plus services on every parent-paid child; v3's $684,555 was `order_type_price` on the 3,734 children carrying one ($686,045.00 here), which is the same population measured two ways. Accounts whose `lifetime_value_cents` falls: 768; rises: 0.
 
 Independent check — what Stripe charged on the same orders:
 
 | | Cents |
 | :-- | --: |
-| Σ `transactions` net of refunds, active orders of active accounts | $3,609,832 |
-| Σ `lifetime_value_cents`, new | $3,698,648 |
-| Gap | $88,816 |
-| of which billable orders with no transaction row (895 rows: manual and offline payments) | $92,201 |
-| of which price minus amount charged on billable orders that have one | -$2,825 |
-| less charges on orders billable does not count (10 rows) | $560 |
-| Residual (must be $0) | $0 |
+| Σ `transactions` net of refunds, active orders of active accounts | $3,609,832.00 |
+| Σ `lifetime_value_cents`, new | $3,698,648.00 |
+| Gap | $88,816.00 |
+| of which billable orders with no transaction row (895 rows: manual and offline payments) | $92,201.00 |
+| of which price minus amount charged on billable orders that have one | -$2,825.00 |
+| less charges on orders billable does not count (10 rows) | $560.00 |
+| Residual (must be $0) | $0.00 |
 
 Why Σ shoot values ≠ lifetime value (they answer different questions: list price of jobs done vs money collected):
 
 | | Cents |
 | :-- | --: |
-| Σ shoot values over `qualifying_parents` | $3,527,509 |
-| − qualifying parents that are unpaid or refunded | $22,251 |
-| + paid self-paying children | $188,760 |
-| + paid brand and marketing parents | $4,300 |
-| + paid property parents with no completed log | $330 |
-| = Σ `lifetime_value_cents`, new | $3,698,648 (residual $0) |
+| Σ shoot values over `qualifying_parents` | $3,527,509.00 |
+| − qualifying parents that are unpaid or refunded | $22,251.00 |
+| + paid self-paying children | $188,760.00 |
+| + paid brand and marketing parents | $4,300.00 |
+| + paid property parents with no completed log | $330.00 |
+| = Σ `lifetime_value_cents`, new | $3,698,648.00 (residual $0.00) |
 
 ## Completion hygiene (§5.2)
 
@@ -127,16 +127,16 @@ By lifetime value:
 
 | Account | Old | New |
 | :-- | --: | --: |
-| 2663 Robert Antoniadis | $100,985 | $69,595 |
-| 141 Mike Williams | $47,016 | $30,596 |
-| 88 Tamara Kapa | $67,833 | $54,303 |
-| 63 Ken & Caroll Dembowski | $50,924 | $39,169 |
-| 2362 Scott Voak | $30,230 | $19,465 |
-| 1801 Irina Polyak | $37,200 | $26,555 |
-| 169 Ken May | $33,625 | $23,615 |
-| 218 Brian Reifeiss | $36,393 | $26,918 |
-| 10 Rick Sauer | $29,770 | $20,460 |
-| 412 Sharon Miller | $31,804 | $22,699 |
+| 2663 Robert Antoniadis | $100,985.00 | $69,595.00 |
+| 141 Mike Williams | $47,016.00 | $30,596.00 |
+| 88 Tamara Kapa | $67,833.00 | $54,303.00 |
+| 63 Ken & Caroll Dembowski | $50,924.00 | $39,169.00 |
+| 2362 Scott Voak | $30,230.00 | $19,465.00 |
+| 1801 Irina Polyak | $37,200.00 | $26,555.00 |
+| 169 Ken May | $33,625.00 | $23,615.00 |
+| 218 Brian Reifeiss | $36,393.00 | $26,918.00 |
+| 10 Rick Sauer | $29,770.00 | $20,460.00 |
+| 412 Sharon Miller | $31,804.00 | $22,699.00 |
 
 By lifetime shoot count:
 
