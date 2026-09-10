@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-10
 **Repos:** insgt-api (insgt-ops for the order-type form — step 9)
 **Estimated duration:** ~30 min, plus the memo hand-over
-**Status:** Deployed 2026-09-10 by Dan (API, steps 1–7; ops release per step 9 pending)
+**Status:** Deployed 2026-09-10 by Dan (API, OPS, steps 1–9)
 
 ## Summary
 

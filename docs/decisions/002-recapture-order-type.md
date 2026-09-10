@@ -49,7 +49,7 @@ them, and every new consumer has to remember the flag. The distinction is a diff
 job, not an attribute of one job.
 
 **Add `order_types.category_type` first**, then classify Recapture under it. Deferred, not
-rejected — see `account-classification-architecture.md` slice 1. It requires a category vocabulary
+rejected — see `architecture/account-classification.md` slice 1. It requires a category vocabulary
 covering every non-shoot row (delivery options, editing add-ons, fees, discounts, internal/test
 packages) plus a per-row backfill decision for all 48 existing types, and it touches every
 consumer of the shoot predicates. That is a strategic call with a large blast radius, and

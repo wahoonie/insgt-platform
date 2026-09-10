@@ -1,9 +1,11 @@
 # Runbook: Recapture Order Type Deploy
 
-**Last updated:** 2026-09-01
+**Last updated:** 2026-09-08
 **Repos:** insgt-api, insgt-ops
 **Estimated duration:** ~20 min
-**Status:** Not yet deployed
+**Status:** Code on `heroku/master` since 2026-09-02 (a3e40e9). The production migration run and the
+cutover timestamp (`SELECT created_at FROM order_types WHERE id = 300` in production) are not
+confirmed from the repo; record both here when read.
 
 ## Summary
 
@@ -49,6 +51,10 @@ Two migrations:
   `order_types_id_seq` past it. Self-verifying: it raises unless exactly one row is keyed
   `recapture` at id 300.
 - `20260901120001_add_recapture_counts_to_metrics` — 4 columns × 2 tables, schema-add only.
+
+#### 2.1 Confirmation
+
+Order.find(300).created_at => Wed, 02 Sep 2026 12:01:26.666795000 UTC +00:00
 
 **Verify:**
 

@@ -1,12 +1,14 @@
 # Account Classification Architecture
 
 **Repo:** `insgt-api` · **Consumers:** `insgt-ops` teams page, Pipedrive nightly push
-**Status:** Slices 1a and 1b deployed to production 2026-09-10; slice 4's column and API went with them; see §9
-**Version:** 4 · **Last updated:** 2026-09-10 (deploy recorded)
-**Supersedes:** v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§12 for what changed and why.
+**Status:** Slices 1a and 1b deployed to production 2026-09-10; slice 4's column and API went with them; slice 2 implemented and reviewed on `feat/account-classification-2`, not yet deployed; see §9
+**Version:** 5 · **Last updated:** 2026-09-10 (slice 2 amendments)
+**Supersedes:** v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§13 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
 `account-classification-drift-audit-2026-09-07.md` (the evidence behind v3),
-`shift-memo-slice-1b-2026-09-10.md` (what slice 1b moves, account by account), and the contract
+`shift-memo-slice-1b-2026-09-10.md` (what slice 1b moves, account by account),
+`../plans/account-classification-slice-2.md` (slice 2's survey, plan and the fourteen gaps it
+pinned), `../runbooks/deploy-account-classification-2.md` (the slice 2 deploy), and the contract
 spec `insgt-api/spec/architecture/account_classification_spec.rb` (§5.1–§5.4 pinned on the
 canonical fixtures; later slices append to it).
 
@@ -279,8 +281,32 @@ add_index :account_metrics, [:lifecycle_type, :value_type]
 add_index :account_metrics, [:account_id, :lifecycle_type]
 ```
 
-Not yet implemented (slices 2 and 3). All nine are nullable; none takes a factory default
-(`insgt-api/CLAUDE.md`, "a nullable column whose NULL means something").
+**The five numeric columns shipped in slice 2** (`20260911120000`, on `feat/account-classification-2`);
+`lifecycle_type`, `lifecycle_type_at`, `value_type`, `peak_value_type` and the two indexes are
+slice 3. All nine are nullable; none takes a factory default (`insgt-api/CLAUDE.md`, "a nullable
+column whose NULL means something").
+
+**What NULL means on the five.** Every count already on `account_metrics` is `NOT NULL DEFAULT 0`;
+these are not, and the table now carries two count conventions on purpose. NULL means "not
+computed since slice 2 shipped" — every row between `db:migrate` and the first
+`metrics:recompute`, and every row again if the code is rolled back while the columns stay. The
+calculator never writes NULL to a count: a swept account with no history reads a real 0 (§4.3's
+zero rule lands on the tier columns in slice 3, not here), and `rolling_365_value_cents` reads 0
+like `lifetime_value_cents`. `peak_365_ended_on` is NULL exactly when `peak_365_parent_count` is
+0: no window exists. `accounts:joint_ownership` partitions on this distinction, which is why a
+default was rejected.
+
+**`peak_365_ended_on` is a UTC date**, the `::date` of the shoot timestamp that ends the peak
+window. It is a cohort ordering key (§4.3) and a coarse "when were they last at peak", not an
+appointment, so it does not localise; a late-evening Pacific shoot dates to the next UTC day and
+the ordering is unaffected. `first_shoot_at` stays a datetime for the opposite reason
+(`20260715120000`).
+
+**No `system_metrics` mirror, no index.** Three of the five have no fleet meaning and a fleet peak
+is not a sum of account peaks; nothing reads a fleet trailing-year figure. The five are read with
+the row they live on, and the two orderings defined over them run across ~4,100 rows. The
+"column-for-column parallel" claim in `20260901120001` holds for the shared columns only from
+here.
 
 Naming follows the existing `rolling_90_*` / `lifetime_*` convention and reuses `parent_count`
 as the term for a qualifying shoot.
@@ -292,21 +318,39 @@ same fact is how a Pipedrive label ends up disagreeing with a teams-page filter.
 `lifetime_recaptured_parent_count`, `rolling_90_recapture_rate`, `lifetime_recapture_rate`),
 mirrored on `system_metrics`. They are outside this document.
 
-**Two of the nine are already derived ad hoc.** `lib/tasks/accounts.rake` computes
-`rolling_365_parent_count` and `active_user_count` as SQL aliases for the
-`accounts:joint_ownership` read-out (not `composition`, which reads only `ZERO_SHOOTS_SQL`) —
-since slice 1b from `Order.qualifying_parents` dated by §5.3 — and the shift memo task derives
-`rolling_365_parent_count` the same way for its reconciliation table. Slice 2 replaces both
-derivations with the stored column, or states why a read-out keeps its own; two definitions of
-the same name is the failure the `last_shoot_at` rule exists to prevent.
+**The two ad hoc derivations are gone.** `accounts:joint_ownership` reads
+`rolling_365_parent_count` and `active_user_count` through a `LEFT JOIN account_metrics`; the
+shift memo reads `rolling_365_parent_count` from the `Calculator#compute` hash it already builds.
+Neither predicate exists anywhere but the calculator now. The cost is freshness: the read-out is
+as current as the last `metrics:recompute`, says so on a Snapshot line, and sets accounts with no
+recomputed row aside as *unweighed* — dropped from its segment, tier and top-N tables and counted
+on a Context line, since neither their volume nor their team size is known — while they still take
+part in the shared-owner test, which reads `accounts_users`. `scoped_accounts` is untouched, so
+the "sharing an owner" count still reconciles with `accounts:composition`.
+
+**On the wire.** `GET /accounts/:id/metrics` emits `rolling_365_parent_count`,
+`peak_365_parent_count` and `peak_365_ended_on` top-level beside `rolling_90_parent_count` (counts,
+readable by admins and schedulers — the inputs the slice 3 labels read, so a label is explainable
+from the dialog) and `rolling_365_value_cents` inside the owner-only money block. Keys camelise.
+`active_user_count` is **not** emitted: the same fact already ships live on every account row as
+`user_count`, and a second name for it is the two-names failure the `last_shoot_at` rule exists to
+prevent; the stored copy serves the nightly snapshot and slice 3's filters.
 
 `lifecycle_type_at` records when the current label first held. It is what the Pipedrive push
 debounces against, and it answers "how long have they been At Risk."
 
-`active_user_count` is a plain `COUNT(*)` over active `accounts_users`. No judgment, no manual
+`active_user_count` is `Account#users_count`: `COUNT(DISTINCT users.id)` over `accounts_users`
+with the membership active **and** the user active — the predicate behind `has_many :users`, the
+one the accounts index already ships as `user_count`, and the one Q7 measured with. v4 said "a
+plain `COUNT(*)`"; that counts roles, because `accounts_users` holds one row per (account, user,
+role) with no unique constraint (440 pairs held more than one active role on the 2026-09-10
+snapshot). Measured against the plain count: 411 accounts differ and the multi-user population
+reads 453 instead of 102; account 10288 reads 9 where it has 6 people. No judgment, no manual
 classification. It exists so the teams page can find the ~100 multi-human accounts that a team or
 brokerage product would be sold into. It is a derived fact, not a classification axis — see §8,
-Q7.
+Q7. The calculator calls the method rather than restating the condition, and calls `users_count`
+rather than `users.count` because the shift memo builds the calculator on an unsaved
+`Account.new(id:)`, where the association is a null scope.
 
 ---
 
@@ -337,7 +381,8 @@ worklist (`Account::UNCLASSIFIED`).
 Backfill by confidence tier: brokerage present + property orders → `agent`; organization linked
 to a NARPM-affiliated org → `property_manager`; known test patterns → `internal`. Everything else
 stays NULL. Worklist is `account_type IS NULL` ordered by `rolling_365_parent_count DESC`; the
-filter exists, the ordering waits on slice 2's column (§9).
+filter exists and the column exists (slice 2); the ordering ships with slice 4's remaining work,
+not with the column — see §9 for why and the sketch.
 
 **Four existing constants are the seed for the `internal` backfill, and they disagree with each
 other.** `MarketingSourceMetricsService::EXCLUDED_ACCOUNT_IDS = [2, 2555]`,
@@ -412,7 +457,14 @@ Shared enum:
 | `anchor` | 4 | 12+ |
 
 `value_type` reads `rolling_365_parent_count`. Current worth; decays, which is correct.
-`peak_value_type` reads `peak_365_parent_count`. Monotonic; never decays.
+`peak_value_type` reads `peak_365_parent_count`. Monotonic against the passage of time — ageing
+shoots out of the window can only lower the rolling count, never this one — but it is recomputed
+from history every night like every other column, not ratcheted against its own stored value. A
+reschedule that pulls a shoot out of the run, a soft-deleted order, or an order type whose
+category changes can lower it, and that is correct for the same reason §5.3 gives for
+`first_shoot_at` moving: history was edited. `max(stored, computed)` was rejected — it would
+freeze an inflated peak from a deleted duplicate order and be the first column to read its own
+previous value.
 
 **NULL, not `single`, when the count is zero.** A zero count is a real zero; the tier is
 undefined. Consistent with the propagate-null convention. `lib/tasks/accounts.rake` already
@@ -504,8 +556,8 @@ Which scope drives what:
 
 | Reads `qualifying` | Reads `qualifying_parents` | Reads `billable` | Reads `pending_shoots` |
 | :--- | :--- | :--- | :--- |
-| `first_shoot_at` | `rolling_365_parent_count` (slice 2) | `rolling_365_value_cents` (slice 2) | `AccountPendingShootsService` |
-| `most_recent_shoot_at` | `peak_365_parent_count` (slice 2) | `lifetime_value_cents` and the LTV columns | `where_only_once`'s in-flight exclusion |
+| `first_shoot_at` | `rolling_365_parent_count` | `rolling_365_value_cents` | `AccountPendingShootsService` |
+| `most_recent_shoot_at` | `peak_365_parent_count` | `lifetime_value_cents` and the LTV columns | `where_only_once`'s in-flight exclusion |
 | CSV export "First Shoot" | `lifetime_parent_count` | | |
 | `AccountReport.first_shoot_kpi_rows` | `rolling_90_parent_count` | | |
 | | reshoot and recapture rate denominators | | |
@@ -592,10 +644,21 @@ non-property work only).
 **Counts** — `qualifying_parents`. Parents only. A child order never increments a shoot count,
 and neither does an order service.
 
-- `rolling_365_parent_count` — qualifying parent shoots in the trailing 365 days.
-- `peak_365_parent_count` — maximum count over any 365-day window in the account's full history.
-  Evaluate the window forward from each qualifying shoot date; at ~4,100 accounts the cost is
-  negligible. Record the window's end date in `peak_365_ended_on`.
+- `rolling_365_parent_count` — qualifying parent shoots in the trailing 365 days: the rolling-90
+  count's window with the cutoff moved, `shoot_at >= now − 365 days`, inclusive, no upper bound.
+- `peak_365_parent_count` — the maximum of that rolling-365 series over the account's full
+  history, evaluated at each qualifying shoot date: for each shoot dated *e*, the count of shoots
+  in the closed window [*e* − 365 days, *e*]. `peak_365_ended_on` is the *e* of the maximal
+  window, the latest such *e* on a tie, as a UTC date. One window function over the same shoots
+  CTE the rolling count reads (`RANGE BETWEEN INTERVAL '365 days' PRECEDING AND CURRENT ROW`).
+
+  The window runs **backward** from each shoot, where v4 said forward. The maximum is identical
+  either way — slide any maximal window until an end meets a shoot and the count is unchanged;
+  verified against an independent pass over all 2,074 accounts with shoots — but the end date is
+  not: backward, it is the last shoot of the peak run, always a real date in the past, which is
+  what "ordered by `peak_365_ended_on DESC`" (§4.3) needs; forward, it is *d* + 365, in the future
+  for anyone whose peak run is recent. `rolling_365_parent_count <= peak_365_parent_count` always,
+  since the trailing window is one of the windows the peak ranges over.
 
 **Dates** — `qualifying`. Parents **and** children.
 
@@ -657,6 +720,15 @@ still counts as a shoot and still sets recency, at zero revenue. That is correct
 delivered, the money came back — but it means `rolling_365_parent_count` and
 `rolling_365_value_cents` can disagree in a way that looks like a bug and is not.
 
+**The mirror case is also not a bug.** `billable` carries no completion and no cancellation
+condition, and `rolling_365_value_cents` adds none: a paid, unrefunded order that was cancelled
+after payment is revenue in the window while it is not a shoot, so the value can be positive where
+the count is 0 (3 accounts on the 2026-09-10 snapshot). `rolling_365_value_cents` is the
+trailing-365 slice of `lifetime_value_cents` — the same `billable` rows, the same per-row
+expression, filtered to rows whose *own* §5.3 date falls in the window; a billable row that is
+neither scheduled nor completed has no date and falls out of it (0 such rows today). Hence
+`rolling_365_value_cents <= lifetime_value_cents` always.
+
 ### 5.5 Origin
 
 **Stale pending D6.** v2 derived origin into `accounts.marketing_event_id` from the account's
@@ -698,8 +770,11 @@ Extend the existing `account_metrics` recompute (`metrics:recompute`, `AccountMe
 rather than adding a second job.
 
 1. Recompute numeric columns from `Order.qualifying`, `Order.qualifying_parents` and
-   `Order.billable`.
-2. Recompute `active_user_count` from active `accounts_users`.
+   `Order.billable`. **Done in slice 2:** four merges on `AccountMetrics::Calculator`, no change to
+   `RecomputeAll` or the rake task; +3 ms per account, ≈ +12 s over the fleet, 50 s wall on the
+   dev restore.
+2. Recompute `active_user_count` from active `accounts_users`. **Done in slice 2**, as
+   `Account#users_count` (§3.4).
 3. Derive `lifecycle_type`, `value_type`, `peak_value_type` from a single thresholds config
    object. Update `lifecycle_type_at` only when the value actually changes.
 4. Push changed computed fields to Pipedrive.
@@ -878,7 +953,7 @@ the `file:line` evidence.
 | :-- | :--- | :--- | :--- |
 | 1a | `order_types.category_type` + exhaustive backfill + the three §5.1 scopes | **Deployed 2026-09-10** with 1b (`docs/runbooks/deploy-account-classification-1a-1b.md`); column, backfill and API 1b88f09, scopes 7aa170b | 1b |
 | 1b | Rewrite existing `account_metrics` and `AccountQuery` consumers onto the scopes + shift memo | **Deployed 2026-09-10** (`master` merge 514e5c4 of 7aa170b..afeb1f7); memos `shift-memo-slice-1b-2026-09-10.md` (dev restore) and `shift-memo-slice-1b-2026-09-10-production.md` (the hand-over copy) | everything |
-| 2 | New `account_metrics` numeric columns incl. `active_user_count` + nightly recompute | Not started | 3, teams page |
+| 2 | New `account_metrics` numeric columns incl. `active_user_count` + nightly recompute | **Implemented and reviewed** on `feat/account-classification-2` (13 commits, cf0745d..f706f2d); runbook `deploy-account-classification-2.md`; not deployed | 3, teams page |
 | 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | Not started | teams page, 7 |
 | 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; ops UI on insgt-ops `main`, pending its release; backfill and organization type audit not started | 7 |
 | 5 | `marketing_events.event_type` + backfill | **Void.** See §3.2 | — |
@@ -912,10 +987,21 @@ is what Don received. Re-running the task now that the nightly writes the new de
 every stored row as a mismatch on every column; that is the cross-check working, not the memo
 breaking, and the two committed memos are the last runs where it could be made.
 
-**Slice 2 pins where the worklist ordering lives.** §4.1's `ORDER BY rolling_365_parent_count
-DESC` becomes possible only when slice 2 creates the column; the teams page already sends the
-`account_type=unset` filter. Slice 2's plan states whether the ordering ships with the column or
-waits for slice 4's remaining work, and why.
+**The worklist ordering ships with slice 4's remaining work, not with slice 2's column.** Four
+reasons: the accounts index emits no `ORDER BY` today — `AccountQuery#search` never sets
+`options[:order]` and `search_params` copies no sort key — so the sort is new plumbing with one
+precedent, the users directory (`DIRECTORY_SORTS`, `NULLS LAST`, an id tiebreak, 400 on an
+unrecognised sort); `ApiSearch#query` selects `accounts.*` and applies `.distinct` unconditionally,
+and Postgres rejects `ORDER BY` on a column absent from a `DISTINCT` select, so the sort needs a
+`LEFT JOIN account_metrics` (LEFT — the worklist is exactly the accounts with no row yet), the
+column in the select, `DESC NULLS LAST, accounts.id` (load-bearing: 87% of the worklist ties at
+zero and NULL rows must sort after real zeros), and a check on `Metadata.calculate` and the
+`where_only_once` `GROUP BY`; insgt-ops sorts the loaded page client-side and documents "the API
+has no sort params", and its worklist control is slice 4's ops work — the sort key and the control
+ship together as one reviewable unit; and shipping the key with no caller changes slice 2's risk
+class for nothing visible. Sketch for slice 4: `sort=rolling_365_parent_count` and `direction` in
+`search_params`, a frozen `ACCOUNT_SORTS` map in `AccountQuery`, `join_on[:account_metrics]`
+pushed idempotently like `join_shoots!`, the export inheriting or stripping the sort.
 
 **Slice 4 blocks on the organization type audit** (§4.1). The `property_manager` backfill
 heuristic reads data whose hygiene is unverified.
@@ -1046,3 +1132,28 @@ Sourced from slice 1b (`feat/account-classification-1b`, 7aa170b..afeb1f7) and i
 | §4.2 | 428 trailing-year | Plus 1,956 with no property shoot ever | Memo headline |
 | §10 | — | `SHOOT_UNIVERSE_EXCLUDED_ORDER_TYPE_IDS` is margin-only; goes with the `MARGIN_LTV_*` lists | Decision 2026-09-08 |
 | §9 status (later on 2026-09-10) | 1a and 1b implemented, deploy together | 1a, 1b and slice 4's column and API deployed to production; ops UI pending its release | Deployed by Dan, 2026-09-10 |
+
+---
+
+## 13. Changes from v4
+
+Sourced from slice 2 (`feat/account-classification-2`, cf0745d..f706f2d), its plan
+(`docs/plans/account-classification-slice-2.md`, gaps G1–G14, decisions by Dan 2026-09-10) and the
+two review rounds.
+
+| Area | v4 | v5 | Why |
+| :--- | :--- | :--- | :--- |
+| §3.4 status | Nine columns, not yet implemented | The five numeric columns shipped; four enum-side columns and the two indexes still slice 3 | Slice 2 |
+| §3.4 NULL | "All nine are nullable" | What NULL means on the five: not computed since slice 2 shipped; the calculator never writes NULL to a count; `peak_365_ended_on` NULL iff the peak is 0; two count conventions on one table, stated | G2 — the deploy window needs an unrecomputed row to be distinguishable from a real zero |
+| §3.4 `active_user_count` | "a plain `COUNT(*)` over active `accounts_users`" | `Account#users_count` — distinct active users with an active membership, the count `user_count` already ships | G1, accepted 2026-09-10: the plain count counts roles; 411 accounts differ, 453 vs 102 multi-user, account 10288 reads 9 for 6 people |
+| §3.4 derivations | Two ad hoc derivations to reconcile | Both removed; `joint_ownership` joins `account_metrics` and sets unrecomputed accounts aside as unweighed; the memo reads `compute` | G8, accepted 2026-09-10: nightly-fresh is acceptable for a weighing tool |
+| §3.4 `peak_365_ended_on` | `date`, no more said | A UTC date; why it does not localise where `first_shoot_at` does | G13 |
+| §3.4 mirror and index | Silent | No `system_metrics` mirror, no index; the "column-for-column parallel" claim narrowed to the shared columns | G6, G7 |
+| §3.4 wire | Silent | Four of the five on `GET /accounts/:id/metrics`; revenue owner-only; `active_user_count` deliberately not emitted | G10 |
+| §5.1 table | Three "(slice 2)" labels | Labels dropped | Shipped |
+| §5.4 counts | "Evaluate the window forward … Record the window's end date" | Backward closed window, the maximum of the rolling series; end date is the last shoot of the peak run, latest on a tie; `rolling <= peak` invariant | G4, accepted 2026-09-10: same maximum, a real end date in the past |
+| §5.4 revenue | Refunds self-correct | Plus the mirror: a paid-then-cancelled order is revenue and not a shoot; `rolling_365_value_cents` is the trailing slice of lifetime by each row's own date; `rolling <= lifetime` | G5 |
+| §4.3 "never decays" | "Monotonic; never decays" | Monotonic against time; recomputed from history, follows history edits; no ratchet | G14 |
+| §4.1 / §9 worklist ordering | "waits on slice 2's column" | Ships with slice 4's remaining work; four reasons and the sketch recorded | G9, accepted 2026-09-10 |
+| §6 steps 1–2 | Planned | Done; runtime recorded | Slice 2 |
+| §9 status | Slice 2 not started | Implemented and reviewed, not deployed; runbook written | Slice 2 |
