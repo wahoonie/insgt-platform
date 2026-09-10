@@ -1,8 +1,8 @@
 ---
 name: predeploy-review-angular
-description: Pre-deploy review for the Angular apps (insgt-ops / insgt-app). Reviews the diff about to ship for NgRx correctness, change-detection & leak safety, API-contract consumption, Vitest unit coverage, Cypress e2e coverage, and InsightPhotos compliance/conventions. Read-only — surfaces findings, never edits or commits.
+description: Pre-deploy review for the Angular apps (insgt-ops / insgt-app). Reviews the diff about to ship for NgRx correctness, change-detection & leak safety, API-contract consumption, Vitest unit coverage, Cypress e2e coverage, and InsightPhotos compliance/conventions, then runs an independent Codex review over the same diff and triages it against Claude's findings. Read-only — surfaces findings, never edits or commits.
 argument-hint: [prod-ref]
-allowed-tools: Bash(git diff:*), Bash(git log:*), Bash(git status:*), Read, Grep, Glob
+allowed-tools: Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(codex exec:*), Read, Grep, Glob
 ---
 
 # Pre-deploy review — Angular (insgt-ops / insgt-app)
@@ -17,6 +17,8 @@ Reviewing the changes about to ship. Read only — do not edit, stage, or commit
   and the app skill — `insgt-ops-angular-developer` OR
   `insgt-app-angular-developer` — before reviewing. The legacy-vs-modern rule
   below depends on which app this is.
+- Set `REPO` to the detected repo name and `REPO_DIR` to
+  `git rev-parse --show-toplevel`. Both are used by the Codex step in §6.
 
 ## 2. The changed code (Angular lens)
 - **NgRx**: entity-adapter pattern per `ngrx-patterns.md`. Uses the action/effect
@@ -80,12 +82,62 @@ Reviewing the changes about to ship. Read only — do not edit, stage, or commit
   UI that could strip or alter it.
 - Changed behavior with no Cypress change → flag.
 
+## 6. Second-opinion review (Codex)
+An independent model reviewing the same diff. Run it **after** finishing §2–§5 so
+Codex's findings don't anchor yours — the value is in the disagreement.
+
+- Run exactly one invocation, non-interactively (`codex exec`, never the TUI —
+  it will hang the bash call). Write to a file with `-o`, not stdout, so the
+  review doesn't flood the context:
+
+  ```bash
+  codex exec -C "$REPO_DIR" -s danger-full-access \
+    -o "/tmp/codex-review-$REPO.md" \
+    "Pre-deploy review of \`git diff <prod-ref>...HEAD\` in this Angular repo.
+     Do not modify files. Review for: NgRx correctness (effects must catch into
+     an *Error action, selectors memoized, components use the facade not the
+     store), OnPush/signals change detection, subscription and timer leaks,
+     API response typing drift, lazy-route provider wiring, PWA/ngsw config,
+     Vitest coverage on state-layer changes, Cypress coverage on behavior
+     changes, and AB 723 / Fair Housing display. Flag violations of AGENTS.md.
+     For each finding: file:line, severity (blocker/should-fix/nit), the issue,
+     and a suggested fix. Finish with anything you are unsure about."
+  ```
+
+- `exec` is already non-interactive; there is no `--ask-for-approval` flag on it
+  (that is the TUI's), and passing it exits on a usage error without reviewing.
+- `-s danger-full-access` is not laziness. Codex's `read-only` and
+  `workspace-write` sandboxes shell out to bubblewrap, which cannot create a
+  namespace inside this devcontainer — the run dies on `bwrap: No permissions to
+  create a new namespace` and produces no findings. Commit the repo first so any
+  stray write is recoverable, and check `git status` afterwards.
+- If `codex` is not installed or the run fails, report that under **Codex
+  review** and continue — Codex is additive, never a gate.
+- Read `/tmp/codex-review-$REPO.md`. Triage **every** finding, verifying each
+  against the actual code before accepting it. Codex reviews without the skill
+  files loaded, so expect some findings that are already-intentional
+  (e.g. legacy NgModule patterns in existing insgt-ops files):
+  - **agree** — merge into the severity groups below, attributed `[codex]`
+  - **both** — you had it too; attribute `[claude+codex]`. Consensus findings
+    are the highest-confidence items in the report.
+  - **disagree** — list separately with the reason (cite `file:line`)
+  - **already-intentional** — list with the convention or skill rule it follows
+  - **needs-my-decision** — promote to **Open questions**
+- Do not accept a Codex severity uncritically; re-grade against the blocker
+  definitions in §3 and §5.
+
 ## Output
 Group by severity — **Blockers** (do not deploy) / **Should-fix** / **Nits**.
-Each: `file:line`, what's wrong, suggested fix (described, not applied).
+Each: `file:line`, what's wrong, suggested fix (described, not applied), and
+source — `[claude]`, `[codex]`, or `[claude+codex]`.
+Then a **Codex review** section: run status, findings disagreed with (and why),
+findings marked already-intentional. Findings Claude alone caught that Codex
+missed need no callout — that's expected.
 End with **Open questions** (need my decision) and a **Pre-deploy checklist**
 (CloudFront invalidation, env config, etc.).
 
 ## Non-goals
 No refactoring unrelated to this diff. No lint/format fixes the tooling handles.
-No git-state changes, no file writes.
+No git-state changes, no file writes in the repo (the Codex output file in
+`/tmp` is the only write). Do not run Codex more than once per review or
+against a different ref than the one under review.

@@ -149,6 +149,31 @@ Flag immutable fields explicitly so future sessions don't introduce mutations:
 attr_readonly :ai_features
 ```
 
+### Enums
+Integer-backed, values start at 1 so NULL stays the only unset state
+(`docs/architecture/account-classification.md` §3.0). The older enumerated columns are frozen
+hashes instead — see `<repo>/CLAUDE.md`; that is the legacy pattern, not the one to copy.
+
+**Declare with `prefix: true` when any value is a generic word** — `internal`, `other`,
+`commercial`, `active`. Unprefixed, the enum takes `internal?` and `Model.internal`, which read as
+questions about the record rather than about one column, and it spends one bare scope name per
+value on a model that may already carry query concerns and raw SQL. Prefixed, they are
+`category_type_internal?` and `OrderType.category_type_internal` — longer, and unambiguous at every
+call site.
+
+The serialized value is the enum name either way (`"internal"`), so the prefix never reaches the
+API. It changes Ruby call sites only.
+
+```ruby
+enum :category_type, { property: 1, brand: 2, marketing: 3, internal: 4, recovery: 5 }, prefix: true
+```
+
+**Nullability is a separate decision from the enum.** A column whose NULL means "not yet
+classified" takes no default and no presence validation, and its factory sets nothing — see
+"Adding a nullable column whose NULL means something" in `insgt-api/CLAUDE.md`. A column that must
+always be answered takes `null: false` plus a presence validation, so the model reports the
+omission through `errors` rather than raising `NotNullViolation`.
+
 ---
 
 ## 4. Sidekiq Jobs

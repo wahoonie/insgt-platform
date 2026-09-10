@@ -105,7 +105,7 @@ Before switching the origin, record the **outgoing** folder as the rollback targ
 
 ### 5. Smoke-test Ops (manual)
 
-At `/#/teams/:id/edit`, as **admin and scheduler** (the serializer gates `brand`/`stripeToken` to
+At `/#/accounts/:id/edit`, as **admin and scheduler** (the serializer gates `brand`/`stripeToken` to
 those two roles — other roles see neither key):
 
 | State | Expected |
