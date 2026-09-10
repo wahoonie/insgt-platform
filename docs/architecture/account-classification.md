@@ -1,8 +1,8 @@
 # Account Classification Architecture
 
 **Repo:** `insgt-api` · **Consumers:** `insgt-ops` teams page, Pipedrive nightly push
-**Status:** In implementation — slices 1a, 1b and 4 implemented, none deployed; see §9
-**Version:** 4 · **Last updated:** 2026-09-10
+**Status:** Slices 1a and 1b deployed to production 2026-09-10; slice 4's column and API went with them; see §9
+**Version:** 4 · **Last updated:** 2026-09-10 (deploy recorded)
 **Supersedes:** v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§12 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
 `account-classification-drift-audit-2026-09-07.md` (the evidence behind v3),
@@ -231,7 +231,8 @@ the decision.
 
 ### 3.3 `accounts` — add `account_type`
 
-**Shipped** on `feat/account-account-type` (unmerged as of 2026-09-08).
+**Shipped.** Merged to `master` at c999b29 (2026-09-08) and deployed to production with slices 1a and 1b
+on 2026-09-10 (`db/migrate/20260904120004`).
 
 ```ruby
 add_column :accounts, :account_type, :integer, limit: 2   # nullable, no default; db/migrate/20260904120004
@@ -355,10 +356,12 @@ defaults blank to `brokerage`, five of the eight enum values have no code path, 
 separate concern. It belongs to the accounts-versus-users workstream (§8, Q7) and slice 4 blocks
 on it.
 
-**Status 2026-09-08.** Column, model, API, role gates, index filter, and the ops edit dialog are
-implemented on `feat/account-account-type` (unmerged). Twelve accounts were classified by hand
-through the ops UI in the dev DB (five `agent`, seven `internal`, including accounts 2 and 89).
-No tiered backfill task exists; the organization type audit has not started.
+**Status 2026-09-10.** Column, model, API, role gates and index filter are in production (deployed
+with slices 1a and 1b); the ops edit dialog and filter are on insgt-ops `main` and ship with its
+next release. The 2026-09-10 production snapshot holds five hand-classified accounts (one `agent`,
+four `internal`); the twelve classified in the dev DB on 2026-09-05..07 did not survive the
+restore and were test entries. No tiered backfill task exists; the organization type audit has
+not started.
 
 ### 4.2 `account_metrics.lifecycle_type`
 
@@ -873,21 +876,22 @@ the `file:line` evidence.
 
 | # | Slice | Status 2026-09-08 | Unblocks |
 | :-- | :--- | :--- | :--- |
-| 1a | `order_types.category_type` + exhaustive backfill + the three §5.1 scopes | Column, backfill and API merged to `master` (1b88f09); the scopes landed in 1b (7aa170b). **Not deployed**; `docs/runbooks/deploy-account-classification-1a-1b.md` | 1b |
-| 1b | Rewrite existing `account_metrics` and `AccountQuery` consumers onto the scopes + shift memo | **Implemented** on `feat/account-classification-1b` (7aa170b..afeb1f7, 2026-09-10); memo `shift-memo-slice-1b-2026-09-10.md`; not merged, not deployed | everything |
+| 1a | `order_types.category_type` + exhaustive backfill + the three §5.1 scopes | **Deployed 2026-09-10** with 1b (`docs/runbooks/deploy-account-classification-1a-1b.md`); column, backfill and API 1b88f09, scopes 7aa170b | 1b |
+| 1b | Rewrite existing `account_metrics` and `AccountQuery` consumers onto the scopes + shift memo | **Deployed 2026-09-10** (`master` merge 514e5c4 of 7aa170b..afeb1f7); memos `shift-memo-slice-1b-2026-09-10.md` (dev restore) and `shift-memo-slice-1b-2026-09-10-production.md` (the hand-over copy) | everything |
 | 2 | New `account_metrics` numeric columns incl. `active_user_count` + nightly recompute | Not started | 3, teams page |
 | 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | Not started | teams page, 7 |
-| 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates, filter, and ops UI on `feat/account-account-type` (unmerged, both repos); backfill and organization type audit not started | 7 |
+| 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; ops UI on insgt-ops `main`, pending its release; backfill and organization type audit not started | 7 |
 | 5 | `marketing_events.event_type` + backfill | **Void.** See §3.2 | — |
 | 6 | Acquisition reference derivation (§5.5) | **Blocked on D6** | per-event ROI |
 | 7 | Pipedrive reconciliation + whitelisted push | Not started | — |
 
-**Slices 1a and 1b deploy together.** 1a alone changes nothing anyone sees and 1b cannot run
-without it. `deploy-account-classification-1a-1b.md` closes the window between release and
-migration with maintenance mode (new code reads `category_type` on the accounts index, the metrics
-dialog and the CSV export), regenerates the memo against production before the first recompute,
-and hands it to Don before the numbers change. `master` also carries slice 4's column and API,
-which deploy with it.
+**Slices 1a and 1b deployed together on 2026-09-10.** 1a alone changed nothing anyone sees and 1b
+could not run without it. `deploy-account-classification-1a-1b.md` is the record: maintenance
+mode closed the window between release and migration (new code reads `category_type` on the
+accounts index, the metrics dialog and the CSV export), the memo was produced against a production
+snapshot before the first recompute, and it was handed to Don before the numbers changed. Slice
+4's column and API went with the same push of `master`. From here every `account_metrics` row
+carries the §5.1 definitions; the pre-1b numbers survive only in the two memos.
 
 **Why 1a and 1b split.** 1a adds a column and defines scopes that nothing reads yet — nothing
 moves, nothing is visible, and a backfill mistake is cheapest to catch at this point. 1b changes
@@ -902,6 +906,11 @@ non-property parents out and 261 completed reshoots in; trailing-365 parents 2,0
 `median_shoot_value_cents` rises for 237 accounts and becomes NULL for 1,961; revenue drops
 $775,538; every reconciliation residual is $0. It computes the old definition from literal SQL
 cited to c999b29 and cross-checks it against the stored `account_metrics` rows column by column.
+The production copy (`shift-memo-slice-1b-2026-09-10-production.md`, 2026-09-10 snapshot: 4,078
+accounts, 4,030 → 2,074 with a shoot, revenue $4,478,971 → $3,701,878) reconciled to the cent and
+is what Don received. Re-running the task now that the nightly writes the new definition reports
+every stored row as a mismatch on every column; that is the cross-check working, not the memo
+breaking, and the two committed memos are the last runs where it could be made.
 
 **Slice 2 pins where the worklist ordering lives.** §4.1's `ORDER BY rolling_365_parent_count
 DESC` becomes possible only when slice 2 creates the column; the teams page already sends the
@@ -1036,3 +1045,4 @@ Sourced from slice 1b (`feat/account-classification-1b`, 7aa170b..afeb1f7) and i
 | §3.4 | "accounts:composition" | `accounts:joint_ownership`, now on the scope | The derivation was misattributed |
 | §4.2 | 428 trailing-year | Plus 1,956 with no property shoot ever | Memo headline |
 | §10 | — | `SHOOT_UNIVERSE_EXCLUDED_ORDER_TYPE_IDS` is margin-only; goes with the `MARGIN_LTV_*` lists | Decision 2026-09-08 |
+| §9 status (later on 2026-09-10) | 1a and 1b implemented, deploy together | 1a, 1b and slice 4's column and API deployed to production; ops UI pending its release | Deployed by Dan, 2026-09-10 |

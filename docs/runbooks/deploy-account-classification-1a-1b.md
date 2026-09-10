@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-10
 **Repos:** insgt-api (insgt-ops for the order-type form — step 9)
 **Estimated duration:** ~30 min, plus the memo hand-over
-**Status:** Draft
+**Status:** Deployed 2026-09-10 by Dan (API, steps 1–7; ops release per step 9 pending)
 
 ## Summary
 
@@ -183,4 +183,4 @@ is a no-op.
 
 ## Deploy log
 
-_(migration timings, the production memo's Population table, the recompute runtime)_
+- 2026-09-10 — memo produced against a local production snapshot (`shift-memo-slice-1b-2026-09-10-production.md`): 4,078 active accounts, every residual $0.00, 0 window mismatches, 2 revenue mismatches (accounts 60 and 10288, orders changed after the 02:31 nightly). Migration timings and recompute runtime not recorded.
