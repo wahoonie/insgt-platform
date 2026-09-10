@@ -80,10 +80,11 @@ Slice 1b added no migration. No `spec/architecture` existed before 1b; `scope :q
 | `lib/tasks/orders.rake` | 426–428 | `universe_parents_sql` interpolated into `parent_in_denominator` | 1b, 8bebc4a |
 | `lib/tasks/account_classification.rake` | 1–30 | ARCHITECTURE NOTES for the shift memo: why OLD is literal SQL cited to c999b29, the stored-row cross-check, how to reproduce | 1b, b8a8b85 |
 | `lib/tasks/account_classification.rake` | 36–43 | `V3_FIGURES` printed beside this run's | 1b, b8a8b85 |
-| `lib/tasks/account_classification.rake` | 84–160 | `OLD_COUNTS_SQL`, `OLD_VALUES_SQL`, `OLD_REVENUE_SQL` (literal ids 6 and 300, `paid_at` dating) | 1b, b8a8b85 |
-| `lib/tasks/account_classification.rake` | 221–340 | `revenue_bridge`, `shoot_value_bridge`, `transactions_bridge`, `completion_hygiene` | 1b, b8a8b85 |
-| `lib/tasks/account_classification.rake` | 342–360 | `stored_row_mismatches`, per column | 1b, b8a8b85 |
-| `lib/tasks/account_classification.rake` | 362– | `account_classification:shift_memo_1b` (`OUT=`, `CSV=`) | 1b, b8a8b85 |
+| `lib/tasks/account_classification.rake` | 52–54 | `progress`: stderr only when it is a terminal, because a one-off dyno delivers stdout and stderr as one stream | cf0745d |
+| `lib/tasks/account_classification.rake` | 94–170 | `OLD_COUNTS_SQL`, `OLD_VALUES_SQL`, `OLD_REVENUE_SQL` (literal ids 6 and 300, `paid_at` dating) | 1b, b8a8b85 |
+| `lib/tasks/account_classification.rake` | 231–350 | `revenue_bridge`, `shoot_value_bridge`, `transactions_bridge`, `completion_hygiene` | 1b, b8a8b85 |
+| `lib/tasks/account_classification.rake` | 352–370 | `stored_row_mismatches`, per column | 1b, b8a8b85 |
+| `lib/tasks/account_classification.rake` | 372– | `account_classification:shift_memo_1b` (`OUT=`, `CSV=`) | 1b, b8a8b85 |
 | `lib/tasks/metrics.rake` | 295 | `margin_ltv_exclusion_impact` reads the legacy constant (margin, §10) | legacy |
 | `lib/tasks/metrics.rake` | 381– | `metrics:churn` injects `MARGIN_LTV_FIELD_VISIT_EXCLUDED_ORDER_TYPE_IDS` and `MARGIN_LTV_EXCLUDED_ACCOUNT_IDS` into `ChurnReport` (unchanged) | legacy |
 | `lib/tasks/order_types.rake` | 13–19, 23–42 | `PINNED_ORDER_TYPE_IDS` and `order_types:verify_pinned_ids` | ADR 002 |
@@ -124,6 +125,7 @@ Slice 1b added no migration. No `spec/architecture` existed before 1b; `scope :q
 | `README.md` §Migrations | strong_migrations and the four-migration NOT NULL sequence |
 | `insgt-platform/docs/architecture/account-classification.md` | The contract, v4 (2026-09-10) |
 | `insgt-platform/docs/architecture/shift-memo-slice-1b-2026-09-10.md` | What slice 1b moves, account by account, on the 2026-09-08 restore |
+| `insgt-platform/docs/architecture/shift-memo-slice-1b-2026-09-10-production.md` | The same memo on the 2026-09-10 production snapshot: the hand-over copy (runbook step 6) |
 | `insgt-platform/docs/runbooks/deploy-account-classification-1a-1b.md` | Deploying 1a and 1b together; the memo hand-over is step 6 |
 | `insgt-platform/docs/decisions/002-recapture-order-type.md` | ADR 002 |
 
@@ -132,7 +134,6 @@ Slice 1b added no migration. No `spec/architecture` existed before 1b; `scope :q
 | Ref | Head | Carries |
 | :-- | :-- | :-- |
 | `heroku/master`, `origin/master` | a3e40e9 (2026-09-02) | Recapture; not `category_type`, not `account_type` |
-| `master` | c999b29 (2026-09-08) | `category_type` (1b88f09) and `account_type` (`feat/account-account-type` merged) |
-| `feat/account-classification-1b` | afeb1f7 (2026-09-10) | Slice 1b, 12 commits on c999b29; not merged, not pushed |
+| `master` | cf0745d (2026-09-10) | `category_type` (1b88f09), `account_type` (c999b29), slice 1b merged at 514e5c4 (`feat/account-classification-1b`, 12 commits, branch deleted after the merge), plus cf0745d (memo progress gating); not pushed |
 | insgt-ops `main` | 4bae4a91 | Order-type `categoryType` form (782a8c85, in no tag) and the account-type UI; version 9.58.0 |
-| dev database | 2026-09-08 production restore (4,076 active accounts; latest order 2026-09-08 13:48 UTC) | `account_metrics` rows from production's 2026-09-08 02:31 UTC nightly, i.e. the old definition — what the memo's cross-check relies on |
+| dev database | 2026-09-10 production snapshot (4,078 active accounts; latest order 2026-09-10 04:30 UTC), migrated to 20260904120004 locally | `account_metrics` rows from production's 2026-09-10 02:31 UTC nightly, i.e. the old definition — what `shift-memo-slice-1b-2026-09-10-production.md` cross-checked against |

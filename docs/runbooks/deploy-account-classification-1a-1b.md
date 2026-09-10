@@ -102,19 +102,35 @@ value on the 2026-09-08 restore.
 ### 5. Produce the production memo — BEFORE recompute
 
 The stored `account_metrics` rows are still the old definition until `metrics:recompute` runs.
-The memo's stored-row cross-check depends on that, so this step comes first:
+The memo's stored-row cross-check depends on that, so this step comes first.
+
+**Primary: a fresh production snapshot in local Postgres.** Capture and restore (step 1's dump
+works), run the five migrations against it (`bin/rails db:migrate` — the scopes read
+`category_type`), then from `apps/insgt-api` on the merged code:
 
 ```bash
-heroku run rake account_classification:shift_memo_1b -a insgtapi \
-  2> tmp/shift-memo-progress.log \
-  > docs/architecture/shift-memo-slice-1b-<date>-production.md
+bin/rails account_classification:shift_memo_1b \
+  OUT=../../docs/architecture/shift-memo-slice-1b-<date>-production.md \
+  CSV=tmp/shift-1b-production.csv
 ```
 
-The memo is stdout; progress is stderr. One-off dynos have no persistent disk, so `OUT=` and
-`CSV=` are for dev; the per-account CSV is regenerated on a restore if Don wants the full list.
-Expect the Population table to show 0 stored rows disagreeing on any column other than
-`rolling_90_parent_count`, that one to be the parents completed in the hours since the nightly
-ran, and every "Residual" line at $0. Anything else is a finding: stop and look before step 7.
+Progress prints to the terminal; the memo goes to the platform repo's `docs/architecture/`
+(the path is relative to `apps/insgt-api` — there is no `docs/architecture` in insgt-api itself);
+the per-account CSV stays in `tmp/` for Don if he wants the full list.
+
+**Fallback: a one-off dyno**, if a snapshot is not to hand. The dyno's stdout and stderr arrive
+over one stream, so the task keeps its progress lines off when stderr is not a terminal, and
+`--no-tty` keeps carriage returns out of the file:
+
+```bash
+heroku run --no-tty --exit-code rake account_classification:shift_memo_1b -a insgtapi \
+  > ../../docs/architecture/shift-memo-slice-1b-<date>-production.md
+```
+
+Either way, expect the Population table to show 0 stored rows disagreeing on any column other
+than `rolling_90_parent_count`, that one to be the parents completed in the hours since the
+nightly ran, and every "Residual" line at $0.00. Anything else is a finding: stop and look
+before step 7.
 
 ### 6. Hand the memo to Don
 
