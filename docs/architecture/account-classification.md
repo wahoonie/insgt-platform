@@ -1,8 +1,8 @@
 # Account Classification Architecture
 
 **Repo:** `insgt-api` · **Consumers:** `insgt-ops` teams page, Pipedrive nightly push
-**Status:** Slices 1a and 1b deployed to production 2026-09-10; slice 4's column and API went with them; slice 2 implemented and reviewed on `feat/account-classification-2`, not yet deployed; see §9
-**Version:** 5 · **Last updated:** 2026-09-10 (slice 2 amendments)
+**Status:** Slices 1a and 1b deployed to production 2026-09-10, with slice 4's column and API; slice 2 deployed to production 2026-09-11; see §9
+**Version:** 5 · **Last updated:** 2026-09-11 (slice 2 deployed)
 **Supersedes:** v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§13 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
 `account-classification-drift-audit-2026-09-07.md` (the evidence behind v3),
@@ -281,10 +281,10 @@ add_index :account_metrics, [:lifecycle_type, :value_type]
 add_index :account_metrics, [:account_id, :lifecycle_type]
 ```
 
-**The five numeric columns shipped in slice 2** (`20260911120000`, on `feat/account-classification-2`);
-`lifecycle_type`, `lifecycle_type_at`, `value_type`, `peak_value_type` and the two indexes are
-slice 3. All nine are nullable; none takes a factory default (`insgt-api/CLAUDE.md`, "a nullable
-column whose NULL means something").
+**The five numeric columns shipped in slice 2** (`20260911120000`, merged as `d98632f`, migrated
+in production 2026-09-11); `lifecycle_type`, `lifecycle_type_at`, `value_type`, `peak_value_type`
+and the two indexes are slice 3. All nine are nullable; none takes a factory default
+(`insgt-api/CLAUDE.md`, "a nullable column whose NULL means something").
 
 **What NULL means on the five.** Every count already on `account_metrics` is `NOT NULL DEFAULT 0`;
 these are not, and the table now carries two count conventions on purpose. NULL means "not
@@ -772,7 +772,10 @@ rather than adding a second job.
 1. Recompute numeric columns from `Order.qualifying`, `Order.qualifying_parents` and
    `Order.billable`. **Done in slice 2:** four merges on `AccountMetrics::Calculator`, no change to
    `RecomputeAll` or the rake task; +3 ms per account, ≈ +12 s over the fleet, 50 s wall on the
-   dev restore.
+   dev restore. **The production sweep runs 2 min 36.89 s, 0 failed over 4,078 accounts**
+   (2026-09-11). That is the baseline slice 3 extends, not the restore's 50 s: `heroku run` dyno
+   start-up and the network hop to the database are inside it, and the prior production duration
+   was never recorded.
 2. Recompute `active_user_count` from active `accounts_users`. **Done in slice 2**, as
    `Account#users_count` (§3.4).
 3. Derive `lifecycle_type`, `value_type`, `peak_value_type` from a single thresholds config
@@ -946,14 +949,14 @@ visits rather than shoots — the rename touches consumers for a precision gain 
 
 ## 9. Delivery slices
 
-Independently shippable, in dependency order. Status as of 2026-09-08; the codebase notes carry
+Independently shippable, in dependency order. Status as of 2026-09-11; the codebase notes carry
 the `file:line` evidence.
 
-| # | Slice | Status 2026-09-08 | Unblocks |
+| # | Slice | Status 2026-09-11 | Unblocks |
 | :-- | :--- | :--- | :--- |
 | 1a | `order_types.category_type` + exhaustive backfill + the three §5.1 scopes | **Deployed 2026-09-10** with 1b (`docs/runbooks/deploy-account-classification-1a-1b.md`); column, backfill and API 1b88f09, scopes 7aa170b | 1b |
 | 1b | Rewrite existing `account_metrics` and `AccountQuery` consumers onto the scopes + shift memo | **Deployed 2026-09-10** (`master` merge 514e5c4 of 7aa170b..afeb1f7); memos `shift-memo-slice-1b-2026-09-10.md` (dev restore) and `shift-memo-slice-1b-2026-09-10-production.md` (the hand-over copy) | everything |
-| 2 | New `account_metrics` numeric columns incl. `active_user_count` + nightly recompute | **Implemented and reviewed** on `feat/account-classification-2` (13 commits, cf0745d..f706f2d); runbook `deploy-account-classification-2.md`; not deployed | 3, teams page |
+| 2 | New `account_metrics` numeric columns incl. `active_user_count` + nightly recompute | **Deployed 2026-09-11** (`master` merge d98632f of cf0745d..ca49f32, 16 commits); migration `20260911120000` logged 13:24:41 UTC, recompute 2 min 36.89 s over 4,078 accounts, 0 failed, every invariant 0; runbook `deploy-account-classification-2.md` | 3, teams page |
 | 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | Not started | teams page, 7 |
 | 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; ops UI on insgt-ops `main`, pending its release; backfill and organization type audit not started | 7 |
 | 5 | `marketing_events.event_type` + backfill | **Void.** See §3.2 | — |
@@ -1137,7 +1140,7 @@ Sourced from slice 1b (`feat/account-classification-1b`, 7aa170b..afeb1f7) and i
 
 ## 13. Changes from v4
 
-Sourced from slice 2 (`feat/account-classification-2`, cf0745d..f706f2d), its plan
+Sourced from slice 2 (`feat/account-classification-2`, cf0745d..ca49f32), its plan
 (`docs/plans/account-classification-slice-2.md`, gaps G1–G14, decisions by Dan 2026-09-10) and the
 two review rounds.
 
@@ -1157,3 +1160,4 @@ two review rounds.
 | §4.1 / §9 worklist ordering | "waits on slice 2's column" | Ships with slice 4's remaining work; four reasons and the sketch recorded | G9, accepted 2026-09-10 |
 | §6 steps 1–2 | Planned | Done; runtime recorded | Slice 2 |
 | §9 status | Slice 2 not started | Implemented and reviewed, not deployed; runbook written | Slice 2 |
+| §9 status (later, 2026-09-11) | Slice 2 implemented and reviewed, not deployed | Deployed to production 2026-09-11; §6 carries a production sweep duration for slice 3 to extend | Deployed by Dan, 2026-09-11 |
