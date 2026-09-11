@@ -1,9 +1,9 @@
 # Runbook: Account Classification Slice 2 Deploy
 
-**Last updated:** 2026-09-10
+**Last updated:** 2026-09-11
 **Repos:** insgt-api
 **Estimated duration:** ~15 min
-**Status:** Draft
+**Status:** Deployed to production 2026-09-11
 
 ## Summary
 
@@ -67,7 +67,7 @@ the run has to be repeated. Deploy outside 02:15–02:45 UTC, or confirm the mig
 ```bash
 heroku pg:backups:capture --app insgtapi
 heroku pg:backups:download --app insgtapi
-mv latest.dump tmp/production-latest-<date>_lock.dump
+mv latest.dump tmp/production-latest-2026-09-11_lock.dump
 ```
 
 ### 2. Maintenance on, deploy code
@@ -106,6 +106,12 @@ precedent of not waiting on it. Dev restore: 4,079 accounts, 0 failed, 50 s wall
 previous production duration plus ~12 s. Record the wall-clock in the deploy log — the 1a/1b log
 says "not recorded", and this is the first time the sweep's duration matters to a plan.
 
+**Production baseline, recorded 2026-09-11: 2 min 36.89 s wall, 0 failed**, against 50 s on the
+dev restore for the same account count. The "previous production duration plus ~12 s" above was
+never checkable — the prior duration was never written down — so treat 2:36.89 as the baseline the
+next slice compares against, not as a regression against the restore. `heroku run` dyno start-up
+and the network hop to the database are inside that number; the restore's 50 s is not comparable.
+
 ### 5. Invariants
 
 ```bash
@@ -132,6 +138,13 @@ over active accounts (`JOIN accounts ON status_type = 1`).
 | `active_user_count` ≠ `Account#users_count` for any active account | 0 |
 | `SUM(lifetime_value_cents)` | unchanged from the night before (370,187,800 on the restore) |
 
+The three non-zero rows reproduced exactly on the 2026-09-11 restore after a second independent
+recompute — 3 legal value-without-parents, 102 accounts over one active user, 5 at zero — so the
+`≈` on the last two is tighter than it looks. `SUM(lifetime_value_cents)` read 370,825,800 there
+against the 2026-09-10 restore's 370,187,800; the 638,000 is a day of new orders, not a
+regression. That row only means anything compared **before and after the deploy on the same
+database** — never against a restore captured on a different day.
+
 Fleet sums against a live re-derivation, with the check's cutoff pinned to the sweep's — otherwise
 the shoots that aged out between the two show up as a difference of a few rows:
 
@@ -152,6 +165,13 @@ Values on the 2026-09-10 restore; production on deploy day will differ by the sh
 since, so re-derive with the fleet queries before comparing. Every column matched the plan's
 reasoned expectations exactly on the restore.
 
+**These numbers move daily — do not treat them as pass/fail.** Re-derived on the 2026-09-11
+restore, one day later, four of the five accounts had already drifted: 10288 and 1123 each lost a
+parent off the back of the window (rolling 55 → 54 and 26 → 25, value −14,500 each, `lifetime`
+static), while 11510 and 1593 each gained a shoot (`lifetime` 25 → 26 and 164 → 165, rolling and
+value up with it). Only account 88 was unchanged on all six columns. Every drift moved in a
+self-consistent direction and every invariant below still read 0.
+
 | Account | `rolling_365_parent_count` | `peak_365_parent_count` | `peak_365_ended_on` | `rolling_365_value_cents` | `active_user_count` | `lifetime_parent_count` |
 | --: | --: | --: | :-- | --: | --: | --: |
 | 10288 | 55 | 81 | 2026-07-03 | 832,500 | **6** | 82 |
@@ -160,12 +180,26 @@ reasoned expectations exactly on the restore.
 | 11510 | 25 | 25 | 2026-08-14 | 702,000 | 1 | 25 |
 | 1593 | 20 | 35 | 2021-08-09 | 582,000 | 2 | 164 |
 
+Two cells are absolute — they do not move with new shoots, so check them as pass/fail:
+
 - **10288 is the G1 canary.** It has 9 membership rows and 6 people; reading 9 means `DISTINCT` or
-  the users join was lost.
-- **1123's peak is its current run** (`peak == rolling`): the case where `>=` must not be `>`.
-- **1593 is the reactivation shape** §4.3 describes: an anchor five years ago, occasional now.
+  the users join was lost. Read **6**. Confirmed 6 on the 2026-09-11 restore.
+- **1593's `peak_365_ended_on` is anchored at 2021-08-09.** A five-year-old peak cannot shift
+  unless the peak scan is wrong. This is the reactivation shape §4.3 describes: an anchor five
+  years ago, occasional now. Confirmed unmoved on the 2026-09-11 restore.
+
+The rest are shape checks, and the account that carries each shape changes as shoots age out:
+
+- **The `peak == rolling` case** — where `>=` must not be `>` — was 1123 on the 2026-09-10
+  restore. It was **11510** on 2026-09-11 (26/26), because a shoot aged out from under 1123 and a
+  new one landed on 11510. Read this shape off whichever account currently satisfies it after the
+  production recompute, not off a fixed account id.
+- **1123 now demonstrates the complementary case**: rolling 25 against a peak of 26 still ending
+  2026-08-28. A parent aged out of the trailing window and the historical max correctly *held*
+  rather than following it down. If 1123's peak ever tracks rolling downward, the peak is being
+  recomputed as a current-window value instead of a max.
 - **11510's peak equals its lifetime** and its trailing value equals its `lifetime_value_cents`:
-  every shoot inside one year.
+  every shoot inside one year. Both still true on 2026-09-11 at 26 parents / 728,500 cents.
 
 ### 7. The read-out
 
@@ -178,6 +212,17 @@ metrics row" reads 0; its "shoots in the window across N accounts" line equals t
 step 5 **minus the three excluded accounts** (2, 89, 2555 — on the restore, 12 shoots on 2 of
 them: 1,485 − 12 = 1,473 across 514 − 2 = 512). The plan's invariant table said "equals the two
 sums"; the exclusion is the difference and is by design.
+
+Production on 2026-09-11 read **1,476 shoots across 513 accounts**, and it reconciles the same
+way: the fleet sums were 1,488 across 515, and accounts 2 and 2555 carry 3 and 9 shoots — the same
+12 shoots on 2 of the 3 excluded accounts as the restore. 1,488 − 12 = 1,476, 515 − 2 = 513.
+
+**The exclusions net out of the user counts too, and that trips the step 5 comparison.** The
+segment table's "More than one active user only" (99) plus "Both" (2) is 101 accounts with
+`active_user_count > 1`, against the ≈102 the invariant table expects. Both are right: account 2
+(InsightPhotos) holds 16 active users and is excluded from the read-out, so the fleet count is 102
+and the in-scope count is 101. Do not chase the missing one. "Accounts with no active users" needs
+no such adjustment — all 5 are in scope, so the read-out and the invariant both read 5.
 
 ### 8. insgt-ops
 
@@ -217,3 +262,25 @@ first.
   spot checks matched the plan on all six columns; `lifetime_value_cents` unchanged at
   370,187,800. Slice 2 adds 3.09 ms/account (busiest 150) and 2.60 ms (random 150) to
   `Calculator#compute`.
+- 2026-09-11 — second dev-restore pass, on a fresh 2026-09-11 snapshot after an independent
+  `metrics:recompute`: all twelve invariants 0, the three non-zero rows exact again (3 legal
+  value-without-parents, 102 over one active user, 5 at zero), 10288's `active_user_count` 6,
+  1593's `peak_365_ended_on` unmoved at 2021-08-09, 11510 still peak == lifetime == 26 with
+  trailing value == `lifetime_value_cents` == 728,500. Four of the five spot-check accounts had
+  drifted one day of shoots from the 2026-09-10 table and the `peak == rolling` shape had moved
+  from 1123 to 11510, so §6 was rewritten to name the shapes and the two absolute cells rather
+  than fixed account ids.
+- 2026-09-11 — **deployed to production.** Migration `20260911120000` logged at 13:24:41 UTC,
+  outside the 02:15–02:45 scheduler window. `metrics:recompute` 2 min 36.89 s wall, 0 failed,
+  writing a 13:26:20 UTC snapshot over 4,078 active accounts. Every step 5 invariant 0. All five
+  step 6 spot checks matched the same-day dev restore on all six columns — 30 of 30 cells — with
+  both absolute cells good: 10288's `active_user_count` 6, 1593's `peak_365_ended_on` still
+  2021-08-09. 11510 carried the `peak == rolling` shape (26/26, peak == lifetime, trailing value
+  == `lifetime_value_cents` == 728,500) and 1123 the complementary one (peak 26 held over rolling
+  25). Fleet `SUM(rolling_365_parent_count)` 1,488 matched a live `Order.qualifying_parents`
+  re-derivation exactly with the cutoff pinned to the sweep; `SUM(rolling_365_value_cents)`
+  43,026,700. The read-out's Snapshot line read the new `computed_at`, "no recomputed metrics row"
+  0, and its 1,476 shoots across 513 accounts reconciled to the fleet sums minus the 12 shoots on
+  the 2 excluded accounts. Steps 4 and 7 were amended from this run: the sweep now has a
+  production duration baseline, and the read-out's user counts are documented as net of the
+  exclusions (101 in scope vs 102 fleet-wide, account 2 holding 16 active users).
