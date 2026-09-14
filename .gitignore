@@ -22,7 +22,7 @@
 
 # ── Repo packing for external AI tools ────────────
 # !bin/ only lets git descend into bin/; the top-level * still matches
-# bin/dev and bin/api-*, so the foreman launchers stay untracked.
+# bin/dev, so the foreman launcher stays untracked.
 !bin/
 !bin/repomix-pack
 

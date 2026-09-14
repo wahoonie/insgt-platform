@@ -5,6 +5,8 @@ services:
     build:
       context: ..
       dockerfile: .devcontainer/Dockerfile
+    mem_limit: 10g
+    memswap_limit: 10g
     volumes:
       - ..:/workspace:cached
       - ${HOME}/.insight-data:/host-data:cached
@@ -14,12 +16,15 @@ services:
 
     # Chromium/Electron crash mid-run on the 64M Docker default
     shm_size: 2gb
+
     environment:
       DATABASE_HOST: db
       DATABASE_PORT: "5432"
       DATABASE_USERNAME: postgres
       DATABASE_PASSWORD: postgres
       REDIS_URL: redis://redis:6379/0
+      NODE_OPTIONS: "--max-old-space-size=4096"
+      PARALLEL_WORKERS: "3"
 
     depends_on:
       db:
@@ -33,6 +38,10 @@ services:
   db:
     image: postgres:15
     restart: unless-stopped
+    mem_limit: 2g
+    memswap_limit: 2g
+    mem_reservation: 512m
+    shm_size: 256mb
 
     environment:
       POSTGRES_USER: postgres
@@ -55,9 +64,12 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
