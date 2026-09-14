@@ -1,16 +1,18 @@
 # Account Classification Architecture
 
 **Repo:** `insgt-api` · **Consumers:** `insgt-ops` teams page, Pipedrive nightly push
-**Status:** Slices 1a and 1b deployed to production 2026-09-10, with slice 4's column and API; slice 2 deployed to production 2026-09-11; see §9
-**Version:** 5 · **Last updated:** 2026-09-11 (slice 2 deployed)
-**Supersedes:** v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§13 for what changed and why.
+**Status:** Slices 1a and 1b deployed to production 2026-09-10, with slice 4's column and API; slice 2 deployed to production 2026-09-11; slice 3 implemented and verified 2026-09-14, not deployed; see §9
+**Version:** 6 · **Last updated:** 2026-09-14 (slice 3 implemented)
+**Supersedes:** v5 (2026-09-11), v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§14 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
 `account-classification-drift-audit-2026-09-07.md` (the evidence behind v3),
 `shift-memo-slice-1b-2026-09-10.md` (what slice 1b moves, account by account),
 `../plans/account-classification-slice-2.md` (slice 2's survey, plan and the fourteen gaps it
-pinned), `../runbooks/deploy-account-classification-2.md` (the slice 2 deploy), and the contract
-spec `insgt-api/spec/architecture/account_classification_spec.rb` (§5.1–§5.4 pinned on the
-canonical fixtures; later slices append to it).
+pinned), `../plans/account-classification-slice-3.md` (slice 3's survey, plan and the fifteen gaps
+it pinned), `../runbooks/deploy-account-classification-2.md` (the slice 2 deploy),
+`../runbooks/deploy-account-classification-3.md` (the slice 3 deploy), and the contract
+spec `insgt-api/spec/architecture/account_classification_spec.rb` (§5.1–§5.4 and §4.2–§4.3 pinned
+on the canonical fixtures; later slices append to it).
 
 ---
 
@@ -264,27 +266,52 @@ Until D6 closes, slice 6 is blocked and §5.5 is stale.
 acquisition are different facts and both are worth keeping. Do not add organization rows to
 `marketing_sources` to represent headshot events.
 
-### 3.4 `account_metrics` — add nine columns
+### 3.4 `account_metrics` — nine columns and one index, in two slices
+
+**Slice 2** (`20260911120000`, merged as `d98632f`, migrated in production 2026-09-11):
 
 ```ruby
 add_column :account_metrics, :rolling_365_parent_count, :integer
 add_column :account_metrics, :rolling_365_value_cents,  :bigint
 add_column :account_metrics, :peak_365_parent_count,    :integer
 add_column :account_metrics, :peak_365_ended_on,        :date
-add_column :account_metrics, :lifecycle_type,           :integer, limit: 2
-add_column :account_metrics, :lifecycle_type_at,        :datetime
-add_column :account_metrics, :value_type,               :integer, limit: 2
-add_column :account_metrics, :peak_value_type,          :integer, limit: 2
 add_column :account_metrics, :active_user_count,        :integer
-
-add_index :account_metrics, [:lifecycle_type, :value_type]
-add_index :account_metrics, [:account_id, :lifecycle_type]
 ```
 
-**The five numeric columns shipped in slice 2** (`20260911120000`, merged as `d98632f`, migrated
-in production 2026-09-11); `lifecycle_type`, `lifecycle_type_at`, `value_type`, `peak_value_type`
-and the two indexes are slice 3. All nine are nullable; none takes a factory default
-(`insgt-api/CLAUDE.md`, "a nullable column whose NULL means something").
+**Slice 3** (`20260912120000` for the columns, `20260912120001` for the index — two files, because
+a concurrent index cannot run inside a transaction and a failure would otherwise leave the columns
+added with `schema_migrations` unmarked):
+
+```ruby
+add_column :account_metrics, :lifecycle_type,    :integer, limit: 2
+add_column :account_metrics, :lifecycle_type_at, :datetime
+add_column :account_metrics, :value_type,        :integer, limit: 2
+add_column :account_metrics, :peak_value_type,   :integer, limit: 2
+
+# Its own migration, with disable_ddl_transaction!, a leading remove_index … if_exists: true, and
+# algorithm: :concurrently spelled by hand in BOTH directions.
+add_index :account_metrics, %i[lifecycle_type value_type],
+          name: 'index_account_metrics_on_lifecycle_type_and_value_type',
+          algorithm: :concurrently, if_not_exists: true
+```
+
+All nine are nullable; none takes a factory default (`insgt-api/CLAUDE.md`, "a nullable column
+whose NULL means something").
+
+**One index, not two.** v5 asked for `[:account_id, :lifecycle_type]` as well. It is not shipped:
+`db/schema.rb` already carries `index_account_metrics_on_account_id` as UNIQUE, so there is at most
+one row per account and a composite leading on `account_id` cannot improve any lookup that index
+does not already answer — it would only be a second key to write on every nightly sweep. The kept
+index serves the one access path that is not a single-row lookup, the teams-page segment filter
+`WHERE lifecycle_type = ? AND value_type = ?`, and even that is precautionary over a 4,081-row,
+776 kB table.
+
+**The v5 index snippet did not run.** Written without `algorithm:`, it raises: `strong_migrations`
+2.8.0 rejects any non-concurrent `add_index` against an existing table regardless of row count, and
+`safe_by_default` is off in this repo. The spelling above is the one the repo's three existing
+concurrent-index migrations use, and `down` repeats `algorithm: :concurrently` by hand because
+`StrongMigrations.check_down` is false — nothing warns in that direction, and a plain
+`remove_index` would take the ACCESS EXCLUSIVE lock the forward migration exists to avoid.
 
 **What NULL means on the five.** Every count already on `account_metrics` is `NOT NULL DEFAULT 0`;
 these are not, and the table now carries two count conventions on purpose. NULL means "not
@@ -336,8 +363,60 @@ from the dialog) and `rolling_365_value_cents` inside the owner-only money block
 `user_count`, and a second name for it is the two-names failure the `last_shoot_at` rule exists to
 prevent; the stored copy serves the nightly snapshot and slice 3's filters.
 
-`lifecycle_type_at` records when the current label first held. It is what the Pipedrive push
-debounces against, and it answers "how long have they been At Risk."
+**`lifecycle_type_at` records when the current label first held**, and it is **derived from the
+account's own history**, not stamped when a nightly sweep notices a change. It is what the
+Pipedrive push debounces against, and it answers "how long have they been At Risk."
+
+| Label | `lifecycle_type_at` |
+| :--- | :--- |
+| `prospect` | `NULL` — the label has no start event |
+| `new` | `first_shoot_at` |
+| `active` | the later of the current run's start and `first_shoot_at + 90 days` |
+| `cooling` | `most_recent_shoot_at + 91 days` |
+| `at_risk` | `most_recent_shoot_at + 181 days` |
+| `lapsed` | `most_recent_shoot_at + 366 days` |
+
+The three degrading stamps are the **exact instants the floored-day rule of §4.2 crosses each
+boundary**: `cooling` begins at the first moment floored days reach 91, which is precisely
+`most_recent_shoot_at + 91 days`. Label and stamp are therefore two readings of one number and
+cannot contradict each other. Verified across all 1,863 degrading rows on the 2026-09-10 restore:
+re-evaluating §4.2 **at** each stored stamp reproduces the stored label for every row. The
+one-day-earlier offsets (`+90 / +180 / +365`) fail that test on all 1,863, because at those
+instants the account is still in the warmer band.
+
+**The `active` stamp is deliberately outside that re-derivation check.** It is a named calendar
+offset from the first shoot, not the first instant of a band, so evaluating §4.2 at exactly
+`first_shoot_at + 90 days` still returns `new` — the `new` comparison is continuous and inclusive.
+That single-instant overlap is intended, and account 10288's canary depends on it. Apply the
+re-derivation check to the three degrading labels only.
+
+The `active` stamp needs the **run start** because "still coming" began when they came back, not
+when they last booked. A run is an unbroken sequence of qualifying visits with no gap of 91 days
+or more (the first gap that would have taken the account out of `active`). Where the run reaches
+back past the first shoot, the account became `active` when it stopped being `new`, hence the
+`max`. Measured: of the 152 `active` accounts, 142 have an earlier gap long enough that their run
+starts after their first shoot, and the derived "active since" has a median age of 85 days against
+34 for "since the last shoot" — the run start carries information the last visit does not.
+
+**Why not a stored-row comparison.** §6 step 3 originally read "update `lifecycle_type_at` only
+when the value actually changes," which describes a mechanism: compare the computed label to the
+stored one and stamp `Time.current` on a difference. That was rejected on three grounds, and the
+derived rule satisfies the *property* it was reaching for — a derived stamp is stable for as long
+as the label holds and moves exactly when the label moves.
+
+- **It is wrong on day one and stays wrong.** Every row would read "since the deploy date,"
+  including 1,557 `lapsed` accounts whose measured median true hold is 1,655 days and whose
+  maximum is 3,666. The column could not answer the question §3.4 gives it until the label next
+  changed.
+- **It would be the first column here to read its own previous value**, which the calculator
+  rejects in writing for `peak_365_parent_count` (slice 2, G14).
+- **It is not reproducible on the memo path.** `account_classification:shift_memo_1b` builds the
+  calculator on an unsaved `Account.new(id:)` to read the live definition, and `Calculator#compute`
+  promises in writing that it "does not look at the row." A stored comparison would either move
+  into `#call`, leaving the memo's live definition incomplete, or falsify that comment.
+
+A code rollback that leaves the columns in place, or any re-run after a restore, would also
+fabricate a change on the next sweep under the stamped rule. Under the derived rule it does not.
 
 `active_user_count` is `Account#users_count`: `COUNT(DISTINCT users.id)` over `accounts_users`
 with the membership active **and** the user active — the predicate behind `has_many :users`, the
@@ -424,6 +503,46 @@ Six values, derived from `most_recent_shoot_at` and `first_shoot_at`.
 `new` and `active` overlap by construction. The precedence rule is stated so two correct
 implementations cannot produce different answers.
 
+**The arithmetic, pinned.** The three degrading boundaries compare **floored whole days**; `new`
+is a **continuous** comparison against 90 days. The asymmetry is inherited from the rule slice 1b
+already shipped in the shift memo, and it is preserved deliberately rather than tidied: the table
+above is written in whole days, floored days are what Don was already shown, and unifying `new`
+onto floored days was measured to change 0 of 4,078 accounts.
+
+```ruby
+return :prospect if most_recent_shoot_at.nil?
+return :new if first_shoot_at && (now - first_shoot_at) <= 90.days
+
+days = ((now - most_recent_shoot_at) / 1.day).floor
+if days <= 90 then :active elsif days <= 180 then :cooling elsif days <= 365 then :at_risk else :lapsed end
+```
+
+A day exactly on a boundary belongs to the **warmer** label: 90 days is still `active`, 365 days is
+still `at_risk`. Measured on the 2026-09-10 restore, the floored rule differs from a continuous
+interval for 2 of 4,078 accounts (2394 and 3661, both 365.8 days out; `at_risk` under the floor
+rule), and for 0 accounts on the `new` boundary. Both had crossed into `lapsed` under either rule
+three days later, which is the drift these labels are supposed to have.
+
+**`new` is a pure override, never a tie-break.** `most_recent_shoot_at >= first_shoot_at` always,
+so a first shoot inside 90 days implies a visit inside 90 days: every `new` account also satisfies
+the `active` rule. Measured: 0 accounts have a first shoot inside 90 days and no visit inside 90
+days. The precedence rule therefore only ever *overrides*; it never breaks a tie between two
+labels that could both have been reached.
+
+**Distribution** (2026-09-10 production restore, evaluated 2026-09-11 14:20 UTC, 4,078 active
+accounts): `prospect` 2,004 · `new` 61 · `active` 152 · `cooling` 138 · `at_risk` 166 ·
+`lapsed` 1,557. These drift with the clock and must be re-derived on any deploy day: replayed
+three days later the same data gave `new` 58 · `active` 153 · `cooling` 134 · `at_risk` 169 ·
+`lapsed` 1,560, with all 13 movers identifiable by account id. Measured churn with no new shoots:
+2 accounts change label the next day, 29 within seven days. How long each degrading label has
+actually held, derived from history: `cooling` median 41 days (max 90), `at_risk` median 73
+(max 185), `lapsed` median 1,655 (max 3,666).
+
+**`lapsed` implies `value_type IS NULL`**, structurally: no qualifying visit in 365 days means no
+qualifying parent in 365 days. Measured — every one of the 1,557 `lapsed` accounts and all 2,004
+`prospect` accounts carried a NULL `value_type`. The two labels are still orthogonal where it
+matters: account 1842 is `cooling` with `value_type: anchor`, and 2687 is `at_risk` with `core`.
+
 **Lifecycle cannot flap.** Days-since-last-shoot increases monotonically between shoots and
 resets on a new one. It degrades, then jumps back on a real event. No hysteresis needed.
 
@@ -467,9 +586,39 @@ freeze an inflated peak from a deleted duplicate order and be the first column t
 previous value.
 
 **NULL, not `single`, when the count is zero.** A zero count is a real zero; the tier is
-undefined. Consistent with the propagate-null convention. `lib/tasks/accounts.rake` already
-mirrors these bands as `SHOOT_VOLUME_TIERS` for the joint-ownership read-out, with a separate
-"no shoots" row for the zero case; when the column lands the two must describe the same bands.
+undefined. Consistent with the propagate-null convention, and with the precedent already in the
+calculator: a rate over a zero denominator stores NULL rather than `0.0000`, so "no shoots yet"
+stays distinguishable from "0%".
+
+This makes `account_metrics` carry **two NULL conventions across the four slice 3 columns**, and
+the difference is load-bearing. On `value_type` and `peak_value_type`, NULL is a fact about the
+*account*: the count is zero. On `lifecycle_type`, NULL is a fact about the *sweep*: the row has
+not been recomputed since slice 3 shipped. An account that has never been shot is `prospect`, not
+NULL — that is what the label is for. `lifecycle_type_at` follows `lifecycle_type` except that it
+is also NULL for every `prospect`, which has no start event. The resulting invariant, checked
+after every sweep: `lifecycle_type_at IS NULL` exactly when the row is unswept or the account is a
+`prospect`.
+
+The trap this hides is that both counts are coerced to a real `0` upstream and are never nil, so a
+band lookup that does not special-case zero files every shootless account under `single` — 3,563
+of 4,078 rows on the survey restore, the single largest population in the fleet.
+
+`lib/tasks/accounts.rake` mirrored these bands as `SHOOT_VOLUME_TIERS` for the joint-ownership
+read-out, with a separate "no shoots" row for the zero case, and its own comment promised the two
+must not diverge once the columns landed. **Slice 3 closed that**: the four ranges are now read
+from `AccountClassification::VALUE_BANDS` and only the printed labels stay local. The read-out's
+output was verified byte-identical before and after.
+
+**Distributions** (same restore, 4,078 active accounts). `value_type`: NULL 3,563 · `single` 277 ·
+`occasional` 178 · `core` 41 · `anchor` 19. `peak_value_type`: NULL 2,004 · `single` 1,071 ·
+`occasional` 701 · `core` 191 · `anchor` 111. The reactivation cohort is 42 accounts. Note that
+`peak_value_type` does **not** drift with the clock — it is monotonic against the passage of time —
+so unlike the lifecycle figures, movement there between two runs over the same data is a finding
+rather than expected decay.
+
+**Band-edge population, for the flap the debounce exists to absorb:** 277 accounts sit at a
+trailing count of 1, 79 at 2, 26 at 5, 3 at 11 and 4 at 12. Nothing in slice 3 debounces; the push
+is slice 7's, at the push boundary, by design.
 
 `value_type` *can* flap as shoots roll off the back of the window. Store the true value nightly
 and debounce at the Pipedrive push boundary (§6), not in the database. Ops sees truth.
@@ -778,12 +927,51 @@ rather than adding a second job.
    was never recorded.
 2. Recompute `active_user_count` from active `accounts_users`. **Done in slice 2**, as
    `Account#users_count` (§3.4).
-3. Derive `lifecycle_type`, `value_type`, `peak_value_type` from a single thresholds config
-   object. Update `lifecycle_type_at` only when the value actually changes.
+3. Derive `lifecycle_type`, `value_type`, `peak_value_type` and `lifecycle_type_at` from a single
+   thresholds config object. **Done in slice 3:** one more merge on `AccountMetrics::Calculator`,
+   taking the accumulated hash rather than running its own queries, plus one new window query for
+   the active-run start. No change to `RecomputeAll` or the rake task. The sweep ran 1 min 11 s
+   over 4,078 accounts on the dev restore, 0 failed, against a production baseline of
+   2 min 36.89 s.
+
+   `lifecycle_type_at` is **derived from history** rather than stamped when the sweep notices a
+   change (§3.4 carries the table and the three reasons). This preserves what this step was
+   asking for — the stamp moves exactly when the label moves and is otherwise stable — while
+   dropping a mechanism that would have been wrong on day one for every row, would have made this
+   the first column to read its own previous value, and would have broken the shift memo's
+   unsaved-account path.
 4. Push changed computed fields to Pipedrive.
 
 **Thresholds live in one Ruby config object**, not scattered across the job. Retuning a boundary
 should not require a migration; the nightly run backfills.
+
+That object is **`AccountClassification`, in `insgt-api/lib/account_classification.rb`** (slice 3):
+frozen constants for the §4.2 day boundaries and the §4.3 volume bands, and three pure lookups over
+them. No database, no model, and no enum integers — §3.0 puts those on `AccountMetric`, so the
+config returns names and the model maps names to integers, with the contract spec pinning the two
+vocabularies against each other in both directions.
+
+It lives in `lib/` because the dependency direction is **forced, not chosen**:
+`config.autoload_lib(ignore: %w[assets tasks])` means `lib/tasks/*.rake` is not autoloaded, so
+`app/services` cannot reference anything defined in a `.rake` file. The shared rule therefore had
+to move out of the rake file, and the rake files read it.
+
+Three artifacts now read it, and there is no fourth copy of either rule:
+
+- `AccountMetrics::Calculator#classification` — the stored columns.
+- `AccountClassificationShiftMemo#lifecycle` and `#lifecycle_order`
+  (`lib/tasks/account_classification.rake`) — the memo's live definition, which is only meaningful
+  as a comparison if it and the stored column come from one rule.
+- `AccountAudit#shoot_volume_tiers` (`lib/tasks/accounts.rake`) — the joint-ownership read-out's
+  bands, keeping its own printed labels and its own "no shoots" row.
+
+**A rake file must read the config lazily, inside a task.** `rakefile` requires
+`config/application` and calls `load_tasks` *without* initializing the application, so Zeitwerk is
+not yet set up while `.rake` files are being read. A constant in a `.rake` file that references
+`AccountClassification` at file-load time aborts **every** `rake` invocation in the repo,
+`db:migrate` included, with `NameError`. The two read-outs above resolve it in a memoised method
+instead. The rake specs do not catch this, because they load task files through
+`Rake.application.rake_require` inside an already-initialized app.
 
 **Store inputs beside labels.** `lifecycle_type = lapsed` sitting next to `most_recent_shoot_at`
 and `rolling_365_parent_count` means the label is always explainable without re-running anything.
@@ -957,7 +1145,7 @@ the `file:line` evidence.
 | 1a | `order_types.category_type` + exhaustive backfill + the three §5.1 scopes | **Deployed 2026-09-10** with 1b (`docs/runbooks/deploy-account-classification-1a-1b.md`); column, backfill and API 1b88f09, scopes 7aa170b | 1b |
 | 1b | Rewrite existing `account_metrics` and `AccountQuery` consumers onto the scopes + shift memo | **Deployed 2026-09-10** (`master` merge 514e5c4 of 7aa170b..afeb1f7); memos `shift-memo-slice-1b-2026-09-10.md` (dev restore) and `shift-memo-slice-1b-2026-09-10-production.md` (the hand-over copy) | everything |
 | 2 | New `account_metrics` numeric columns incl. `active_user_count` + nightly recompute | **Deployed 2026-09-11** (`master` merge d98632f of cf0745d..ca49f32, 16 commits); migration `20260911120000` logged 13:24:41 UTC, recompute 2 min 36.89 s over 4,078 accounts, 0 failed, every invariant 0; runbook `deploy-account-classification-2.md` | 3, teams page |
-| 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | Not started | teams page, 7 |
+| 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | **Implemented and verified 2026-09-14, not deployed.** Migrations `20260912120000` (four columns) and `20260912120001` (one index), `lib/account_classification.rb`, three enums on `AccountMetric`, `lifecycle_run_sql` + `classification` on the calculator, four fields on the metrics endpoint, both rake read-outs reconciled onto the config. Suite 1,688 examples 0 failures; sweep 1 min 03 s over 4,078 accounts 0 failed on the dev restore; all 11 invariants 0; both migrations run migrate/rollback/migrate; `accounts:joint_ownership` byte-identical. Plan `../plans/account-classification-slice-3.md`, runbook `deploy-account-classification-3.md` | teams page, 7 |
 | 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; ops UI on insgt-ops `main`, pending its release; backfill and organization type audit not started | 7 |
 | 5 | `marketing_events.event_type` + backfill | **Void.** See §3.2 | — |
 | 6 | Acquisition reference derivation (§5.5) | **Blocked on D6** | per-event ROI |
@@ -1161,3 +1349,59 @@ two review rounds.
 | §6 steps 1–2 | Planned | Done; runtime recorded | Slice 2 |
 | §9 status | Slice 2 not started | Implemented and reviewed, not deployed; runbook written | Slice 2 |
 | §9 status (later, 2026-09-11) | Slice 2 implemented and reviewed, not deployed | Deployed to production 2026-09-11; §6 carries a production sweep duration for slice 3 to extend | Deployed by Dan, 2026-09-11 |
+
+---
+
+## 14. Changes from v5
+
+Sourced from slice 3 (branch `feat/account-classification-slice-3`, uncommitted at time of
+writing), its plan (`docs/plans/account-classification-slice-3.md`, gaps G1–G15) and the
+implementation session of 2026-09-14, which measured everything below against a 2026-09-10
+production restore.
+
+| Area | v5 | v6 | Why |
+| :--- | :--- | :--- | :--- |
+| §3.4 heading | "add nine columns", all nine in one block | Split into the slice 2 block and the slice 3 block, with the two migration filenames and why the columns and the index are separate files | The single block read as one unshipped unit when five of the nine had already shipped |
+| §3.4 index | Two indexes, `add_index` with no `algorithm:` | **One** index, `[lifecycle_type, value_type]`, concurrent in both directions with a leading `remove_index`; `[account_id, lifecycle_type]` dropped with the reason | G6 — the existing UNIQUE index on `account_id` means at most one row per account, so the composite cannot improve any lookup. G15 — the v5 snippet raises under `strong_migrations` and never ran |
+| §3.4 `lifecycle_type_at` | "records when the current label first held" | The full derivation table, the run-start rule for `active`, and the three reasons a stored-row comparison was rejected | G1 — the literal reading stamps all 4,078 rows with the deploy date, including 1,557 `lapsed` accounts whose measured median hold is 1,655 days |
+| §3.4 NULL | One convention, stated for the five numeric columns | Two conventions across the four new columns, stated explicitly: NULL is a *value* on the tier columns and an *unswept row* on `lifecycle_type` | G4 — both counts are coerced to a real 0 upstream, so a band lookup without a zero case files 3,563 accounts under `single` |
+| §4.2 arithmetic | A table in whole days, rounding unstated | Floored whole days for the three degrading boundaries, continuous for `new`, written out; boundary days belong to the warmer label | G2 — the rule slice 1b already shipped. Differs from a continuous interval for 2 of 4,078 accounts and for 0 on the `new` boundary |
+| §4.2 precedence | "`new` and `active` overlap by construction" | Proved a pure override: `most_recent_shoot_at >= first_shoot_at` always, and 0 accounts are `new` without also qualifying as `active` | Measured; two correct implementations cannot now differ on a tie |
+| §4.2 / §4.3 figures | None | Full distributions for all three columns, the reactivation cohort, degrading-label hold times, band-edge population, and a warning about which figures drift with the clock | The implementation reproduced every v6 figure exactly when replayed at the survey instant |
+| §4.3 zero rule | "NULL, not `single`" and a note that the read-out must not diverge | The `rate` precedent named, the coercion trap stated, and the divergence actually closed — `SHOOT_VOLUME_TIERS` now reads `VALUE_BANDS` | G3; the read-out's own comment had asked for this in writing |
+| §6 step 3 | "Update `lifecycle_type_at` only when the value actually changes" | Marked done, and re-worded: the stamp is derived from history, which preserves the property that step was asking for without the mechanism | G1 |
+| §6 config object | "one Ruby config object", unlocated | `AccountClassification` in `lib/account_classification.rb`, why `lib/` is forced rather than chosen, and the three artifacts that read it | G3 — `config.autoload_lib` ignores `lib/tasks`, so `app/services` cannot read a `.rake` file and the dependency only runs one way |
+| §6 config object | Silent on load order | A rake file must read the config in a memoised method, never in a constant: `rakefile` calls `load_tasks` without initializing the app, so a load-time reference aborts every `rake` invocation including `db:migrate` | Found during implementation; the rake specs cannot catch it because they load task files inside an initialized app |
+| §9 slice 3 | Not started | Implemented and verified 2026-09-14, not deployed, with the evidence | Slice 3 |
+
+### Review findings that changed the code
+
+Two rounds: a six-lens adversarial pass with three independent refuters per finding, and an
+independent Codex review over the same working tree. Three findings survived and were fixed; the
+rest were refuted or are already-intentional.
+
+| Finding | Disposition |
+| :--- | :--- |
+| The run gap read `> 90 days` instead of `>= 91 days` | **Fixed.** The two agree on every whole number of days and disagree on every fraction between them. A gap of 90 days and 12 hours floors to 90, so the account never left `active` and the run must not break. No spec distinguished them; one now does |
+| `lifecycle_started_at` returned `most_recent_shoot_at` for `new` instead of `first_shoot_at` | **Fixed.** The spec that was meant to guard it passed the SAME value as both arguments, so it could not tell them apart. Both the unit spec and a calculator example now use two different dates |
+| The `new` boundary had no example distinguishing a continuous comparison from a floored one | **Fixed.** An example at one second past 90 days now pins it; it goes red under a floored `new` rule and nothing else did |
+| The cancelled-order example did not actually guard the universe (round 2) | **Fixed.** Its three dates left a 92-day gap between the cancelled order and the next visit, so the run broke at the same place whether or not the cancelled order was admitted. Moved to dates where admitting it changes the answer; it now goes red if the run query widens past `Order.qualifying` |
+| `visits_sql`'s comment still said "Feeds the date range only" (round 2) | **Fixed.** It has two consumers now. The correction was in the plan, missed on the first pass, and the codebase notes had already claimed it was done |
+| Ties in `lifecycle_run_sql` are nondeterministic, possibly NULL (Codex) | **Refuted, then pinned anyway.** Measured 1,000 runs over five tie shapes: one distinct answer each, never NULL. It is structural, because a later peer's `LAG` is an earlier peer at the same instant, so its gap is zero and every peer's frame already contains the earlier ones. A regression example now says so |
+| `lifecycle_run` runs for all 4,078 accounts although only ~152 are `active` (Codex) | **Already-intentional** (G5), and a one-line reversal if the cost is ever unwelcome. Branching on the label makes the sweep's cost depend on the data and leaves the query unexercised for five of the six labels. Measured cost: about 1.4 ms per account, roughly 6 s across the fleet against a 2 min 37 s baseline |
+| Several independently sampled clocks in one snapshot could break `lapsed ⇒ value_type IS NULL` (Codex) | **Refuted.** The invariant is structural, not clock-dependent: `most_recent_shoot_at` ranges over visits and every parent is a visit, so an account whose latest visit is 366 days old has no parent inside 365 days. Closing the gap would take a full day of drift between two cutoffs sampled milliseconds apart. Per-method cutoffs are the convention slice 2 pinned as G3 |
+
+**A process note worth keeping.** The adversarial reviewers were given permission to edit source in
+order to confirm a spec goes red. Two of them left the tree modified, and a third left probe files
+behind, while an independent reviewer was reading the same uncommitted working tree. Every edit was
+found and reverted, and the suite, the sweep, the invariants, the spot checks and the read-out
+comparison were all re-run against the final state. Reviewers that mutate a shared working tree
+should be given a copy of it, not the tree itself.
+
+**One correction to the slice 3 plan.** The plan's spot-check table computed the three degrading
+stamps as `most_recent_shoot_at + 90 / 180 / 365 days`, where its own G1 rule table says
+`+ 91 / 181 / 366`. The rule table is right and the spot-check table was arithmetically wrong.
+Decisive evidence: re-evaluating §4.2 at each stored stamp reproduces the stored label for all
+1,863 degrading rows under `+91 / +181 / +366`, and for **none** of them under `+90 / +180 / +365`,
+because at those earlier instants the account is still in the warmer band. The runbook's spot-check
+table carries the corrected values.
