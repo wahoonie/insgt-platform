@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-14
 **Repos:** insgt-api
 **Estimated duration:** ~15 min
-**Status:** Draft (not deployed)
+**Status:** Deployed to production 2026-09-14
 
 ## Summary
 
@@ -54,6 +54,72 @@ every account fails, nothing is written, and the run has to be repeated. Deploy 
 - [ ] No deploy in flight; not inside the 02:15–02:45 UTC scheduler window
 - [ ] Baseline kept: `heroku run rake accounts:joint_ownership -a insgtapi` output from before the
       deploy. Step 8 diffs it
+
+      heroku run rake accounts:joint_ownership -a insgtapi
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+Running rake accounts:joint_ownership on ⬢ insgtapi... up, run.6786
+Joint ownership weighted by volume — 4,132 active accounts weighed
+  Excluded: 2 InsightPhotos, 89 Insight Photos Marketing, 2555 Jack Brown
+  Active user   = account_metrics.active_user_count: users.status_type 1 holding an active accounts_users row, counted once however many roles they hold
+  Owner         = active accounts_users row carrying the account_owner role
+  Shared owner  = that owner owns another IN-SCOPE account; two agents each owning their own account do not count
+  Shoot         = account_metrics.rolling_365_parent_count: Order.qualifying_parents (completed property parent; reshoots in, recaptures out), dated by scheduled_at, falling back to its first completed log
+  Window        = the trailing 365 days as of the recompute that wrote the row, not as of this invocation
+  Snapshot      = oldest computed_at among the weighed accounts: 2026-09-14 02:30:32 UTC
+  1,473 shoots in the window across 513 accounts
+  1 in-scope account(s) have no recomputed row and are excluded from every table below; see Context
+
+  Segment                                      Accts  Accts%     Shoots Shoots%
+  Sole owner, one active user                  4,025   97.4%      1,212   82.3%
+  More than one active user only                  99    2.4%        254   17.2%
+  Owner owns another account only                  6    0.1%          0    0.0%
+  Both                                             2    0.0%          7    0.5%
+  ----------------------------------------------------------------------------
+  Joint by either test                           107    2.6%        261   17.7%
+
+Joint share within each volume tier
+  Tier                 Accts   Joint  Joint%     Shoots  JntShts JntSht%
+  no shoots            3,619      70    1.9%          0        0    0.0%
+  single (1)             278       7    2.5%        278        7    2.5%
+  occasional (2-5)       177      17    9.6%        544       57   10.5%
+  core (6-11)             39       6   15.4%        289       45   15.6%
+  anchor (12+)            19       7   36.8%        362      152   42.0%
+
+Top 25 joint accounts by shoots in the window
+    Shoots  Users  Owners  Shared  Acct ID  Name
+        51      6       1  no        10288  PURE / San Diego
+        25      4       1  no         1123  Ray Shay
+        21      2       1  no         1593  Deniese Ossey
+        17      2       1  no          185  Tim & Kristine Skoglin
+        13      2       1  no         1842  Lee Arnold
+        13      2       1  no        11213  Carlos Ledesma
+        12      2       1  no         2104  Dana Clymer
+        11      2       1  no          139  Deborah Harper
+         9      2       1  no         1272  Claude Blackman
+         7      4       1  yes        1642  Jon Shea
+         6      2       1  no           76  Jason Taylor
+         6      2       1  no          380  Jeff Underdahl
+         6      2       1  no         2315  Bob Adams
+         5      2       1  no           63  Ken & Caroll Dembowski
+         5      2       1  no          591  Judy Szamos
+         5      3       1  no         2789  Wendy Choisser
+         5      4       1  no         8176  Jim Klinge
+         4      3       1  no          193  Alex Mickle
+         4      2       1  no          454  Mike Acker
+         4      2       1  no          618  Joe Green
+         3      5       1  no          141  Mike Williams
+         3      2       1  no          360  Rick and Trudy McGrath
+         3      2       1  no          789  Anna Song
+         3      2       1  no          889  George Piner
+         3      2       1  no         1433  Jody Sillstrop
+
+Context
+  Owners holding more than one in-scope account: 4
+  Accounts with no owner                           6    0.1%          0    0.0%
+  Accounts with more than one owner                0    0.0%          0    0.0%
+  Accounts with no active users                    5    0.1%          0    0.0%
+  Accounts with no recomputed metrics row, excluded from every table above: 1
+
 - [ ] `docs/architecture/account-classification.md` amended to v6 and the codebase notes current
 
 ## Steps
@@ -63,7 +129,7 @@ every account fails, nothing is written, and the run has to be repeated. Deploy 
 ```bash
 heroku pg:backups:capture --app insgtapi
 heroku pg:backups:download --app insgtapi
-mv latest.dump tmp/production-latest-<YYYY-MM-DD>_lock.dump
+mv latest.dump tmp/production-latest-2026-09-14_lock.dump
 ```
 
 ### 2. Maintenance on, deploy code
@@ -118,16 +184,20 @@ as null until then. Do not wait for the 02:30 UTC nightly.
 
 **Read the task's own summary line first.** `AccountMetrics::RecomputeAll` rescues `StandardError`
 per account and the rake task still exits 0, so a bug in the config object or the derivation can
-fail every account without failing the command. The line must read:
+fail every account without failing the command. The line must read `Failed: 0`, and `Scanned` must
+equal the active account count, which grows between deploys:
 
 ```
-Done. Scanned: 4078. Failed: 0.
+Done. Scanned: 4136. Failed: 0.
 ```
 
-Timing. On the dev restore the sweep took **1 min 11 s** for 4,078 accounts with slice 3 in place.
-The production baseline from slice 2 is **2 min 36.89 s**. Slice 3 adds one window query per
-account, measured at ~1.4 ms at survey, so expect roughly **2 min 40 s**. Record the actual wall
-clock in the deploy log.
+Timing. **Production ran 2 min 37.79 s** for 4,136 accounts on 2026-09-14, against a predicted
+2 min 40 s and slice 2's baseline of 2 min 36.89 s for 4,078. Slice 3's extra window query per
+account therefore costs under a second across the fleet at production scale, well inside the
+~1.4 ms per account measured at survey. That 2 min 37.79 s is the baseline slice 4 extends, not the
+dev figures: the same sweep takes 1 min 06 s on a local sync of the same 4,136 accounts, because
+`heroku run` dyno start-up and the network hop to the database sit inside the production number.
+Record the actual wall clock in the deploy log.
 
 ### 5. Invariants
 
@@ -160,26 +230,24 @@ Enum integers, for reading the SQL below: lifecycle `prospect` 1, `new` 2, `acti
 All eleven returned 0 on the dev restore after the sweep. Run them in one pass:
 
 ```bash
-heroku pg:psql -a insgtapi <<'SQL'
-WITH active_metrics AS (
-  SELECT account_metrics.*
-  FROM account_metrics
-  JOIN accounts ON accounts.id = account_metrics.account_id
-  WHERE accounts.status_type = 1
-)
-            SELECT  '1  lifecycle_type missing'          AS check_name, count(*) FROM active_metrics WHERE lifecycle_type IS NULL
-  UNION ALL SELECT  '2  prospect with a stamp',                         count(*) FROM active_metrics WHERE lifecycle_type = 1 AND lifecycle_type_at IS NOT NULL
-  UNION ALL SELECT  '3  non-prospect without a stamp',                  count(*) FROM active_metrics WHERE lifecycle_type <> 1 AND lifecycle_type_at IS NULL
-  UNION ALL SELECT  '4  stamp in the future',                           count(*) FROM active_metrics WHERE lifecycle_type_at > now()
-  UNION ALL SELECT  '5  value_type on a zero count',                    count(*) FROM active_metrics WHERE value_type IS NOT NULL AND rolling_365_parent_count = 0
-  UNION ALL SELECT  '6  no value_type on a positive count',             count(*) FROM active_metrics WHERE value_type IS NULL AND rolling_365_parent_count > 0
-  UNION ALL SELECT  '7  peak_value_type on a zero peak',                count(*) FROM active_metrics WHERE peak_value_type IS NOT NULL AND peak_365_parent_count = 0
-  UNION ALL SELECT  '8  no peak_value_type on a positive peak',         count(*) FROM active_metrics WHERE peak_value_type IS NULL AND peak_365_parent_count > 0
-  UNION ALL SELECT  '9  value_type above peak_value_type',              count(*) FROM active_metrics WHERE value_type > peak_value_type
-  UNION ALL SELECT '10  lapsed with a value_type',                      count(*) FROM active_metrics WHERE lifecycle_type = 6 AND value_type IS NOT NULL
-  UNION ALL SELECT '11  prospect with a peak_value_type',               count(*) FROM active_metrics WHERE lifecycle_type = 1 AND peak_value_type IS NOT NULL
-  ORDER BY 1;
-SQL
+heroku run rails runner '
+  active = AccountMetric.joins(:account).where(accounts: { status_type: 1 })
+  checks = {
+    "1  lifecycle_type missing"                => active.where(lifecycle_type: nil),
+    "2  prospect with a stamp"                 => active.where(lifecycle_type: :prospect).where.not(lifecycle_type_at: nil),
+    "3  non-prospect without a stamp"          => active.where.not(lifecycle_type: :prospect).where(lifecycle_type_at: nil),
+    "4  stamp in the future"                   => active.where("lifecycle_type_at > now()"),
+    "5  value_type on a zero count"            => active.where.not(value_type: nil).where(rolling_365_parent_count: 0),
+    "6  no value_type on a positive count"     => active.where(value_type: nil).where("rolling_365_parent_count > 0"),
+    "7  peak_value_type on a zero peak"        => active.where.not(peak_value_type: nil).where(peak_365_parent_count: 0),
+    "8  no peak_value_type on a positive peak" => active.where(peak_value_type: nil).where("peak_365_parent_count > 0"),
+    "9  value_type above peak_value_type"      => active.where("value_type > peak_value_type"),
+    "10 lapsed with a value_type"              => active.where(lifecycle_type: :lapsed).where.not(value_type: nil),
+    "11 prospect with a peak_value_type"       => active.where(lifecycle_type: :prospect).where.not(peak_value_type: nil)
+  }
+  checks.each { |name, relation| puts format("%-42s %6d", name, relation.count) }
+  puts "VIOLATIONS: #{checks.count { |_, relation| relation.count.positive? }} of #{checks.size}"
+' -a insgtapi
 ```
 
 ### 6. Distributions
@@ -196,20 +264,33 @@ heroku run rails runner '
 ' -a insgtapi
 ```
 
-Measured on a 2026-09-10 production restore evaluated at 2026-09-11 14:20 UTC. The implementation
-reproduced every one of these exactly when replayed at that instant:
+Measured twice. The 2026-09-14 row is the closest thing to a production expectation, because it
+comes from a full production sync migrated and swept under this code; the 2026-09-10 row is the
+figure the plan reasoned out before the code existed, which the implementation reproduced exactly
+when replayed at that instant.
 
-| Column | Distribution |
-| :-- | :-- |
-| `lifecycle_type` | `prospect` 2,004 · `new` 61 · `active` 152 · `cooling` 138 · `at_risk` 166 · `lapsed` 1,557 |
-| `value_type` | NULL 3,563 · `single` 277 · `occasional` 178 · `core` 41 · `anchor` 19 |
-| `peak_value_type` | NULL 2,004 · `single` 1,071 · `occasional` 701 · `core` 191 · `anchor` 111 |
-| `lapsed AND peak_value_type = anchor` | 42, the §4.3 reactivation cohort |
+| Column | 2026-09-14 sync (4,136 active accounts) | 2026-09-10 restore (4,078) |
+| :-- | :-- | :-- |
+| `lifecycle_type` | `prospect` 2,061 · `new` 58 · `active` 156 · `cooling` 133 · `at_risk` 168 · `lapsed` 1,560 | `prospect` 2,004 · `new` 61 · `active` 152 · `cooling` 138 · `at_risk` 166 · `lapsed` 1,557 |
+| `value_type` | NULL 3,621 · `single` 279 · `occasional` 177 · `core` 40 · `anchor` 19 | NULL 3,563 · `single` 277 · `occasional` 178 · `core` 41 · `anchor` 19 |
+| `peak_value_type` | NULL 2,061 · `single` 1,072 · `occasional` 701 · `core` 191 · `anchor` 111 | NULL 2,004 · `single` 1,071 · `occasional` 701 · `core` 191 · `anchor` 111 |
+| `lapsed AND peak_value_type = anchor` | 42 | 42 |
+
+**Production reproduced the 2026-09-14 column exactly, every bucket of all three rows**, because
+the sync was taken sixteen minutes before the production sweep and no account crossed a boundary in
+between. Do not expect that on a later deploy; expect it only when the two runs are minutes apart.
+
+Two structural checks hold on every dataset and are worth reading off the output directly. The NULL
+`peak_value_type` count equals the `prospect` count exactly, because no visit ever means no parent
+ever. The NULL `value_type` count equals `prospect` plus `lapsed` exactly, because no visit in 365
+days means no parent in 365 days. In production: 2,061 and 2,061 + 1,560 = 3,621.
 
 **These drift with the clock and must be re-derived on the day. Do not treat them as pass/fail.**
-Evaluated three days later, the same data gave `new` 58 · `active` 153 · `cooling` 134 ·
-`at_risk` 169 · `lapsed` 1,560, because 13 named accounts crossed a boundary in between. That is
-the lifecycle columns working, not a regression.
+The two columns above are four days apart on overlapping data and the four lifecycle bands between
+`new` and `at_risk` all moved. Replaying the older restore three days on accounted for every one of
+its moves by name, 13 accounts crossing a boundary. That is the lifecycle columns working, not a
+regression. The only figures that should match across two runs of the same data are the
+`peak_value_type` row and the structural identities just above.
 
 `peak_value_type` is the exception: it does not drift with time at all, being monotonic against
 the passage of time. Any movement in the `peak_value_type` row is a real finding and must be
@@ -243,22 +324,29 @@ differ if the re-derivation runs long after the sweep; check each one by hand ag
 
 ### 7. Spot checks
 
-One account per label, with the derived `lifecycle_type_at`. Verified on the dev restore
-(2026-09-10 production snapshot, evaluated 2026-09-11 14:20 UTC):
+One account per label, with the derived `lifecycle_type_at` and how long that label has held.
+Verified against the 2026-09-14 production sync:
 
-| Account | `lifecycle_type` | `lifecycle_type_at` | `value_type` | `peak_value_type` |
-| --: | :-- | :-- | :-- | :-- |
-| 3 | `prospect` | nil | NULL | NULL |
-| 11364 | `new` | 2026-07-06 22:00 UTC | `occasional` | `occasional` |
-| 10288 | `active` | 2025-09-10 18:30 UTC | `anchor` | `anchor` |
-| 1842 | `cooling` | 2026-08-10 16:00 UTC | `anchor` | `anchor` |
-| 2687 | `at_risk` | 2026-07-30 21:45 UTC | `core` | `anchor` |
-| 58 | `lapsed` | 2026-06-03 15:00 UTC | NULL | `anchor` |
+| Account | `lifecycle_type` | `lifecycle_type_at` | held | `value_type` | `peak_value_type` |
+| --: | :-- | :-- | --: | :-- | :-- |
+| 3 | `prospect` | nil | - | NULL | NULL |
+| 11364 | `new` | 2026-07-06 22:00 UTC | 69 d | `occasional` | `occasional` |
+| 10288 | `active` | 2025-09-10 18:30 UTC | 369 d | `anchor` | `anchor` |
+| 39 | `cooling` | 2026-07-02 16:00 UTC | 74 d | `single` | `anchor` |
+| 76 | `at_risk` | 2026-09-10 18:00 UTC | 4 d | `core` | `anchor` |
+| 48 | `lapsed` | 2017-04-16 20:00 UTC | 3,438 d | NULL | `anchor` |
+
+Account 48 is the row that makes the case for deriving this column rather than stamping it. It has
+been lapsed for nine and a half years; a column stamped when the nightly first noticed a change
+would read "lapsed since the deploy date" for it, and for 1,559 others.
 
 ```bash
 heroku run rails runner '
-  AccountMetric.where(account_id: [3, 11364, 10288, 1842, 2687, 58]).order(:account_id).each do |metric|
-    puts [metric.account_id, metric.lifecycle_type, metric.lifecycle_type_at, metric.value_type, metric.peak_value_type].inspect
+  ids = [3, 11364, 10288, 39, 76, 48]
+  now = AccountMetric.joins(:account).where(accounts: { status_type: 1 }).minimum(:computed_at)
+  AccountMetric.where(account_id: ids).sort_by { |metric| ids.index(metric.account_id) }.each do |metric|
+    held = metric.lifecycle_type_at ? ((now - metric.lifecycle_type_at) / 1.day).floor : nil
+    puts [metric.account_id, metric.lifecycle_type, metric.lifecycle_type_at, held, metric.value_type, metric.peak_value_type].inspect
   end
 ' -a insgtapi
 ```
@@ -270,7 +358,7 @@ comparing. Two shapes are absolute and are pass/fail:
   (`first_shoot_at` 2025-06-12 18:30 UTC, stamp 2025-09-10 18:30 UTC), because its current run of
   visits reaches back to its first shoot. A stamp equal to `first_shoot_at` means the `max` against
   the run start was lost. A stamp equal to `most_recent_shoot_at` means the run scan was dropped.
-- **58 is the reactivation-cohort shape**: `lapsed`, `value_type` NULL, `peak_value_type` `anchor`.
+- **48 is the reactivation-cohort shape**: `lapsed`, `value_type` NULL, `peak_value_type` `anchor`.
   It is one of the 42 accounts in step 6's cohort count.
 
 **The three degrading stamps are `most_recent_shoot_at + 91 / 181 / 366 days`**, one day later than
@@ -296,6 +384,30 @@ and the volume numbers move by the shoots that landed or aged out since the prev
 would on any night. What must not move: the five tier labels, the band edges printed beside them,
 and the shape of the segment table. A changed label or a changed band edge means the reconciliation
 changed behaviour and the deploy should be rolled back.
+
+**Production passed, and every moved number is accounted for.** The five tier labels, the band
+edges printed beside them and the four segment rows came back identical to the baseline, compared
+string by string. The volume tiers:
+
+| Tier | Baseline, 02:30:32 UTC snapshot | After the deploy sweep, 21:28:50 UTC | Accts |
+| :-- | --: | --: | --: |
+| `no shoots` | 3,619 | 3,620 | +1 |
+| `single (1)` | 278 | 279 | +1 |
+| `occasional (2-5)` | 177 | 176 | -1 |
+| `core (6-11)` | 39 | 39 | 0 |
+| `anchor (12+)` | 19 | 19 | 0 |
+| weighed | 4,132 | 4,133 | +1 |
+
+Two movements, nineteen hours apart, neither of them this slice. The baseline reported one in-scope
+account with no recomputed row, excluded from every table; the deploy sweep gave it one, so the
+weighed set grew by one and that account landed in `no shoots`. Separately one account fell from
+`occasional` to `single` as a shoot aged out of its trailing window, which is why `occasional`
+shoots drop by exactly 2 (544 to 542) while `single` shoots rise by exactly 1 (278 to 279). That is
+the arithmetic of one account going from two shoots to one.
+
+The tier counts also reconcile to the fleet distribution minus the three excluded accounts: 4,133
+weighed against 4,136 active, with one excluded account in `no shoots`, one in `occasional` and one
+in `core`, so 3,620 + 279 + 176 + 39 + 19 comes to 4,133.
 
 ### 9. insgt-ops
 
@@ -341,4 +453,43 @@ first.
   distributions and the 42-account reactivation cohort reproduced the 2026-09-11 14:20 UTC
   measurement exactly when replayed at that instant; all six spot checks matched on all four
   columns, with 10288's stamp at `first_shoot_at + 90 days`; `accounts:joint_ownership`
-  byte-identical before and after. Not yet deployed to production.
+  byte-identical before and after.
+- 2026-09-14, 17:12 EDT: **dry run against a full production sync** (4,136 active
+  accounts). Both migrations applied; `metrics:recompute` swept every account in 1 min 06 s with 0
+  unswept rows left behind; all eleven invariants 0; the re-derivation check reported 0 mismatches
+  across all 4,136 rows; every spot check agreed with the rule, including 10288's handover stamp;
+  both structural identities held exactly (NULL `peak_value_type` 2,061 = `prospect` 2,061; NULL
+  `value_type` 3,621 = `prospect` + `lapsed`). Step 5 originally used `heroku pg:psql` with a
+  heredoc, which returned without running; rewritten onto `heroku run rails runner`, the idiom
+  slice 2 actually used in production, and all four runner blocks re-run against the sync.
+- 2026-09-14, 17:26 EDT: **deployed to production.** Merged `--no-ff` as f811e97 at 17:22 EDT,
+  pushed to origin 17:22 and to heroku 17:26. Both migrations applied. `metrics:recompute` read
+  `Done. Scanned: 4136. Failed: 0.` in **2 min 37.79 s** wall, writing a 21:28:50 UTC snapshot over
+  4,136 active accounts, against a predicted 2 min 40 s and slice 2's 2 min 36.89 s over 4,078, so
+  slice 3's extra window query costs under a second across the fleet. §6 now carries a production
+  duration for slice 4 to extend. All eleven step 5 invariants 0, including both
+  directions of the zero-count rule on each tier column. The step 6 distribution reproduced the
+  pre-deploy sync **exactly, every bucket of all three rows**, the sync having been taken sixteen
+  minutes earlier with no account crossing a boundary in between: `prospect` 2,061 · `new` 58 ·
+  `active` 156 · `cooling` 133 · `at_risk` 168 · `lapsed` 1,560; `value_type` NULL 3,621 ·
+  `single` 279 · `occasional` 177 · `core` 40 · `anchor` 19; `peak_value_type` NULL 2,061 ·
+  `single` 1,072 · `occasional` 701 · `core` 191 · `anchor` 111; the reactivation cohort 42. Both
+  structural identities held: NULL `peak_value_type` 2,061 equals the `prospect` count, and NULL
+  `value_type` 3,621 equals `prospect` plus `lapsed`. The step 6 re-derivation reported **0
+  mismatches across all 4,136 rows** with the cutoff pinned to the sweep. All six step 7 spot
+  checks matched on all five columns, 29 of 29 cells, with both absolute shapes good: 10288's
+  stamp at `first_shoot_at + 90 days` (2025-09-10 18:30 UTC, 369 days held), and 48 carrying the
+  reactivation shape at `lapsed` / NULL / `anchor`, stamped 2017-04-16 and held **3,438 days**,
+  which is the row a stamped column would have reported as "lapsed since today". The
+  `accounts:joint_ownership` read-out passed its no-shift check against the 02:30:32 UTC baseline
+  kept in the prerequisites: the five tier labels, the band edges beside them and the four segment
+  rows came back identical, compared string by string. Three tier counts moved and both causes are
+  nineteen hours of ordinary drift rather than this slice. The baseline's one un-recomputed
+  in-scope account got a row and joined `no shoots`, and one account fell from `occasional` to
+  `single` as a shoot aged out, which is why `occasional` shoots drop by exactly 2 and `single`
+  shoots rise by exactly 1. The tier counts reconciled to the fleet distribution minus the three
+  excluded accounts (4,133 weighed of 4,136 active). Step 8 carries the comparison.
+
+  Steps 4, 6 and 8 were amended from this run: the sweep now has a production duration baseline,
+  the expected `Scanned` count is stated as a shape rather than a fixed number, and step 8 records
+  what the no-shift comparison actually proved.

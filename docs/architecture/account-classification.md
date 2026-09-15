@@ -1,7 +1,7 @@
 # Account Classification Architecture
 
 **Repo:** `insgt-api` · **Consumers:** `insgt-ops` teams page, Pipedrive nightly push
-**Status:** Slices 1a and 1b deployed to production 2026-09-10, with slice 4's column and API; slice 2 deployed to production 2026-09-11; slice 3 implemented and verified 2026-09-14, not deployed; see §9
+**Status:** Slices 1a and 1b deployed to production 2026-09-10, with slice 4's column and API; slice 2 deployed to production 2026-09-11; slice 3 deployed to production 2026-09-14; see §9
 **Version:** 6 · **Last updated:** 2026-09-14 (slice 3 implemented)
 **Supersedes:** v5 (2026-09-11), v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§14 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
@@ -529,8 +529,11 @@ the `active` rule. Measured: 0 accounts have a first shoot inside 90 days and no
 days. The precedence rule therefore only ever *overrides*; it never breaks a tie between two
 labels that could both have been reached.
 
-**Distribution** (2026-09-10 production restore, evaluated 2026-09-11 14:20 UTC, 4,078 active
-accounts): `prospect` 2,004 · `new` 61 · `active` 152 · `cooling` 138 · `at_risk` 166 ·
+**Distribution.** On a full production sync of 2026-09-14 (4,136 active accounts, every one swept
+under this code): `prospect` 2,061 · `new` 58 · `active` 156 · `cooling` 133 · `at_risk` 168 ·
+`lapsed` 1,560. On the earlier 2026-09-10 restore evaluated 2026-09-11 14:20 UTC (4,078 accounts),
+the figures the plan reasoned out before the code existed and which the implementation reproduced
+exactly: `prospect` 2,004 · `new` 61 · `active` 152 · `cooling` 138 · `at_risk` 166 ·
 `lapsed` 1,557. These drift with the clock and must be re-derived on any deploy day: replayed
 three days later the same data gave `new` 58 · `active` 153 · `cooling` 134 · `at_risk` 169 ·
 `lapsed` 1,560, with all 13 movers identifiable by account id. Measured churn with no new shoots:
@@ -609,9 +612,18 @@ must not diverge once the columns landed. **Slice 3 closed that**: the four rang
 from `AccountClassification::VALUE_BANDS` and only the printed labels stay local. The read-out's
 output was verified byte-identical before and after.
 
-**Distributions** (same restore, 4,078 active accounts). `value_type`: NULL 3,563 · `single` 277 ·
-`occasional` 178 · `core` 41 · `anchor` 19. `peak_value_type`: NULL 2,004 · `single` 1,071 ·
-`occasional` 701 · `core` 191 · `anchor` 111. The reactivation cohort is 42 accounts. Note that
+**Distributions.** On the 2026-09-14 production sync (4,136 accounts), `value_type`: NULL 3,621 ·
+`single` 279 · `occasional` 177 · `core` 40 · `anchor` 19; `peak_value_type`: NULL 2,061 ·
+`single` 1,072 · `occasional` 701 · `core` 191 · `anchor` 111. On the 2026-09-10 restore (4,078),
+`value_type`: NULL 3,563 · `single` 277 · `occasional` 178 · `core` 41 · `anchor` 19;
+`peak_value_type`: NULL 2,004 · `single` 1,071 · `occasional` 701 · `core` 191 · `anchor` 111. The
+reactivation cohort is 42 accounts on both.
+
+**Two identities worth checking after any sweep**, because they are structural rather than
+incidental and hold on both datasets. NULL `peak_value_type` equals the `prospect` count exactly:
+no visit ever means no parent ever. NULL `value_type` equals `prospect` plus `lapsed` exactly: no
+visit in 365 days means no parent in 365 days. On the 2026-09-14 sync that is 2,061 and
+2,061 + 1,560 = 3,621. Note that
 `peak_value_type` does **not** drift with the clock — it is monotonic against the passage of time —
 so unlike the lifecycle figures, movement there between two runs over the same data is a finding
 rather than expected decay.
@@ -930,9 +942,12 @@ rather than adding a second job.
 3. Derive `lifecycle_type`, `value_type`, `peak_value_type` and `lifecycle_type_at` from a single
    thresholds config object. **Done in slice 3:** one more merge on `AccountMetrics::Calculator`,
    taking the accumulated hash rather than running its own queries, plus one new window query for
-   the active-run start. No change to `RecomputeAll` or the rake task. The sweep ran 1 min 11 s
-   over 4,078 accounts on the dev restore, 0 failed, against a production baseline of
-   2 min 36.89 s.
+   the active-run start. No change to `RecomputeAll` or the rake task.
+   **The production sweep ran 2 min 37.79 s over 4,136 accounts, 0 failed** (2026-09-14), against
+   slice 2's baseline of 2 min 36.89 s over 4,078. The
+   extra window query therefore costs under a second across the whole fleet. That 2 min 37.79 s is
+   the baseline slice 4 extends, not the 1 min 06 s the same sweep takes on a local sync of the
+   same accounts: `heroku run` dyno start-up and the network hop sit inside the production figure.
 
    `lifecycle_type_at` is **derived from history** rather than stamped when the sweep notices a
    change (§3.4 carries the table and the three reasons). This preserves what this step was
@@ -1145,7 +1160,7 @@ the `file:line` evidence.
 | 1a | `order_types.category_type` + exhaustive backfill + the three §5.1 scopes | **Deployed 2026-09-10** with 1b (`docs/runbooks/deploy-account-classification-1a-1b.md`); column, backfill and API 1b88f09, scopes 7aa170b | 1b |
 | 1b | Rewrite existing `account_metrics` and `AccountQuery` consumers onto the scopes + shift memo | **Deployed 2026-09-10** (`master` merge 514e5c4 of 7aa170b..afeb1f7); memos `shift-memo-slice-1b-2026-09-10.md` (dev restore) and `shift-memo-slice-1b-2026-09-10-production.md` (the hand-over copy) | everything |
 | 2 | New `account_metrics` numeric columns incl. `active_user_count` + nightly recompute | **Deployed 2026-09-11** (`master` merge d98632f of cf0745d..ca49f32, 16 commits); migration `20260911120000` logged 13:24:41 UTC, recompute 2 min 36.89 s over 4,078 accounts, 0 failed, every invariant 0; runbook `deploy-account-classification-2.md` | 3, teams page |
-| 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | **Implemented and verified 2026-09-14, not deployed.** Migrations `20260912120000` (four columns) and `20260912120001` (one index), `lib/account_classification.rb`, three enums on `AccountMetric`, `lifecycle_run_sql` + `classification` on the calculator, four fields on the metrics endpoint, both rake read-outs reconciled onto the config. Suite 1,688 examples 0 failures; sweep 1 min 03 s over 4,078 accounts 0 failed on the dev restore; all 11 invariants 0; both migrations run migrate/rollback/migrate; `accounts:joint_ownership` byte-identical. Plan `../plans/account-classification-slice-3.md`, runbook `deploy-account-classification-3.md` | teams page, 7 |
+| 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | **Deployed 2026-09-14** (`master` merge f811e97 of b6621c2..f8abdd7, 7 commits; pushed 17:26 EDT). Recompute 2 min 37.79 s over 4,136 accounts, 0 failed; all 11 invariants 0; the re-derivation check 0 mismatches over all 4,136 rows; all six spot checks exact; `accounts:joint_ownership` tier labels and segment rows identical to the pre-change code. Migrations `20260912120000` (four columns) and `20260912120001` (one index), `lib/account_classification.rb`, three enums on `AccountMetric`, `lifecycle_run_sql` + `classification` on the calculator, four fields on the metrics endpoint, both rake read-outs reconciled onto the config. Suite 1,688 examples 0 failures; sweep 1 min 03 s over 4,078 accounts 0 failed on the dev restore; all 11 invariants 0; both migrations run migrate/rollback/migrate; `accounts:joint_ownership` byte-identical. Plan `../plans/account-classification-slice-3.md`, runbook `deploy-account-classification-3.md` | teams page, 7 |
 | 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; ops UI on insgt-ops `main`, pending its release; backfill and organization type audit not started | 7 |
 | 5 | `marketing_events.event_type` + backfill | **Void.** See §3.2 | — |
 | 6 | Acquisition reference derivation (§5.5) | **Blocked on D6** | per-event ROI |
@@ -1354,8 +1369,8 @@ two review rounds.
 
 ## 14. Changes from v5
 
-Sourced from slice 3 (branch `feat/account-classification-slice-3`, uncommitted at time of
-writing), its plan (`docs/plans/account-classification-slice-3.md`, gaps G1–G15) and the
+Sourced from slice 3 (`feat/account-classification-slice-3`, 7 commits b6621c2..f8abdd7, merged as
+f811e97), its plan (`docs/plans/account-classification-slice-3.md`, gaps G1–G15) and the
 implementation session of 2026-09-14, which measured everything below against a 2026-09-10
 production restore.
 
@@ -1372,7 +1387,7 @@ production restore.
 | §6 step 3 | "Update `lifecycle_type_at` only when the value actually changes" | Marked done, and re-worded: the stamp is derived from history, which preserves the property that step was asking for without the mechanism | G1 |
 | §6 config object | "one Ruby config object", unlocated | `AccountClassification` in `lib/account_classification.rb`, why `lib/` is forced rather than chosen, and the three artifacts that read it | G3 — `config.autoload_lib` ignores `lib/tasks`, so `app/services` cannot read a `.rake` file and the dependency only runs one way |
 | §6 config object | Silent on load order | A rake file must read the config in a memoised method, never in a constant: `rakefile` calls `load_tasks` without initializing the app, so a load-time reference aborts every `rake` invocation including `db:migrate` | Found during implementation; the rake specs cannot catch it because they load task files inside an initialized app |
-| §9 slice 3 | Not started | Implemented and verified 2026-09-14, not deployed, with the evidence | Slice 3 |
+| §9 slice 3 | Not started | Deployed to production 2026-09-14, with the evidence; §6 carries a production sweep duration for slice 4 to extend | Slice 3 |
 
 ### Review findings that changed the code
 

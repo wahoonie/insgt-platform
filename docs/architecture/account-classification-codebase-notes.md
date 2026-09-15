@@ -2,7 +2,7 @@
 
 The `file:line` map for `docs/architecture/account-classification.md`. Read at Phase 0 of every slice; verify the entries the slice depends on before surveying fresh. Flat and factual: file, line, what it is, which slice or commit put it there. Paths are `apps/insgt-api` unless prefixed.
 
-Established by the drift audit of 2026-09-07 (`account-classification-drift-audit-2026-09-07.md`) against `feat/account-account-type` at 393005e; rewritten 2026-09-10 for slice 1b against `feat/account-classification-1b` at afeb1f7; re-ranged 2026-09-10 for slice 2 against `feat/account-classification-2` at ca49f32; re-ranged 2026-09-14 for slice 3 against `feat/account-classification-slice-3` (working tree, uncommitted). A moved line is a reason to update this file, not to distrust it.
+Established by the drift audit of 2026-09-07 (`account-classification-drift-audit-2026-09-07.md`) against `feat/account-account-type` at 393005e; rewritten 2026-09-10 for slice 1b against `feat/account-classification-1b` at afeb1f7; re-ranged 2026-09-10 for slice 2 against `feat/account-classification-2` at ca49f32; re-ranged 2026-09-14 for slice 3 against `master` at f811e97 (slice 3 merged and deployed). A moved line is a reason to update this file, not to distrust it.
 
 ## Schema
 
@@ -178,14 +178,14 @@ No `spec/architecture` existed before 1b; `scope :qualifying` existed on no bran
 | `insgt-platform/docs/runbooks/deploy-account-classification-3.md` | Deploying slice 3: maintenance window, one push, two migrations, the required recompute, eleven invariants, the three distributions and the corrected spot checks |
 | `insgt-platform/docs/decisions/002-recapture-order-type.md` | ADR 002 |
 
-## Branch and deploy state, 2026-09-14 (slice 3 implemented and verified, not committed)
+## Branch and deploy state, 2026-09-14 (slice 3 deployed to production)
 
 | Ref | Head | Carries |
 | :-- | :-- | :-- |
-| `heroku/master`, `origin/master`, `master` | d98632f (2026-09-11) | Slices 1a, 1b, slice 2, slice 4's column and API — what production runs |
-| `feat/account-classification-slice-3` | d98632f, **working tree dirty** | Slice 3, uncommitted. 9 modified files, 5 new: the two migrations, `lib/account_classification.rb`, `spec/lib/account_classification_spec.rb`, `spec/models/account_metric_spec.rb`. Not committed, not merged, not pushed — the standing instruction is that Dan reviews the diff and commits |
+| `heroku/master`, `origin/master`, `master` | **f811e97** | Slices 1a, 1b, 2 and 3, plus slice 4's column and API — what production runs. Pushed 2026-09-14 17:26 EDT; both migrations applied, recompute 2 min 37.79 s over 4,136 accounts 0 failed, all 11 invariants 0, re-derivation 0 mismatches, `joint_ownership` tier labels and segment rows unchanged |
+| `feat/account-classification-slice-3` | merged | Slice 3 in **7 commits** (b6621c2..f8abdd7), merged `--no-ff` as f811e97 at 17:22 EDT on 2026-09-14. The endpoint, the contract spec and the index migration were folded into f8abdd7 rather than taking their own commits; the two migration FILES are still separate and in order, so `db:rollback STEP=2` behaves as the runbook describes |
 | insgt-ops `main` | 4bae4a91 | No slice 3 change. It models **none** of the eight fields this endpoint now adds (slice 2's four and slice 3's four); every `AccountMetricSummary` field is optional, so the extra keys are ignored rather than breaking |
-| dev database | 2026-09-10 production snapshot, migrated to `20260912120001` and recomputed under slice 3 at 13:12–13:14 UTC on 2026-09-14 | 4,078 active accounts swept, 0 failed, 1 min 11 s. All four label columns populated; all 11 post-deploy invariants 0 |
+| dev database | **Re-synced from production on 2026-09-14 as the deploy dry run**, migrated to `20260912120001` and recomputed under slice 3 at 21:12–21:13 UTC, sixteen minutes before the production sweep | 4,136 active accounts swept, 0 unswept, 1 min 06 s. Production reproduced its distribution bucket for bucket. All 11 invariants 0; the re-derivation check 0 mismatches across all 4,136 rows; every spot check agreed with the rule. The earlier 2026-09-10 snapshot (4,078 accounts, swept 13:12 UTC) is what the plan's figures were reasoned against |
 
 **Verification evidence, 2026-09-14.** Full suite 1,688 examples / 0 failures. Both migrations run
 `migrate` → `rollback` → `migrate`; the schema diff is exactly four column lines, one index line and
