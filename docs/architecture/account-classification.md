@@ -1,18 +1,23 @@
 # Account Classification Architecture
 
 **Repo:** `insgt-api` · **Consumers:** `insgt-ops` teams page, Pipedrive nightly push
-**Status:** Slices 1a and 1b deployed to production 2026-09-10, with slice 4's column and API; slice 2 deployed to production 2026-09-11; slice 3 deployed to production 2026-09-14; see §9
-**Version:** 6 · **Last updated:** 2026-09-14 (slice 3 implemented)
-**Supersedes:** v5 (2026-09-11), v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§14 for what changed and why.
+**Status:** Slices 1a and 1b deployed to production 2026-09-10, with slice 4's column and API; slice 2 deployed to production 2026-09-11; slice 3 deployed to production 2026-09-14; slice 4a/4b (the organization type audit and the tiered backfill) deployed 2026-09-28 and `APPLY` run the same day; see §9
+**Version:** 7 · **Last updated:** 2026-09-28 (slice 4a/4b implemented)
+**Supersedes:** v6 (2026-09-14), v5 (2026-09-11), v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§15 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
 `account-classification-drift-audit-2026-09-07.md` (the evidence behind v3),
 `shift-memo-slice-1b-2026-09-10.md` (what slice 1b moves, account by account),
 `../plans/account-classification-slice-2.md` (slice 2's survey, plan and the fourteen gaps it
 pinned), `../plans/account-classification-slice-3.md` (slice 3's survey, plan and the fifteen gaps
 it pinned), `../runbooks/deploy-account-classification-2.md` (the slice 2 deploy),
-`../runbooks/deploy-account-classification-3.md` (the slice 3 deploy), and the contract
-spec `insgt-api/spec/architecture/account_classification_spec.rb` (§5.1–§5.4 and §4.2–§4.3 pinned
-on the canonical fixtures; later slices append to it).
+`../runbooks/deploy-account-classification-3.md` (the slice 3 deploy),
+`../plans/account-classification-slice-4.md` (slice 4's survey, plan, the twenty-two gaps it pinned
+and the eleven decisions of 2026-09-15), `organization-type-audit-2026-09-28.md` (the audit slice 4
+blocked on), `account-type-backfill-memo-2026-09-28-production.md` (what the backfill wrote, and
+its review lists), `../runbooks/deploy-account-classification-4-backfill.md` (the slice 4a/4b
+deploy and the pending event 4), and the contract spec
+`insgt-api/spec/architecture/account_classification_spec.rb` (§5.1–§5.4, §4.2–§4.3 and §4.1's
+tiers pinned on the canonical fixtures; later slices append to it).
 
 ---
 
@@ -457,35 +462,85 @@ roles and omits it for photographers; admin, owner, and scheduler may set it; a 
 The accounts index accepts `account_type=<name>` and the sentinel `account_type=unset` for the
 worklist (`Account::UNCLASSIFIED`).
 
-Backfill by confidence tier: brokerage present + property orders → `agent`; organization linked
-to a NARPM-affiliated org → `property_manager`; known test patterns → `internal`. Everything else
-stays NULL. Worklist is `account_type IS NULL` ordered by `rolling_365_parent_count DESC`; the
-filter exists and the column exists (slice 2); the ordering ships with slice 4's remaining work,
-not with the column — see §9 for why and the sketch.
+**Backfill, as shipped 2026-09-28** (slice 4b, `account_classification:backfill_account_type`,
+`lib/tasks/account_type_backfill.rake`). Two confidence tiers, first match wins, never writing over
+a non-NULL value and never touching a soft-deleted account:
 
-**Four existing constants are the seed for the `internal` backfill, and they disagree with each
-other.** `MarketingSourceMetricsService::EXCLUDED_ACCOUNT_IDS = [2, 2555]`,
+- `internal` — the seed `AccountTypeBackfill::INTERNAL_SEED_ACCOUNT_IDS`, eleven ids: 2, 3, 4, 5, 6,
+  89, 549, 885, 1534, 2555, 11589 — the union of the four constants below, the nine accounts
+  production already carried as `internal` on 2026-09-14, and 549 Jose Esqueda and 885 Dan Harms
+  (decision 2, 2026-09-15). Written where the row is active and NULL.
+- `agent` — an active, NULL account with an active `accounts_organizations` row to an active
+  organization typed brokerage (`type_of = 2`, reading R1: `User#update_broker`'s own definition,
+  decision 4), a qualifying parent (`Order.qualifying_parents`, composed as `to_sql` per §5.1, never
+  re-derived and never read from `account_metrics.lifetime_parent_count`), and not a
+  property-manager candidate.
+
+**`property_manager` is not backfilled.** The rule v2 sketched ("organization linked to a
+NARPM-affiliated org") matches nothing: the organization type audit
+(`organization-type-audit-2026-09-28.md`) found no NARPM organization, event or edge, no
+`property_management` type, an untyped edge table, and the six property-management-named firms all
+typed brokerage. The name proxy (own name or a linked organization matching `%property manag%` /
+`%narpm%`, or `marketing_source_id` = the source keyed `narpm`, resolved by key at run time) reaches
+nine accounts, six of which also satisfy the `agent` rule. Those are **held out** of the `agent`
+write and printed as the memo's hand-classification list (c), so the worklist keeps them at its
+head. Decision 3, 2026-09-15.
+
+**Known test patterns are a review list, never a write** (the memo's list (d)): the net catches
+paying customers (2479 and 9958 on every run). Everything else stays NULL. The write is
+`update_all` with `updated_by_id = 1` (`User.system`) and one batch `updated_at`, inside one
+transaction whose UPDATE repeats each tier's whole predicate and raises, rolling back, if a planned
+row stopped qualifying or a pre-typed row changed. The guarantee is statement-time, not
+commit-time, and the task is run by hand at a quiet moment. The (actor, stamp) pair identifies a
+batch — the actor alone does not, because console writes already carry `updated_by_id = 1`.
+Idempotent: a second `APPLY` plans 0. Dry run by default; `APPLY=true` writes; the memo (`OUT=`)
+and the per-account CSV (`CSV=`) are the record. Runbook:
+`../runbooks/deploy-account-classification-4-backfill.md`.
+
+Worklist is `account_type IS NULL` ordered by `rolling_365_parent_count DESC`; the filter exists and
+the column exists (slice 2); the ordering ships with slices 4c and 4d — see §9 for why and the
+sketch.
+
+**The four internal-account constants, and account 89.**
+`MarketingSourceMetricsService::EXCLUDED_ACCOUNT_IDS = [2, 2555]`,
 `MARGIN_LTV_EXCLUDED_ACCOUNT_IDS = [2, 2555]` (`lib/tasks/metrics.rake`),
 `AccountReport::IGNORE_ACCOUNT_IDS = [2, 89, 2555]`, and
 `AccountAudit::COMPOSITION_EXCLUDED_ACCOUNT_IDS = [2, 89, 2555]` (`lib/tasks/accounts.rake`).
-Account 89 ("Insight Photos Marketing", three parent orders 2022–2023) is excluded by two and
-counted by two. Determine which is correct before seeding, because whichever answer is used
-becomes the answer. Once `account_type: internal` is populated, all four retire in favour of the
-column; until then `Account#account_type` does not supersede them.
+Account 89 ("Insight Photos Marketing") is `internal` on the facts: ten parent orders 2022–2026,
+none with a completed log, none paid, seven soft-deleted, both property-category rows deleted; no
+children, no organization, one user with no email; `lifetime_parent_count` 0, `prospect`. It books
+the company's own paparazzi and events and has never bought anything, so the two lists that
+excluded it were right and the other two were harmlessly incomplete: it contributes zero to every
+figure they compute. Production has carried it as `internal` since 2026-09-14 (decision 1). The
+seed is a superset of all four constants, pinned by four examples in the backfill spec (§10's
+assert-then-delete, with the derived set living in a table). **They retire in slice 4e** (deploy
+event 4, its own branch, strictly after the production `APPLY`, whose precondition
+`Account.account_type_internal.pluck(:id) ⊇ [2, 89, 2555]` has held since 2026-09-28) onto
+`Account.account_type_internal` at eleven call sites — `marketing_source_metrics_service.rb:84`
+(bound into `:114`), `marketing_source_accounts_service.rb:53` (`:86`), `metrics.rake:202, 262,
+337, 405`, `account_report.rb:302, 685`, `accounts.rake:90–97` — with the empty-set bind form
+pinned per site (a `sanitize_sql_array` `NOT IN (?)` renders an empty array as `NULL` and excludes
+every row) and the `EXCLUDED_ACCOUNT_IDS=` override kept. Until then the lists stay in force.
 
-**The `property_manager` backfill heuristic reads unaudited data.** It depends on
-`accounts_organizations` (untyped) and `organizations.type_of`, where `set_type!` silently
-defaults blank to `brokerage`, five of the eight enum values have no code path, and there is no
-`property_management` type at all. An organization type audit is a prerequisite of slice 4, not a
-separate concern. It belongs to the accounts-versus-users workstream (§8, Q7) and slice 4 blocks
-on it.
+**The organization type audit** (`organizations:audit_types`, `lib/tasks/organizations.rake`,
+slice 4a) answered the four questions v6 raised here. Five of the eight `type_of` values carry rows
+and three carry none (lender, stager, office). Blank is structurally impossible — `NOT NULL` plus
+`set_type!` — so the answerable question is how many brokerages were never chosen: an upper bound
+of 255 of 643. NARPM affiliation is not representable. `property_manager` is not derivable from
+this schema. "Values with no code path" has two honest counts: six of eight by code (only
+`brokerage` and `mls` are read in `app`/`lib`), three of eight by data. The audit's verdict line is
+computed from the run's counts, so a production database that contradicted the survey would have
+printed a different sentence; it printed `0, 0, 6, 0`. The audit recommends a typed edge, not a
+ninth `type_of` value, to the accounts-versus-users workstream (§8, Q7).
 
-**Status 2026-09-10.** Column, model, API, role gates and index filter are in production (deployed
-with slices 1a and 1b); the ops edit dialog and filter are on insgt-ops `main` and ship with its
-next release. The 2026-09-10 production snapshot holds five hand-classified accounts (one `agent`,
-four `internal`); the twelve classified in the dev DB on 2026-09-05..07 did not survive the
-restore and were test entries. No tiered backfill task exists; the organization type audit has
-not started.
+**Status 2026-09-28.** Column, model, API, role gates and index filter in production since
+2026-09-10; insgt-ops 9.59.0 (the Team Type filter with Unset, the column, the edit dialog) live
+since 2026-09-14, so hand classification runs through ops: 24 typed rows on 2026-09-14, 33 on
+2026-09-28 (agent 17 · property_manager 6 · commercial 1 · internal 9). The backfill ran in
+production on 2026-09-28 at 19:52:47 UTC: 1,420 rows written (`agent` 1,418, `internal` 2), five
+held out, both self-checks OK, worklist 4,111 → 2,691; memo
+`account-type-backfill-memo-2026-09-28-production.md`. The worklist ordering (4c, 4d) and the
+retirement (4e) remain.
 
 ### 4.2 `account_metrics.lifecycle_type`
 
@@ -1161,7 +1216,7 @@ the `file:line` evidence.
 | 1b | Rewrite existing `account_metrics` and `AccountQuery` consumers onto the scopes + shift memo | **Deployed 2026-09-10** (`master` merge 514e5c4 of 7aa170b..afeb1f7); memos `shift-memo-slice-1b-2026-09-10.md` (dev restore) and `shift-memo-slice-1b-2026-09-10-production.md` (the hand-over copy) | everything |
 | 2 | New `account_metrics` numeric columns incl. `active_user_count` + nightly recompute | **Deployed 2026-09-11** (`master` merge d98632f of cf0745d..ca49f32, 16 commits); migration `20260911120000` logged 13:24:41 UTC, recompute 2 min 36.89 s over 4,078 accounts, 0 failed, every invariant 0; runbook `deploy-account-classification-2.md` | 3, teams page |
 | 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | **Deployed 2026-09-14** (`master` merge f811e97 of b6621c2..f8abdd7, 7 commits; pushed 17:26 EDT). Recompute 2 min 37.79 s over 4,136 accounts, 0 failed; all 11 invariants 0; the re-derivation check 0 mismatches over all 4,136 rows; all six spot checks exact; `accounts:joint_ownership` tier labels and segment rows identical to the pre-change code. Migrations `20260912120000` (four columns) and `20260912120001` (one index), `lib/account_classification.rb`, three enums on `AccountMetric`, `lifecycle_run_sql` + `classification` on the calculator, four fields on the metrics endpoint, both rake read-outs reconciled onto the config. Suite 1,688 examples 0 failures; sweep 1 min 03 s over 4,078 accounts 0 failed on the dev restore; all 11 invariants 0; both migrations run migrate/rollback/migrate; `accounts:joint_ownership` byte-identical. Plan `../plans/account-classification-slice-3.md`, runbook `deploy-account-classification-3.md` | teams page, 7 |
-| 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; ops UI on insgt-ops `main`, pending its release; backfill and organization type audit not started | 7 |
+| 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; insgt-ops 9.59.0 (filter, column, dialog) live 2026-09-14; **4a (organization type audit) and 4b (tiered backfill) deployed 2026-09-28** (`master` merge 25a694c3 of e195ae98..e59a0e19), `APPLY` at 19:52:47 UTC writing 1,420 rows; plan `../plans/account-classification-slice-4.md`, runbook `deploy-account-classification-4-backfill.md`. 4c (API sort key), 4d (ops worklist control, 9.60.0) and 4e (retiring the four constants) not started | 7 |
 | 5 | `marketing_events.event_type` + backfill | **Void.** See §3.2 | — |
 | 6 | Acquisition reference derivation (§5.5) | **Blocked on D6** | per-event ROI |
 | 7 | Pipedrive reconciliation + whitelisted push | Not started | — |
@@ -1209,8 +1264,13 @@ class for nothing visible. Sketch for slice 4: `sort=rolling_365_parent_count` a
 `search_params`, a frozen `ACCOUNT_SORTS` map in `AccountQuery`, `join_on[:account_metrics]`
 pushed idempotently like `join_shoots!`, the export inheriting or stripping the sort.
 
-**Slice 4 blocks on the organization type audit** (§4.1). The `property_manager` backfill
-heuristic reads data whose hygiene is unverified.
+**Slice 4's organization type audit ran in production on 2026-09-28** (§4.1,
+`organization-type-audit-2026-09-28.md`): `property_manager` is not derivable from this schema, so
+the backfill shipped two tiers and holds the property-manager candidates out for hand
+classification. What remains is cut as `../plans/account-classification-slice-4.md` describes: the
+API sort key (4c, deploy event 2), the ops worklist control as 9.60.0 (4d, event 3), then the
+retirement of the four constants (4e, event 4, behind the production invariant that has held since
+the `APPLY`).
 
 **Slice 7 is two jobs, not one.** Roughly 1,270 accounts exist in `insgt-api` and not in
 Pipedrive, so the push is preceded by a reconciliation, and reconciliation can create duplicates
@@ -1420,3 +1480,52 @@ Decisive evidence: re-evaluating §4.2 at each stored stamp reproduces the store
 1,863 degrading rows under `+91 / +181 / +366`, and for **none** of them under `+90 / +180 / +365`,
 because at those earlier instants the account is still in the warmer band. The runbook's spot-check
 table carries the corrected values.
+
+---
+
+## 15. Changes from v6
+
+Sourced from slice 4a/4b (`feat/account-classification-slice-4-backfill`: e195ae98 the audit,
+3976ea07 the backfill, 96544bf6, e59a0e19 the review fixes; merged as 25a694c3 and deployed
+2026-09-28), its plan (`docs/plans/account-classification-slice-4.md`, gaps G1–G10 and the eleven
+decisions of 2026-09-15), the implementation session of 2026-09-28 against a 2026-09-28 production
+sync, and the production run the same day.
+
+| Area | v6 | v7 | Why |
+| :--- | :--- | :--- | :--- |
+| §4.1 tiers | Three: brokerage + property orders → `agent`; NARPM-affiliated org → `property_manager`; test patterns → `internal` | Two, `internal` then `agent`, as shipped; `property_manager` not backfilled and its candidates held out; the test patterns a review list | G1, G6 (decisions 2, 3): the NARPM rule matches zero organizations; the name proxy reaches nine accounts and would misclassify the organization-proxy account; the pattern net catches paying customers |
+| §4.1 `agent` predicate | "brokerage present + property orders" | Strict brokerage (`type_of = 2`, active edge, active organization) plus `Order.qualifying_parents` composed as `to_sql`; never `lifetime_parent_count` | G5 (decision 4): the non-MLS reading adds twelve accounts whose "brokerage" is an agent team or a franchise; the stored count is up to a day stale |
+| §4.1 seed | "Four constants … determine which is correct before seeding" | The eleven-id seed named, a superset of all four, pinned by spec | G6, G7 |
+| §4.1 account 89 | "three parent orders 2022–2023", disagreement unresolved | Ten parent orders 2022–2026, none completed, none paid; `internal`; the constants' disagreement metric-neutral | Q6e, decision 1 |
+| §4.1 retirement | "all four retire in favour of the column" | Eleven call sites named, the empty-set bind trap and the env override recorded, deploy event 4 strictly after the production `APPLY` | G20, G21 (decision 5) |
+| §4.1 audit | A prerequisite, not started | Ran in production; four answers; both "no code path" counts; a typed-edge recommendation | G2; `organization-type-audit-2026-09-28.md` |
+| §4.1 status | 2026-09-10: five hand-classified accounts | 2026-09-28: 33 by hand, 1,420 by the backfill | Production |
+| §4.1 the write | Unspecified | `update_all`, one batch stamp, one transaction, two self-checks, the UPDATE re-checking each tier's whole predicate; the statement-time guarantee stated | G9, G10, and the review below |
+| §9 slice 4 | One row, "not started"; "blocks on the audit" | Split into 4a–4e; 4a/4b deployed; the audit paragraph rewritten | The slice cut |
+
+### Review findings that changed the code
+
+Two rounds of `predeploy-review-rails`, each with an independent Claude reviewer and a Codex pass
+over a copy of the tree. No blocker in either round. Fixed:
+
+| Finding | Disposition |
+| :--- | :--- |
+| The write re-checked only the planned id and `account_type IS NULL`, so a row soft-deleted or stripped of its brokerage edge between plan and apply was still typed and the planned-equals-written check could not tell (Claude, Codex, reviewer) | **Fixed.** Each tier's UPDATE repeats its whole predicate plus `status_type`; three examples mutate a planned row between plan and apply and expect the raise |
+| The plan was several independent reads, so its id sets and review lists could describe different moments and the memo could hit a missing row (Codex) | **Fixed.** One SELECT carries every flag and the id sets are selections over it. A first version of the fix dropped `status_type` from that SELECT and read every seed row as soft-deleted; the existing spec passed vacuously, and two seed-state examples now pin it |
+| The write-level NULL guard had no red path (reviewer) | **Fixed.** A typed id forced into the plan now raises, through the task and in the contract block. With the guard removed, self-check 2 caught the overwrite instead, so the two guards are independent |
+| An output-path failure after the commit lost the memo — the deploy record and the reversal key (reviewer, round 2) | **Fixed.** `OUT` and `CSV` are opened before anything runs; a failure after the commit prints the batch pair before re-raising |
+| Eligibility holds at statement time, not through commit (Codex, round 2) | **Documented, not changed.** Locking the source tables for a two-second hand-run task was rejected; the notes and the runbook state the guarantee exactly |
+| "One SELECT" overclaimed: the narpm source id was a separate lookup (Codex, round 2) | **Fixed.** The id is a scalar subquery by key inside the statement, never the literal 67 |
+
+**Process notes worth keeping.** Reviewers were given an rsync copy of the tree, the diff as a
+file and the plan's trap list, with read-only orders in capitals; the copy was diffed against the
+tree after every pass and was identical each time — the §14 process note, applied. Codex needs
+`--skip-git-repo-check` on a copy without `.git`, and its output file persists across sessions:
+slice 3's review was still sitting in it two weeks later, and would have been read as this slice's
+had the run's exit code not been checked first.
+
+**One rehearsal worth repeating.** Before the production run the whole sequence — audit, dry run,
+`APPLY`, second dry run, invariants, spot checks — was replayed on a production sync taken forty
+minutes earlier. The rehearsal's memo came out identical to production's apart from the stamps
+(`account-type-backfill-memo-2026-09-28-test.md`), which is the strongest confirmation a
+backfill of judgment data can have before it writes.
