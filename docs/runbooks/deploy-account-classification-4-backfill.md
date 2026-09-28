@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-28
 **Repos:** insgt-api
 **Estimated duration:** ~30 min for event 1 (most of it reading two memos); ~15 min for event 4
-**Status:** DRAFT — verified on the dev sync 2026-09-28; not deployed. Every `<placeholder>` is a production number to be filled on the day.
+**Status:** Event 1 deployed to production 2026-09-28; `APPLY` ran at 19:52:47 UTC (release not recorded). Event 4 (the retirement, sub-slice 4e) not yet built.
 
 ## Summary
 
@@ -38,6 +38,15 @@ yet built) retires the four constants onto `Account.account_type_internal`. It i
 production invariant this runbook establishes at step 7, and it is the one event that moves an
 owner-visible number (the KPI's `total_accounts` and gross). Its section is a placeholder until
 4e exists.
+
+## Where the commands run
+
+Every command below runs **on the host**, from `apps/insgt-api` inside the platform checkout; the
+devcontainer has no `heroku` CLI. Two roots follow from that, as in the slice 1a/1b runbook:
+`tmp/` is insgt-api's own (gitignored) scratch directory, and `../../docs/architecture/` is the
+platform repo's docs directory — insgt-api has no `docs/architecture` of its own. A one-off dyno's
+filesystem is discarded when it exits and it cannot read a file on the host, so every capture is a
+redirect of the dyno's stdout, and every comparison against a local file happens locally.
 
 ## Deploy order and the window it closes
 
@@ -82,8 +91,8 @@ will have been typed by hand through ops since, so expect fewer writes, never mo
       row for row after `APPLY`:
 
       ```bash
-      heroku run rails runner 'puts Account.where.not(account_type: nil).order(:id).pluck(:id, :account_type, :updated_by_id, :updated_at).map { |row| row.join("|") }' -a insgtapi > tmp/account-type-before-<date>.txt
-      wc -l tmp/account-type-before-<date>.txt     # <n> rows; 33 on the 2026-09-28 sync
+      heroku run --no-tty --exit-code rails runner 'puts Account.where.not(account_type: nil).order(:id).pluck(:id, :account_type, :updated_by_id, :updated_at).map { |row| row.join("|") }' -a insgtapi > tmp/account-type-before-2026-09-28.txt
+      wc -l tmp/account-type-before-2026-09-28.txt     # <n> rows; 33 on the 2026-09-28 sync
       ```
 
 - [ ] Baseline kept for event 4 (skip for event 1 alone): the marketing-source KPI's
@@ -96,7 +105,7 @@ will have been typed by hand through ops since, so expect fewer writes, never mo
 ```bash
 heroku pg:backups:capture --app insgtapi
 heroku pg:backups:download --app insgtapi
-mv latest.dump tmp/production-latest-<date>_lock.dump
+mv latest.dump tmp/production-latest-2026-09-28_lock.dump
 ```
 
 Cheap, and the reversal in the Rollback section is the same one line whether or not it exists.
@@ -115,12 +124,12 @@ db:migrate:status -a insgtapi` still reads `2026_09_12_120001` at the top.
 ### 3. The audit read-out
 
 ```bash
-heroku run --no-tty --exit-code rake organizations:audit_types -a insgtapi > docs/architecture/organization-type-audit-<date>.txt
-tail -1 docs/architecture/organization-type-audit-<date>.txt
+heroku run --no-tty --exit-code rake organizations:audit_types -a insgtapi > ../../docs/architecture/organization-type-audit-2026-09-28.txt
+tail -1 ../../docs/architecture/organization-type-audit-2026-09-28.txt
 ```
 
-Read the whole thing; it is the body of `docs/architecture/organization-type-audit-<date>.md`. The
-last line is the gate:
+Read the whole thing; it is the body of the platform repo's
+`docs/architecture/organization-type-audit-2026-09-28.md`. The last line is the gate:
 
 ```
 Verdict: property_manager is not derivable from organizations: 0 NARPM organizations, 0 NARPM events, <n> property-management firms typed brokerage, 0 typed otherwise.
@@ -138,9 +147,9 @@ bound on defaulted or free-text brokerages (255 of 643 on the sync).
 ### 4. The dry run — read it, then STOP
 
 ```bash
-heroku run --no-tty --exit-code rake account_classification:backfill_account_type -a insgtapi > tmp/account-type-dry-run-<date>.md
+heroku run --no-tty --exit-code rake account_classification:backfill_account_type -a insgtapi > tmp/account-type-dry-run-2026-09-28.md
 # a one-off dyno's filesystem is discarded on exit and stdout is the only channel home, so the per-account plan is a second read-only run with the memo silenced
-heroku run --no-tty --exit-code rake account_classification:backfill_account_type OUT=/dev/null CSV=/dev/stdout -a insgtapi > tmp/account-type-dry-run-<date>.csv
+heroku run --no-tty --exit-code rake account_classification:backfill_account_type OUT=/dev/null CSV=/dev/stdout -a insgtapi > tmp/account-type-dry-run-2026-09-28.csv
 ```
 
 Both runs are read-only (`APPLY` absent). About 2 s of query time on the sync; dyno start-up
@@ -166,12 +175,14 @@ STOP here. `APPLY` is a decision made on this memo, not a step that follows it.
 ### 5. APPLY
 
 ```bash
-heroku run --no-tty --exit-code rake account_classification:backfill_account_type APPLY=true -a insgtapi > docs/architecture/account-type-backfill-memo-<date>-production.md
+heroku run --no-tty --exit-code rake account_classification:backfill_account_type APPLY=true -a insgtapi > ../../docs/architecture/account-type-backfill-memo-2026-09-28-production.md
 ```
 
-That file is the hand-over copy, as slice 1b's production memo was. Its provenance line reads
+That file, in the platform repo's `docs/architecture/`, is the hand-over copy, as slice 1b's
+production memo was. Its provenance line reads
 `insgt-api \`unknown\`` on a dyno (a slug carries no `.git`), so record the release beside it:
-`heroku releases -n 1 -a insgtapi`. Read its title and its **After** section first:
+`heroku releases -n 1 -a insgtapi` (not recorded on 2026-09-28). Read its title and its **After**
+section first:
 
 ```
 # Account classification — account_type backfill (APPLIED at <stamp with microseconds>)
@@ -206,22 +217,37 @@ Expect `| internal | 0 | <11> | — |`, `| agent | 0 | <n> | <held out> |`, and 
 candidates" the written rows now read as already typed by **user 1**. On the dev sync after
 `APPLY`: `internal 11 (user 2: 9 · user 1: 2)`, `agent 1,430 (user 1: 1,420 · user 2: 10)`.
 
+**Production, 2026-09-28** (one-off dyno `run.2446`):
+
+```
+| Tier | To write | Already typed | Held out |
+| :-- | --: | --: | --: |
+| internal | 0 | 11 | — |
+| agent | 0 | 1,433 | 5 |
+
+- internal seed: internal 11 (user 2: 9 · user 1: 2)
+- agent candidates: agent 1,431 (user 1: 1,421 · user 2: 10) · property_manager 2 (user 1: 1 · user 2: 1)
+
+NULL after (planned): 2,691 = 2,691 − 0 − 0.
+```
+
+The arithmetic closes: 1,431 agent candidates typed = 13 before the run + 1,418 written; 1,421 by
+user 1 = 3 console writes + 1,418.
+
 ### 7. Invariants
 
-One `rails runner` against `accounts`; the CSV from step 4 is a local convenience, not the source
-of truth. Replace `<stamp>` with the memo's microsecond stamp and `<before file>` with the
-prerequisites' list. All expected values are exact.
+Against `accounts`; the CSV from step 4 is a local convenience, not the source of truth. Two parts:
+a runner on a dyno for the counts, which prints the batch's ids as its last line, then the "before"
+list and the CSV compared on the host, because a dyno cannot read a local file. Replace `<stamp>`
+with the memo's microsecond stamp. All expected values are exact.
 
 ```bash
-heroku run rails runner '
-  stamp = Time.zone.parse("<stamp>")
+heroku run --no-tty --exit-code rails runner '
+  stamp = Time.zone.parse("2026-09-28T19:52:47.158499Z")
   batch = Account.where(updated_by_id: 1, updated_at: stamp)
-  before = File.readlines("<before file>", chomp: true)   # or paste the rows inline
-  now = Account.where(id: before.map { |line| line.split("|").first.to_i }).order(:id).pluck(:id, :account_type, :updated_by_id, :updated_at).map { |row| row.join("|") }
   puts "1 batch rows (updated_by_id = 1 AND updated_at = stamp): #{batch.count}   expect the memo Written total"
   puts "2 batch rows outside {agent, internal}: #{batch.where.not(account_type: %w[agent internal]).count}   expect 0"
   puts "3 batch by type: #{batch.group(:account_type).count.inspect}   expect the memo per-tier counts"
-  puts "4 before-list rows unchanged (id, type, actor, stamp): #{before == now} over #{before.size} rows   expect true"
   puts "5 NULL active after: #{Account.where(status_type: 1, account_type: nil).count}   expect the memo NULL after = NULL before - written"
   puts "6 soft-deleted rows carrying a type: #{Account.where(status_type: 2).where.not(account_type: nil).count}   expect 0"
   internal_ids = Account.account_type_internal.pluck(:id).sort
@@ -229,24 +255,52 @@ heroku run rails runner '
   by_type = Account.where(status_type: 1).group(:account_type).count
   puts "8 active by type: #{by_type.sort_by { |type, _| type.to_s }.inspect}; sum #{by_type.values.sum} = active #{Account.where(status_type: 1).count}"
   puts "9 post-APPLY worklist head: #{AccountMetric.joins(:account).where(accounts: { status_type: 1, account_type: nil }).order(Arel.sql("rolling_365_parent_count DESC NULLS LAST, account_id ASC")).limit(6).pluck(:account_id, :rolling_365_parent_count).inspect}"
-' -a insgtapi
+  puts "batch_ids: #{batch.order(:id).pluck(:id).join(",")}"
+' -a insgtapi > tmp/account-type-invariants-2026-09-28.txt
+grep -v "^batch_ids" tmp/account-type-invariants-2026-09-28.txt
+```
+**Production, 2026-09-28**, every line as expected (1,420 = 1,418 + 2; 2,691 = 4,111 − 1,420;
+1,435 = 17 + 1,418):
+
+```
+1 batch rows (updated_by_id = 1 AND updated_at = stamp): 1420
+2 batch rows outside {agent, internal}: 0
+3 batch by type: {"internal" => 2, "agent" => 1418}
+5 NULL active after: 2691
+6 soft-deleted rows carrying a type: 0
+7 internal ids: [2, 3, 4, 5, 6, 89, 549, 885, 1534, 2555, 11589]; includes 2, 89, 2555: true
+8 active by type: [[nil, 2691], ["agent", 1435], ["commercial", 1], ["internal", 11], ["property_manager", 6]]; sum 4144 = active 4144
+9 post-APPLY worklist head: [[11510, 26], [4513, 16], [11213, 12], [6526, 7], [11575, 6], [11679, 6]]
 ```
 
-Then the CSV cross-check locally: the batch ids equal the CSV rows whose `action` is `write`. The
-CSV comes from an earlier plan than the `APPLY` run's, so a one-row difference is drift between the
-two runs (a shoot completing, a hand classification) and the `APPLY` memo is the authority; a
-difference the memo's tier table does not account for is a bug:
+Invariant 4, on the host: every row of the prerequisites' "before" list reads the same after, and
+the rows that are new are exactly the batch. Re-run the prerequisites' command into an "after"
+file and compare the two locally:
 
 ```bash
-ruby -rcsv -e 'puts CSV.read("tmp/account-type-dry-run-<date>.csv", headers: true).select { |row| row["action"] == "write" }.map { |row| row["account_id"] }.sort_by(&:to_i).join(",")' > tmp/csv-write-ids.txt
-# compare to `batch.pluck(:id).sort` from the runner
+heroku run --no-tty --exit-code rails runner 'puts Account.where.not(account_type: nil).order(:id).pluck(:id, :account_type, :updated_by_id, :updated_at).map { |row| row.join("|") }' -a insgtapi > tmp/account-type-after-2026-09-28.txt
+comm -23 <(sort tmp/account-type-before-2026-09-28.txt) <(sort tmp/account-type-after-2026-09-28.txt)               # 4a: expect no output — no before row changed
+comm -13 <(sort tmp/account-type-before-2026-09-28.txt) <(sort tmp/account-type-after-2026-09-28.txt) | wc -l       # 4b: expect invariant 1's count
+comm -13 <(sort tmp/account-type-before-2026-09-28.txt) <(sort tmp/account-type-after-2026-09-28.txt) | grep -vc "|1|"   # 4c: expect 0 — every new row by user 1
 ```
+**Production, 2026-09-28:** 4a no output (no before row changed), 4b 1,420, 4c 0.
+
+Then the CSV cross-check, also on the host: the batch ids equal the CSV rows whose `action` is
+`write`. The CSV comes from an earlier plan than the `APPLY` run's, so a one-row difference is drift
+between the two runs (a shoot completing, a hand classification) and the `APPLY` memo is the
+authority; a difference the memo's tier table does not account for is a bug:
+
+```bash
+ruby -rcsv -e 'puts CSV.read("tmp/account-type-dry-run-2026-09-28.csv", headers: true, encoding: "UTF-8").select { |row| row["action"] == "write" }.map { |row| row["account_id"].to_i }.sort.join(",")' > tmp/csv-write-ids.txt
+diff <(sed -n "s/^batch_ids: //p" tmp/account-type-invariants-2026-09-28.txt) tmp/csv-write-ids.txt && echo "batch ids = CSV write ids"
+```
+**Production, 2026-09-28:** `batch ids = CSV write ids`.
 
 **On the dev sync after `APPLY` (2026-09-28 15:25 UTC)**: 1 → 1,419; 2 → 0; 3 →
-`{"agent" => 1417, "internal" => 2}`; 4 → true over 33 rows; 5 → 2,692; 6 → 0; 7 → the eleven seed
-ids, true; 8 → `agent` 1,434 · `commercial` 1 · `internal` 11 · `property_manager` 6 · NULL
-2,692, sum 4,144; 9 → 11510 (26), 4513 (16), 11213 (12), 6526 (7), 11575 (6), 11679 (6); the CSV's
-`write` ids equalled the batch ids.
+`{"agent" => 1417, "internal" => 2}`; 4a → no output, 4b → 1,419, 4c → 0 (the 33 before rows
+unchanged); 5 → 2,692; 6 → 0; 7 → the eleven seed ids, true; 8 → `agent` 1,434 · `commercial` 1 ·
+`internal` 11 · `property_manager` 6 · NULL 2,692, sum 4,144; 9 → 11510 (26), 4513 (16), 11213
+(12), 6526 (7), 11575 (6), 11679 (6); the CSV's `write` ids equalled the batch ids.
 
 ### 8. Spot checks
 
@@ -272,12 +326,33 @@ heroku run rails runner 'Account.where(id: [89, 2555, 11510, 789, 12209, 4, 549,
 
 All eleven matched on the dev sync after `APPLY`.
 
+**Production, 2026-09-28**, all eleven as reasoned. 88, 549 and 885 carry the batch pair
+(`updated_by_id` 1, `2026-09-28T19:52:47.158499Z`); the four pre-typed rows keep their 2026-09-14
+and 2026-09-11 stamps; the held-out and pattern rows are still NULL:
+
+```
+[4, "Sally Testerton", "internal", 2, "2026-09-14T13:20:51.588170Z"]
+[88, "Tamara Kapa", "agent", 1, "2026-09-28T19:52:47.158499Z"]
+[89, "Insight Photos Marketing", "internal", 2, "2026-09-14T13:22:14.238651Z"]
+[549, "Jose Esqueda", "internal", 1, "2026-09-28T19:52:47.158499Z"]
+[789, "Anna Song", nil, 1, "2025-07-10T01:45:46.682395Z"]
+[885, "Dan Harms", "internal", 1, "2026-09-28T19:52:47.158499Z"]
+[2479, "Ana Maria Goodemote", nil, nil, "2020-03-11T18:39:21.347708Z"]
+[2555, "Jack Brown", "internal", 2, "2026-09-14T13:21:34.415462Z"]
+[9958, "Kyle Weckesser", nil, nil, "2025-06-01T18:34:16.408006Z"]
+[11510, "Colleen McDade", nil, 1, "2026-07-14T10:00:47.586600Z"]
+[12209, "San Diego City  Property Management", "property_manager", 1, "2026-09-11T16:11:39.523758Z"]
+```
+
 ### 9. insgt-ops (9.59.0, already live)
 
 On `https://ops.insightphotos.net/#/accounts`: Team Type = **Agent** count = the pre-`APPLY` agent
 count + the memo's `agent` written; **Internal** = 11; **Unset** = the memo's "NULL after". Both
 filters read active accounts only, so Agent + Unset + the other typed values = the active account
 count (invariant 8's sum). 11510 is still Unset.
+
+**Production, 2026-09-28:** not recorded. From invariant 8 the expected reads are Agent 1,435,
+Internal 11, Unset 2,691; unverified on the ops screen.
 
 ## Steps — event 4 (retirement; not yet built)
 
@@ -295,8 +370,8 @@ finding. This table is the slice's shift memo.
 
 | | Before | After | Delta |
 | :-- | --: | --: | --: |
-| `total_accounts` | `<n>` | `<n>` | −9 |
-| `total_gross_cents` | `<n>` | `<n>` | `<explained by the nine>` |
+| `total_accounts` | `4142` | `<n>` | −9 |
+| `total_gross_cents` | `372408100` | `<n>` | `<explained by the nine>` |
 
 ## Rollback
 
@@ -329,5 +404,19 @@ The actor alone would not do: console writes already carry `updated_by_id = 1`.
   self-checks OK, NULL 4,111 → 2,692, 2.3 s wall. Second dry run planned 0 in every tier. All nine
   step 7 invariants held and the CSV `write` ids equalled the 1,419 batch ids; all eleven step 8
   spot checks as reasoned. The audit read-out on the same sync: verdict 0, 0, 6, 0.
-- `<date>`: **production.** `<fill from the day: audit verdict line; dry-run tier table; APPLY stamp;
-  After section; second dry run; invariants 1–9; spot checks; ops counts>`
+- 2026-09-28, 15:39 EDT: **deployed to production.** Merged `--no-ff` as 25a694c3 (e195ae98 the
+  audit, 3976ea07 the backfill, 96544bf6 the dollar formatting, e59a0e19 the review fixes), pushed
+  to origin and heroku. No migration. Before the push: a dress rehearsal of the whole sequence on a
+  fresh production sync taken 19:05 UTC (`account-type-backfill-memo-2026-09-28-test.md`), whose
+  memo came out identical to production's apart from the stamps. Then in production: the audit
+  read-out (`organization-type-audit-2026-09-28.md`) with the verdict **0, 0, 6, 0** — the gate
+  passed; the dry run planning `internal` 2 (549, 885), `agent` 1,418, held out 5, NULL after
+  2,691; **`APPLY` at 19:52:47.158499 UTC**: written internal 2 · agent 1,418, both self-checks OK,
+  NULL 4,111 → 2,691 "as planned" (`account-type-backfill-memo-2026-09-28-production.md`); the
+  second dry run planning 0 in both tiers with the 1,418 now already typed by user 1; invariants
+  1–9 exact (1,420 batch rows, none outside {agent, internal}, no before row changed, 1,420 new rows
+  all by user 1, NULL 2,691, no typed soft-deleted row, internal ⊇ {2, 89, 2555}, sum 4,144, the
+  worklist head 11510 · 4513 · 11213 · 6526 · 11575 · 11679); the CSV `write` ids equal to the
+  batch; all eleven spot checks as reasoned. The one-row difference from the morning sync's 1,417 is
+  the day's drift. Not recorded: the release number and the step 9 ops counts. Event 4's baseline
+  captured: `total_accounts` 4,142, `total_gross_cents` 372,408,100.
