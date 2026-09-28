@@ -2,7 +2,7 @@
 
 The `file:line` map for `docs/architecture/account-classification.md`. Read at Phase 0 of every slice; verify the entries the slice depends on before surveying fresh. Flat and factual: file, line, what it is, which slice or commit put it there. Paths are `apps/insgt-api` unless prefixed.
 
-Established by the drift audit of 2026-09-07 (`account-classification-drift-audit-2026-09-07.md`) against `feat/account-account-type` at 393005e; rewritten 2026-09-10 for slice 1b against `feat/account-classification-1b` at afeb1f7; re-ranged 2026-09-10 for slice 2 against `feat/account-classification-2` at ca49f32; re-ranged 2026-09-14 for slice 3 against `master` at f811e97 (slice 3 merged and deployed). A moved line is a reason to update this file, not to distrust it.
+Established by the drift audit of 2026-09-07 (`account-classification-drift-audit-2026-09-07.md`) against `feat/account-account-type` at 393005e; rewritten 2026-09-10 for slice 1b against `feat/account-classification-1b` at afeb1f7; re-ranged 2026-09-10 for slice 2 against `feat/account-classification-2` at ca49f32; re-ranged 2026-09-14 for slice 3 against `master` at f811e97 (slice 3 merged and deployed); extended 2026-09-28 for slice 4a/4b against `master` at 25a694c3 (the audit and the backfill merged and deployed, `APPLY` run in production). A moved line is a reason to update this file, not to distrust it.
 
 ## Schema
 
@@ -23,7 +23,7 @@ Established by the drift audit of 2026-09-07 (`account-classification-drift-audi
 | `db/migrate/20260901120000_create_recapture_order_type.rb` | 41–42, 77–112 | Recapture row pinned at id 300, key `recapture`, price 0, `cart: nil`, `public: false` | ADR 002, 35f71c5 |
 | `db/migrate/20260901120001_add_recapture_counts_to_metrics.rb` | 3–4, 29–36 | Four recapture columns on both metrics tables; the "column-for-column parallel" claim at 3–4 holds for the shared columns only since slice 2 | ADR 002, 35f71c5 |
 | `db/migrate/20260904120000..3` | — | `category_type`: nullable add, backfill (`CATEGORY_KEYS` at `..120001:38–59`), unvalidated CHECK, validate-and-flip | slice 1a, 81bf2e0 |
-| `db/migrate/20260904120004_add_account_type_to_accounts.rb` | 35 | Nullable add of `account_type` | slice 4, 94485f8 |
+| `db/migrate/20260904120004_add_account_type_to_accounts.rb` | 35; 6–9, 28–30 | Nullable add of `account_type`. **Its header prose is a dated deploy note**: it names two internal-account constants where there are four, and says nothing reads the column — true on 2026-09-04, not since; a shipped migration is not edited | slice 4, 94485f8; dated 2026-09-28 |
 | `config/initializers/strong_migrations.rb` | 7, 18, 49–51 | `start_after = 20260806120000` (every classification migration is checked), `target_version = 15`, `safe_by_default` deliberately off (indexes state `disable_ddl_transaction!` + `algorithm: :concurrently` explicitly — slice 3's index does, in both directions); `auto_analyze = true` at 32 fires an `ANALYZE` after each index build | pre-1a |
 
 No `spec/architecture` existed before 1b; `scope :qualifying` existed on no branch before 7aa170b.
@@ -52,6 +52,23 @@ No `spec/architecture` existed before 1b; `scope :qualifying` existed on no bran
 | `app/models/application_record.rb` | 4, 18–20 | `scope :active` and `def active?`, inherited by every model — the reason `prefix: true` is load-bearing on `AccountMetric`. Note `account_metrics` has **no `status_type` column**, so both the inherited scope and the predicate are unusable on that model; the pin spec asserts the scope's SQL, not its result | legacy; surveyed slice 3 |
 | `app/helpers/accounts_helper.rb` | 101–103 | `set_user_count!` → `user_count` on every account row (ops reads `userCount`) — why `active_user_count` is not on the metrics endpoint (G10) | legacy |
 | `app/models/order.rb` | 1082, 1108 | `issue_refund` sets `paid_at: nil` (refunds self-correct, §5.4) | pre-1a |
+
+## Organizations — the edge the `agent` tier reads (slice 4a)
+
+Surveyed for the organization type audit and the backfill; nothing here changed in slice 4.
+
+| File | Line | What it is | Slice / commit |
+| :-- | :-- | :-- | :-- |
+| `db/schema.rb` | 819–838 | `organizations`: `type_of` smallint **NOT NULL** (820), `name` NOT NULL, `url`, `email`, `logo_file_name`, `status_type`, `parent_id` (834); no affiliation column, no `property_management` value | legacy |
+| `db/schema.rb` | 117–126 | `accounts_organizations`: seven columns, **no type or role**; the `(account_id, organization_id)` index (125) is **not unique** — 113 duplicate pairs exist across statuses, 0 twice-active (audit 2026-09-28) | legacy |
+| `app/models/organization.rb` | 97–109 | `Organization.types`: mls 1, brokerage 2, lender 3, stager 4, agent 5 ("Agent team"), franchise 6, social_media 7, office 8 — a frozen hash, not an enum; three carry no rows | legacy |
+| `app/models/organization.rb` | 32–41 | `validates :type_of` as a range (1..max), not membership | legacy |
+| `app/models/organization.rb` | 43 | `default_scope { order('name ASC') }` — why the audit and the backfill compose raw SQL rather than `Organization` relations | legacy |
+| `app/models/organization.rb` | 143–145 | `set_type!` (`before_validation`): blank → brokerage on every save; a chosen brokerage cannot be told from a defaulted one (audit: upper bound 255 of 643) | legacy |
+| `app/models/accounts_organization.rb` | 7 | Uniqueness of `(account_id, organization_id)` is a model validation scoped to active rows only | legacy |
+| `app/models/user.rb` | 188–194, 201–204, 213–228 | The API's own "brokerage present" — an active edge to an organization with `type_of = 2` (the account's and the edge's status, **not** the organization's); `update_broker` soft-deleting the old edge on every broker change (the churn behind the 1,094 soft-deleted edges); the free-text branch creating a brokerage from a name | legacy |
+| `app/models/user.rb`, `app/helpers/sessions_helper.rb:61`, `lib/account_report.rb:565`, `lib/listing_report.rb:101` | 191–194 | The four "brokerage present" sites the plan's G5 reads as R1 (strict `type_of = 2`); the ops card's "first non-MLS" (`insgt-ops src/app/features/accounts/.../account-info-card.ts:264–273`) and `AccountQuery#where_organization` (untyped, no edge status, `account_query.rb:271–276`) are the other two live definitions | surveyed slice 4 |
+| insgt-ops `src/app/shared/models/organization.model.ts:45–56`, `src/app/organizations/store/organization.service.ts:112–123` | — | The ops copy of the eight types — an audit finding with no action | surveyed slice 4 |
 
 ## Query concerns and services
 
@@ -97,7 +114,7 @@ No `spec/architecture` existed before 1b; `scope :qualifying` existed on no bran
 | `app/controllers/accounts_metrics_controller.rb` | 9, 20–32 | Roles admin/scheduler/owner; pending-only body when the row is missing; untouched | pre-1a |
 | `app/services/account_pending_shoots_service.rb` | 18–39 | `Order.pending_shoots.where(account_id:).count` | 1b, 36d96ef |
 | `app/services/account_csv_export_service.rb` | 84–106 | `first_shoot_dates`, `shoot_counts`, `account_ids` | 1b, 19fe446 |
-| `app/services/marketing_source_metrics_service.rb` | 49, 84, 110 | `EXCLUDED_ACCOUNT_IDS = [2, 2555]`; `parent_pays IS NOT TRUE` revenue predicate (untouched) | legacy |
+| `app/services/marketing_source_metrics_service.rb` | 49, 84, 110 | `EXCLUDED_ACCOUNT_IDS = [2, 2555]`; `parent_pays IS NOT TRUE` revenue predicate (untouched) | legacy **Retires in slice 4e** (deploy event 4) onto `Account.account_type_internal.select(:id).to_sql` interpolated into the `NOT IN (…)` — never a plucked array into `sanitize_sql_array`, which renders `[]` as `NULL` and excludes every row. Its twin `marketing_source_accounts_service.rb:53/86` moves with it; `spec/lib/tasks/account_type_backfill_rake_spec.rb` pins the seed ⊇ this constant until then |
 
 ## Rake tasks and lib
 
@@ -105,7 +122,7 @@ No `spec/architecture` existed before 1b; `scope :qualifying` existed on no bran
 | :-- | :-- | :-- | :-- |
 | `lib/churn_report.rb` | 12–24, 98–104 | Activity = `Order.qualifying_parents` minus caller exclusions, plucked with `shoot_date_sql` | 1b, 98f4b7c |
 | `lib/account_classification.rb` | 1–151 | **The §6 thresholds config, new in slice 3.** ARCHITECTURE NOTES 3–35: the four consumers, why `lib/` is FORCED (`config.autoload_lib` ignores `lib/tasks`, so `app/services` cannot read a `.rake` file), why the enum integers are NOT here, why Symbols. `NEW_WINDOW` 43, the three day boundaries 48–50, `LIFECYCLE_ORDER` 54, `DEGRADING_START_DAYS` 62–66 (91/181/366, derived from the boundaries), `RUN_GAP_DAYS` 78 with the off-by-one derivation. `#lifecycle` 99–109 (floored days; the `new` asymmetry is inherited and must not be "fixed"), `#lifecycle_started_at` 130–137 (`fetch`, so an unknown label raises rather than storing a silent NULL), `#value_tier` 145–149 (nil for 0 — note the bands start at 1, so the guard is belt-and-braces today but is what holds the rule if a band is ever widened) | slice 3 |
-| `lib/tasks/accounts.rake` | 16–26, 38–82 | `COMPOSITION_EXCLUDED_ACCOUNT_IDS` (26). **`SHOOT_VOLUME_TIERS` is gone**: slice 3 replaced it with `VALUE_BAND_LABELS` (55–60, the printed labels, still local and still literal because they are a test contract) and `AccountAudit.shoot_volume_tiers` (77–82), which prepends the `no shoots` row to `AccountClassification::VALUE_BANDS`. **A METHOD, not a constant** (66–73 says why: `rakefile` calls `load_tasks` without initializing the app, so an autoloaded constant referenced at rake FILE LOAD time aborts every `rake` invocation including `db:migrate`). Output verified byte-identical before and after | slice 3 |
+| `lib/tasks/accounts.rake` | 16–26, 38–82 | `COMPOSITION_EXCLUDED_ACCOUNT_IDS` (26). **`SHOOT_VOLUME_TIERS` is gone**: slice 3 replaced it with `VALUE_BAND_LABELS` (55–60, the printed labels, still local and still literal because they are a test contract) and `AccountAudit.shoot_volume_tiers` (77–82), which prepends the `no shoots` row to `AccountClassification::VALUE_BANDS`. **A METHOD, not a constant** (66–73 says why: `rakefile` calls `load_tasks` without initializing the app, so an autoloaded constant referenced at rake FILE LOAD time aborts every `rake` invocation including `db:migrate`). Output verified byte-identical before and after | slice 3 `COMPOSITION_EXCLUDED_ACCOUNT_IDS` **retires in slice 4e** (`excluded_account_ids_from_env` returns `Account.account_type_internal.pluck(:id)` when the env is absent; the override and the `[-1]` guard stay); seed ⊇ it pinned by the backfill spec until then |
 | `lib/tasks/accounts.rake` | 701 | The one consumer, `AccountAudit.shoot_volume_tiers.each` (was `AccountAudit::SHOOT_VOLUME_TIERS.each`); `tier_range.cover?` unchanged | slice 3 |
 | `lib/tasks/accounts.rake` | 454–475 | `joint_ownership` ARCHITECTURE NOTES: both counts are READ from `account_metrics`; the freshness trade; the unweighed partition and why it still joins the shared-owner test | slice 2, 0d041e3 |
 | `lib/tasks/accounts.rake` | 488–560 | The task: `scoped_accounts` CTE **unchanged** (526–530), `owner_memberships` / `shared_owner_user_ids` unchanged, `LEFT JOIN account_metrics` (555), the two columns and `oldest_computed_at` (547–553) in one query; the completed-event guard removed (a3fbb9a) | slice 2, 0d041e3 / a3fbb9a |
@@ -120,11 +137,14 @@ No `spec/architecture` existed before 1b; `scope :qualifying` existed on no bran
 | `lib/tasks/account_classification.rake` | 94–170 | `OLD_COUNTS_SQL`, `OLD_VALUES_SQL`, `OLD_REVENUE_SQL` (literal ids, `paid_at` dating); `cutoff_365` (bound at 367) still feeds the OLD SQL and the ageing bucket | 1b, b8a8b85 |
 | `lib/tasks/account_classification.rake` | 383, 404 | The calculator built on `Account.new(id:)` (383) — why `users_count` not `users.count`; `new_rolling_365_parent_count: n[:rolling_365_parent_count]` (404) — `new_trailing_365` deleted | slice 2, 0d041e3 |
 | `lib/tasks/account_classification.rake` | 358– | `account_classification:shift_memo_1b` (`OUT=`, `CSV=`) | 1b, b8a8b85 |
-| `lib/tasks/metrics.rake` | 142–168, 295, 381– | `metrics:recompute` (untouched); `margin_ltv_exclusion_impact`; `metrics:churn` | legacy |
+| `lib/tasks/metrics.rake` | 142–168, 295, 381– | `metrics:recompute` (untouched); `margin_ltv_exclusion_impact`; `metrics:churn` | legacy `MARGIN_LTV_EXCLUDED_ACCOUNT_IDS` (8; bound at 202, `unnest(ARRAY[…])` at 262 and 405, `NOT IN (#{…})` at 337) **retires in slice 4e** with the per-site empty-set forms from the plan's G21; seed ⊇ it pinned by the backfill spec until then |
 | `docs/ops/metrics-recompute-cron.md` | — | Heroku Scheduler, 02:30 UTC, not self-scheduling — the window the slice 2 runbook avoids | pre-1a |
 | `lib/tasks/order_types.rake` | 13–19, 23–42 | `PINNED_ORDER_TYPE_IDS` and `order_types:verify_pinned_ids` | ADR 002 |
-| `lib/account_report.rb` | 739–789; 8, 782–850 | `first_shoot_kpi_*`; `annual_report` keeps `paid_at` columns (flagged §5.3) | 1b, ebb23ff; legacy |
+| `lib/account_report.rb` | 739–789; 8, 782–850 | `first_shoot_kpi_*`; `annual_report` keeps `paid_at` columns (flagged §5.3) | 1b, ebb23ff; legacy `IGNORE_ACCOUNT_IDS` (8; `where.not` at 302, 685) **retires in slice 4e**; seed ⊇ it pinned by the backfill spec until then |
 | `lib/status_type.rb` | 4–7 | `active: 1`, `deleted: 2` | legacy |
+
+| `lib/tasks/organizations.rake` | 1–411 | **`organizations:audit_types`, new in slice 4a.** `module OrganizationAudit` (9); `types` memoised at call time, never file scope (16); `select_all` passing binds only to statements that carry a named bind (30–33); `default_binds` (35); the seven sections as methods — type table 55–68, coverage through an ACTIVE edge to an ACTIVE organization 70–83 (the spec goes red without the organization's status), out-of-range 85, blank and the defaulted-brokerage bound 95–108, NARPM in four columns / events / the source keyed `narpm` / accounts named so 111–138, property-management-named firms 140–153, edges 155–221 (dangling 160, duplicate pairs 173, link-count and type-set histograms 186–221, the type set ordered by the array not its text), parent edges 223; **the verdict built from the run's counts** 239–249; the task 264 with the empty-table refusal 272–273; `VERBOSE=true` lists ids | slice 4a, e195ae98; e59a0e19 |
+| `lib/tasks/account_type_backfill.rake` | 1–607 | **`account_classification:backfill_account_type`, new in slice 4b.** ARCHITECTURE NOTES 5–56; `module AccountTypeBackfill` 58; `INTERNAL_SEED_ACCOUNT_IDS` (63–76, eleven ids, one evidence comment each); `TIERS = %i[internal agent]` 78; `TEST_NAME_PATTERNS` 81 (list (d) only); `SelfCheckFailed` 83; `Plan` struct 88; `binds` 99 (the seed binding `[-1]` when empty); the fragments — `brokerage_edge_sql` 120 (`type_of = :brokerage`, both statuses), `non_mls_edge_sql` 133 (list (e) only), `any_edge_sql` 145, `qualifying_parent_sql` 158 (**`Order.qualifying_parents.select(:account_id).to_sql`**, the §5.1 composition), `property_manager_candidate_sql` 166 (the `COALESCE` and the narpm source as a scalar subquery by key), `test_pattern_sql` 183; `eligibility_sql(tier)` 204 — repeated in the UPDATE's WHERE; `seed_rows(rows)` 215 (`[NOT FOUND]`); **`account_rows` 226, the one SELECT the plan is**; `plan` 249 (the seed subtractions in Ruby); `review_lists` (a)–(g) 282; `memo` 356; **`apply!` 480** — one transaction 482, the WHERE re-check 486, `update_all` with `updated_by_id = User.system.id` and the batch stamp, the two self-checks; CSV 509–544 (action priority: write > skip_typed > held_out > review_c > the other reviews); the task 555 — outputs opened before anything runs 560, `applied_at = Time.current.floor(6)` taken once 571, `APPLY=true` the only write path, the post-commit rescue printing the batch pair 593 | slice 4b, 3976ea07; e59a0e19 |
 
 ## Specs
 
@@ -163,6 +183,10 @@ No `spec/architecture` existed before 1b; `scope :qualifying` existed on no bran
 | `spec/models/account_metric_spec.rb` | 1–132 | **New in slice 3.** Pins all three enums integer-for-integer (15–33), `peak_value_types == value_types` (40), the config's names ⊆ the enum's keys for both vocabularies (47–53), and the three collision guards (75–116): `AccountMetric.new` still builds a record, `AccountMetric.active`'s SQL still names `status_type` and not `lifecycle_type`, the predicates are namespaced, and **`lifecycle_type_at` the column is kept distinct from `lifecycle_type_at_risk?` the predicate** — one underscore apart and both new in this slice. Also asserts an unclassified row is valid | slice 3 |
 | `spec/lib/account_classification_spec.rb` | 1–206 | **New in slice 3.** The config as pure arithmetic, no database: `value_tier` at 0 / nil / both edges of all four bands; `lifecycle` at every boundary incl. **365 → `at_risk`, 366 → `lapsed`**, a fractional day flooring down, and **`new` ending one SECOND after the window** (the example that pins `new` as continuous where the degrading boundaries are floored); `lifecycle_started_at` for all six labels; `RUN_GAP_DAYS == 91` and `DEGRADING_START_DAYS` pinned as literals. Every expectation states its own offset rather than reading back the constant it pins | slice 3 |
 
+| `spec/lib/tasks/organizations_rake_spec.rb` | 1–291 | The audit: a row per populated type and `[NO ROWS]`; a soft-deleted organization in the deleted column and not in coverage (the deliberate break: drop `organizations.status_type` from the coverage join); a soft-deleted edge; the out-of-range line; the blank line and the defaulted bound; NARPM through each of the four text columns (141–160); the PM table; duplicate pairs once in coverage and as two numbers; the type-set histogram; parent edges; **the computed verdict** (225–254: seeding one NARPM-named organization, or one PM-named non-brokerage, flips the sentence); VERBOSE; the empty-table refusal | slice 4a, e195ae98; e59a0e19 |
+| `spec/lib/tasks/account_type_backfill_rake_spec.rb` | 1–496 | The backfill. `before(:all)` rake-requires `account_type_backfill`, `metrics` **and `accounts`** (11–19), because the seed ⊇ constants examples (477–495) read two constants Zeitwerk never loads. The agent tier 78–176 (headshot / cancelled / soft-deleted parent / child under an uncompleted parent → NULL; the edge's status; the organization's status; `type_of` agent team → list (e); NULL `marketing_source_id` still written — the `COALESCE` break); never overwriting 178–198; the hold-out by own name, `%narpm%`, a linked organization's name and the `narpm` source 200–239; the internal tier and the seed states 241–300; dry run 302; **APPLY 316–420** — the batch stamp on every row, idempotency, the worklist order, and the three plan-to-apply drift examples (edge removed, soft-deleted, classified by hand) plus the rollback of every tier; OUT/CSV 422–475 with the output-path failure before the write and the printed reversal executed | slice 4b, 3976ea07; e59a0e19 |
+| `spec/architecture/account_classification_spec.rb` | 590–645 | **`account_type backfill tiers (§4.1)`**, before `SQL composition` (647): `TIERS == %i[internal agent]`; the agent rule on the canonical fixtures (completed property parent in; headshot, cancelled parent, child under an uncompleted parent out; no brokerage out); never-overwrite through both the plan and the write. Slice 4c adds its worklist-ordering block before the same `SQL composition` guard | slice 4b, 3976ea07; e59a0e19 |
+
 ## Repo documentation
 
 | File | What it is |
@@ -176,24 +200,36 @@ No `spec/architecture` existed before 1b; `scope :qualifying` existed on no bran
 | `insgt-platform/docs/runbooks/deploy-account-classification-2.md` | Deploying slice 2: maintenance window, one push, recompute in the window, the invariant table and spot checks |
 | `insgt-platform/docs/plans/account-classification-slice-3.md` | Slice 3's survey, plan and the fifteen gaps. **Its spot-check table's three degrading stamps are arithmetically wrong** (`+90 / +180 / +365`); its own G1 rule table (`+91 / +181 / +366`) is right and is what shipped — see §14 |
 | `insgt-platform/docs/runbooks/deploy-account-classification-3.md` | Deploying slice 3: maintenance window, one push, two migrations, the required recompute, eleven invariants, the three distributions and the corrected spot checks |
+| `insgt-platform/docs/plans/account-classification-slice-4.md` | Slice 4's survey, plan, gaps G1–G22, Appendix A (every number's query) and the eleven decisions of 2026-09-15. Its figures are the 2026-09-14 sync's; the 2026-09-28 re-baseline table in the implementation session and the production run both reproduced them line for line after a day's drift (slice 4) |
+| `insgt-platform/docs/architecture/organization-type-audit-2026-09-28.md` | The audit slice 4 blocked on: the production read-out, the four answers, five findings (13 dangling edges to organization 15; 255 of 643 defaulted brokerages; 113 duplicate pairs; both "no code path" counts; the ops copy), and the typed-edge recommendation to §8 Q7 (slice 4a) |
+| `insgt-platform/docs/architecture/account-type-backfill-memo-2026-09-28-production.md`, `-test.md` | What the backfill wrote in production (1,420 rows at 19:52:47 UTC, both self-checks OK) and its review lists (a)–(g); the `-test.md` is the dress rehearsal on a 19:05 UTC production sync, identical apart from the stamps (slice 4b) |
+| `insgt-platform/docs/runbooks/deploy-account-classification-4-backfill.md` | Deploying 4a/4b: no window, the audit's verdict as the gate, dry run then STOP, `APPLY`, the second dry run, nine invariants (the local-file comparisons on the host), eleven spot checks, the pair-keyed reversal; event 4's placeholder and its captured KPI baseline (slice 4a/4b) |
 | `insgt-platform/docs/decisions/002-recapture-order-type.md` | ADR 002 |
 
-## Branch and deploy state, 2026-09-14 (slice 3 deployed to production)
+## Branch and deploy state, 2026-09-28 (slice 4a/4b deployed to production, `APPLY` run)
 
 | Ref | Head | Carries |
 | :-- | :-- | :-- |
-| `heroku/master`, `origin/master`, `master` | **f811e97** | Slices 1a, 1b, 2 and 3, plus slice 4's column and API — what production runs. Pushed 2026-09-14 17:26 EDT; both migrations applied, recompute 2 min 37.79 s over 4,136 accounts 0 failed, all 11 invariants 0, re-derivation 0 mismatches, `joint_ownership` tier labels and segment rows unchanged |
-| `feat/account-classification-slice-3` | merged | Slice 3 in **7 commits** (b6621c2..f8abdd7), merged `--no-ff` as f811e97 at 17:22 EDT on 2026-09-14. The endpoint, the contract spec and the index migration were folded into f8abdd7 rather than taking their own commits; the two migration FILES are still separate and in order, so `db:rollback STEP=2` behaves as the runbook describes |
-| insgt-ops `main` | 4bae4a91 | No slice 3 change. It models **none** of the eight fields this endpoint now adds (slice 2's four and slice 3's four); every `AccountMetricSummary` field is optional, so the extra keys are ignored rather than breaking |
-| dev database | **Re-synced from production on 2026-09-14 as the deploy dry run**, migrated to `20260912120001` and recomputed under slice 3 at 21:12–21:13 UTC, sixteen minutes before the production sweep | 4,136 active accounts swept, 0 unswept, 1 min 06 s. Production reproduced its distribution bucket for bucket. All 11 invariants 0; the re-derivation check 0 mismatches across all 4,136 rows; every spot check agreed with the rule. The earlier 2026-09-10 snapshot (4,078 accounts, swept 13:12 UTC) is what the plan's figures were reasoned against |
+| `heroku/master`, `origin/master`, `master` | **25a694c3** | Slices 1a, 1b, 2, 3, and 4's column, API, audit and backfill — what production runs. Merged `--no-ff` 2026-09-28 15:39 EDT from `feat/account-classification-slice-4-backfill` (e195ae98 the audit, 3976ea07 the backfill, 96544bf6 the dollar formatting, e59a0e19 the review fixes). No migration. `APPLY` ran at 19:52:47.158499 UTC: 1,420 rows (`agent` 1,418, `internal` 2), both self-checks OK, worklist 4,111 → 2,691; all nine runbook invariants exact; the eleven spot checks as reasoned |
+| `feat/account-classification-slice-4-backfill` | merged | Four commits as above. The audit's bind-guard fix went in with e59a0e19 rather than as its own commit |
+| insgt-ops `main` | a4b9a77f (9.59.0, live 2026-09-14) | The Team Type filter with Unset, the column and the edit dialog — the classification worklist is reachable, unordered; 4d adds the ordering control as 9.60.0 |
+| dev database | **Re-synced from production on 2026-09-28** (twice: 05:17 UTC for the survey and the implementation, 19:05 UTC for the deploy rehearsal); the 15:25 UTC dev `APPLY` was overwritten by the second sync | The 19:05 rehearsal's memo matched production's apart from the stamps |
 
-**Verification evidence, 2026-09-14.** Full suite 1,688 examples / 0 failures. Both migrations run
-`migrate` → `rollback` → `migrate`; the schema diff is exactly four column lines, one index line and
-the version bump. Replayed at the plan's survey instant (2026-09-11 14:20 UTC) the implementation
-reproduces **every** figure the plan reasoned out before the code existed: all six lifecycle counts,
-all five `value_type` counts, all five `peak_value_type` counts and the 42-account reactivation
-cohort. Every difference at today's clock is accounted for by 13 named lifecycle movers and 3 named
-band movers. `accounts:joint_ownership` output is byte-identical before and after the reconciliation.
+**Verification evidence, 2026-09-28.** Full suite 1,747 examples / 0 failures. Nine deliberate
+breaks pasted red across the two rake files and the contract block (the coverage join's organization
+status; the verdict as a literal; the `COALESCE`; `type_of IN (2, 5, 6)`; the edge's status; 89
+removed from the seed; the transaction removed; `TIERS` reordered; `account_type IS NULL` dropped
+from the agent query and, separately, from the write). Two review rounds (`predeploy-review-rails`,
+an independent Claude reviewer and Codex on a copy of the tree, each round), no blocker; the fixes
+are §15 of the contract. Phase 0's re-baseline of the plan's Appendix A on the 05:17 sync, the dry
+run, the dev `APPLY` and the production run reproduced each other line for line after the day's
+drift (agent writes 1,417 on the morning sync, 1,418 in production).
+
+**Two things the 4c session should read first.** The sort branch is cut from 25a694c3, after the
+backfill's contract-spec block, so its worklist-ordering `describe` goes before the same
+`SQL composition` guard (now at `account_classification_spec.rb:647`) without a rebase. And the
+post-`APPLY` worklist head in production is 11510 (26), 4513 (16), 11213 (12), 6526 (7), 11575 (6),
+11679 (6) — the runner and curl expectations in the plan's event-2 table drift from there.
 
 **One correction to the plan** (§14 of the contract carries it): the plan's spot-check table gives
 the three degrading stamps as `most_recent_shoot_at + 90 / 180 / 365 days`, where its own G1 rule
