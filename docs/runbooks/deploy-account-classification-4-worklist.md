@@ -1,11 +1,11 @@
 # Runbook: Account Classification Slice 4 — Worklist Ordering Deploy (events 2 and 3)
 
-**Last updated:** 2026-09-28
+**Last updated:** 2026-09-29
 **Repos:** insgt-api (event 2), insgt-ops (event 3)
 **Estimated duration:** ~20 min for event 2 (most of it the curl table); ~15 min for event 3
-**Status:** Draft. Event 2 (sub-slice 4c) is built on `feat/account-classification-slice-4-sort`
-and verified on the 2026-09-28 dev sync; not yet committed, merged or deployed. Event 3 (sub-slice
-4d, insgt-ops 9.60.0) is not yet built.
+**Status:** Event 2 (sub-slice 4c) **deployed 2026-09-29** as release v641, every row of step 3
+verified in production — see the deploy log. Event 3 (sub-slice 4d, insgt-ops 9.60.0) is not yet
+built, so its section is a placeholder.
 
 ## Summary
 
@@ -86,24 +86,32 @@ shifts as shoots age in and out. On the sync:
 
 ## Prerequisites
 
-- [ ] The nine units committed onto `feat/account-classification-slice-4-sort` in the plan's
+- [X] The nine units committed onto `feat/account-classification-slice-4-sort` in the plan's
       order (commits 3–9; the per-unit patches under insgt-api `tmp/slice-4c-units/` are the
       split), `git status` clean
-- [ ] insgt-api `bundle exec rspec` green on the branch: **1,819 examples, 0 failures** on
+- [X] insgt-api `bundle exec rspec` green on the branch: **1,819 examples, 0 failures** on
       2026-09-28 (after both review rounds)
-- [ ] Both review rounds (`predeploy-review-rails`, an independent Claude reviewer and Codex on a copy
+- [X] Both review rounds (`predeploy-review-rails`, an independent Claude reviewer and Codex on a copy
       of the tree, each round) closed with no blocker on 2026-09-28: seven findings fixed (fixture
       order, the SQL-text pins, three wordings, the who-may-filter pins, the evidence file); one open
       question for the engineer (whether sorting and segment filtering, usable by every index role
       like `account_type=`, should be gated to the three roles that read the count — see the plan's
       review record)
-- [ ] `feat/account-classification-slice-4-sort` merged to `master` with `--no-ff`;
+- [X] `feat/account-classification-slice-4-sort` merged to `master` with `--no-ff`;
       `origin/master` pushed
-- [ ] No deploy in flight
-- [ ] **Baseline kept for step 4:** the router-log `service=` time of an unsorted worklist page
-      before the push. Run `get "account_type=unset&per_page=25"` five times and copy the five
-      `service=<n>ms` values from `heroku logs -n 50 -a insgtapi | grep 'path="/accounts'`
-- [ ] Whoever owns the CRM import knows the export gains a twelfth column (header
+- [X] No deploy in flight
+- [X] **Baseline for step 4 — optional since step 4 measures its own.** The interleaved loop there
+      times an unsorted call beside every sorted one in the same window, which controls for dyno
+      warm-up in a way a pre-push reading cannot. Kept on 2026-09-29 anyway, and it corroborates:
+      five unsorted worklist pages before the push, median 453 ms, against 379 ms after it
+      ```
+      service=724ms
+      service=694ms
+      service=426ms
+      service=322ms
+      service=453ms
+      ```
+- [X] Whoever owns the CRM import knows the export gains a twelfth column (header
       `Shoots (365d)`), and whether the import maps by position
 
 ## Steps — event 2
@@ -118,9 +126,12 @@ git push origin master
 git push heroku master
 heroku releases -n 1 -a insgtapi        # record the release beside the deploy log entry
 ```
+RECORDED: v641   Deploy 4cf09754   ops@insightphotos.net   2026/09/29 07:22:43 -0400 (~ 18s ago)
+
 
 No maintenance mode. Watch the build to completion. Nothing to migrate: `heroku run rails
 db:migrate:status -a insgtapi` still reads `2026_09_12_120001` at the top.
+RECORDED: up     20260912120001  Add lifecycle index to account metrics
 
 ### 2. The runner — the reference numbers, the same minute
 
@@ -134,6 +145,15 @@ no metrics row (0 on the sync; small on any day — accounts created since the l
 [6526, 7], [11575, 6]]` · 2691 · 0 · 1572 · 20. Every expectation in step 3 reads from these five
 lines, not from this file.
 
+RECORDED:
+```
+[[11510, 26], [4513, 16], [11213, 12], [11575, 6], [11679, 6]]
+2691
+0
+1572
+20
+```
+
 ### 3. The curl table
 
 Every row against production, with the runner's five lines as the expectations.
@@ -142,7 +162,7 @@ Every row against production, with the runner's five lines as the expectations.
 | :-- | :-- |
 | `get "account_type=unset&sort=rolling_365_parent_count&direction=desc&per_page=5" \| jq -c '[.data[] \| [.id, .rolling365ParentCount]], .metadata.totalCount'` | the runner's five pairs, in order; `totalCount` = the runner's second line |
 | `get "account_type=unset&per_page=5" \| jq -c '.metadata.totalCount, ([.data[] \| has("rolling365ParentCount")] \| any)'` | the same `totalCount`; `false` — no row carries the key unsorted |
-| `get "account_type=unset&sort=rolling_365_parent_count&per_page=25&page=<n>" \| jq -c '[.data[] \| [.id, .rolling365ParentCount]]'` where `25(n−1) <` (non-zero worklist rows) `≤ 25n` — page 6 on the sync (138 non-zero rows) | the last positive count and the first zero on the same page; zeros in ascending id from there |
+| `get "account_type=unset&sort=rolling_365_parent_count&per_page=25&page=6" \| jq -c '[.data[] \| [.id, .rolling365ParentCount]]'` where `25(n−1) <` (non-zero worklist rows) `≤ 25n` — page 6 on the sync (138 non-zero rows) | the last positive count and the first zero on the same page; zeros in ascending id from there |
 | `…&sort=rolling_365_parent_count&per_page=25&page=<metadata.pageCount>` (108 on the sync) | rows reading `"rolling365ParentCount": null` = the runner's third line (0 on the sync); every other row 0, ids ascending |
 | `get "account_type=unset&sort=rolling_365_parent_count&only_once=true&per_page=5&includes[]=order_count" \| jq -c '[.data[].orderCount], .metadata.totalCount'` | **200** (decision 7: the `GROUP BY` is widened, not refused); every `orderCount` 1; `totalCount` equal to `get "account_type=unset&only_once=true&per_page=5"`'s (478 on the sync) |
 | `code "sort=password_digest"` · `code "sort=rolling365ParentCount"` · `code "direction=asc"` · `code "sort=rolling_365_parent_count&direction=ASC"` | four **400**s, body `{"errors":"Bad request"}` |
@@ -158,18 +178,86 @@ Every row against production, with the runner's five lines as the expectations.
 push did not land): stop and check `heroku releases`. **If the sorted call returns rows without
 `rolling365ParentCount`** for the admin token, the same. Do not proceed to event 3 on either.
 
-### 4. The router-log latency check
-
-```bash
-for i in 1 2 3 4 5; do get "account_type=unset&sort=rolling_365_parent_count&direction=desc&per_page=25" > /dev/null; done
-for i in 1 2 3 4 5; do get "account_type=unset&only_once=true&sort=rolling_365_parent_count&direction=desc&per_page=25" > /dev/null; done
-heroku logs -n 100 -a insgtapi | grep 'path="/accounts' | grep -o 'sort=[^ ]*\|only_once=[^& ]*\|service=[0-9]*ms'
+RESULT:
+```
+2 unsorted totalCount                  2691  OK
+2 unsorted carries the key             false  OK
+4 last page (108) nulls                0  OK
+4 last page all zero                   true  OK
+4 last page ids ascending              true  OK
+10 value_type=anchor                   20  OK
+10 every count >= 12                   true  OK
+10 descending                          true  OK
+7 export column count                  12  OK
+7 export twelfth header                Shoots (365d)  OK
+7 export first ID                      11510  OK
+7 export first count                   26  OK
+7 export data rows                     2691  OK
+8 export 400                           400  OK
 ```
 
-Compare the sorted `service=` times with the prerequisite baseline. Measured on the sync the sort
-adds nothing (bare SQL 10.5 ms sorted vs 12.3 ms unsorted median; full local round trip 0.205 s vs
-0.247 s; with `only_once` 0.278 s vs 0.301 s), so **anything over ~50 ms above the unsorted call
-is a finding**, and so is a sorted `only_once` call that is not within noise of its unsorted twin.
+### 4. The router-log latency check
+
+**Interleaved**, so every sorted call sits beside its unsorted twin in the same warm window. Five
+consecutive sorted calls measure dyno warm-up instead of the sort: on 2026-09-29 that shape read
+760 → 461 → 361 → 297 → 339 ms and answered nothing.
+
+```bash
+for i in 1 2 3 4 5; do
+  get "account_type=unset&per_page=25" > /dev/null
+  get "account_type=unset&sort=rolling_365_parent_count&direction=desc&per_page=25" > /dev/null
+  get "account_type=unset&only_once=true&per_page=25" > /dev/null
+  get "account_type=unset&only_once=true&sort=rolling_365_parent_count&direction=desc&per_page=25" > /dev/null
+done
+heroku logs -n 200 -a insgtapi | grep 'path="/accounts' | sed -E 's/.*path="([^"]*)".*service=([0-9]+ms).*/\2  \1/'
+```
+
+That prints one line per request, oldest first, the timing then the whole query, so sorted and
+unsorted can never be confused. **Do not pipe the log through `grep -o`**: it separates `service=`
+from the `path=` it belongs to, and the unsorted calls, carrying neither `sort=` nor `only_once=`,
+become anonymous timings. That mistake cost a run on 2026-09-29.
+
+Read the output as **four medians and the two deltas between the pairs**, never as absolutes —
+Heroku's figures move with dyno state and with the time of day. The threshold is a difference: a
+sorted median more than **~50 ms above its unsorted twin** is a finding, and so is a sorted
+`only_once` median outside the noise of its own twin. Measured on the dev sync the sort adds
+nothing (bare SQL 10.5 ms sorted against 12.3 ms unsorted; full local round trip 0.205 s against
+0.247 s; with `only_once` 0.278 s against 0.301 s).
+RESULT:
+```
+135ms  /accounts?account_type=unset&per_page=5
+341ms  /accounts?account_type=unset&sort=rolling_365_parent_count&per_page=25&page=1
+323ms  /accounts?account_type=unset&sort=rolling_365_parent_count&per_page=25&page=108
+317ms  /accounts?value_type=anchor&sort=rolling_365_parent_count&per_page=25
+12852ms  /accounts/export?account_type=unset&sort=rolling_365_parent_count&direction=desc
+10ms  /accounts/export?sort=password_digest
+122ms  /accounts?account_type=unset&per_page=5
+379ms  /accounts?account_type=unset&sort=rolling_365_parent_count&per_page=25&page=1
+242ms  /accounts?account_type=unset&sort=rolling_365_parent_count&per_page=25&page=108
+292ms  /accounts?value_type=anchor&sort=rolling_365_parent_count&per_page=25
+12938ms  /accounts/export?account_type=unset&sort=rolling_365_parent_count&direction=desc
+3ms  /accounts/export?sort=password_digest
+379ms  /accounts?account_type=unset&per_page=25
+290ms  /accounts?account_type=unset&sort=rolling_365_parent_count&direction=desc&per_page=25
+570ms  /accounts?account_type=unset&only_once=true&per_page=25
+563ms  /accounts?account_type=unset&only_once=true&sort=rolling_365_parent_count&direction=desc&per_page=25
+432ms  /accounts?account_type=unset&per_page=25
+303ms  /accounts?account_type=unset&sort=rolling_365_parent_count&direction=desc&per_page=25
+732ms  /accounts?account_type=unset&only_once=true&per_page=25
+521ms  /accounts?account_type=unset&only_once=true&sort=rolling_365_parent_count&direction=desc&per_page=25
+414ms  /accounts?account_type=unset&per_page=25
+478ms  /accounts?account_type=unset&sort=rolling_365_parent_count&direction=desc&per_page=25
+673ms  /accounts?account_type=unset&only_once=true&per_page=25
+649ms  /accounts?account_type=unset&only_once=true&sort=rolling_365_parent_count&direction=desc&per_page=25
+366ms  /accounts?account_type=unset&per_page=25
+410ms  /accounts?account_type=unset&sort=rolling_365_parent_count&direction=desc&per_page=25
+634ms  /accounts?account_type=unset&only_once=true&per_page=25
+571ms  /accounts?account_type=unset&only_once=true&sort=rolling_365_parent_count&direction=desc&per_page=25
+317ms  /accounts?account_type=unset&per_page=25
+303ms  /accounts?account_type=unset&sort=rolling_365_parent_count&direction=desc&per_page=25
+612ms  /accounts?account_type=unset&only_once=true&per_page=25
+540ms  /accounts?account_type=unset&only_once=true&sort=rolling_365_parent_count&direction=desc&per_page=25
+```
 
 ### 5. insgt-ops (9.59.0, still live)
 
@@ -256,7 +344,50 @@ every export is back to eleven columns.
   every account's twelve cells identical sorted and unsorted, the sorted ids equal to the SQL
   worklist order. Latency, five local runs each: unsorted 0.247 s, sorted 0.205 s; `only_once`
   0.301 s unsorted, 0.278 s sorted (medians).
-- `<date>`: **deployed to production (event 2).** `<release>`; runner lines `<…>`; curl table
-  `<every row>`; router-log `service=` sorted `<n>` ms vs unsorted `<n>` ms; export
-  `<header, first id, row count>`.
+- 2026-09-29, 07:22 EDT: **deployed to production (event 2).** Merged `--no-ff` as 4cf0975 (seven
+  commits, 1f4e5a9..fceee13), pushed to origin and heroku; release **v641**, deploy 4cf09754 by
+  ops@insightphotos.net at 07:22:43 -0400. No migration: `db:migrate:status` still reads
+  `20260912120001` at the top. The step 2 runner returned `[[11510, 26], [4513, 16], [11213, 12],
+  [11575, 6], [11679, 6]]` · 2691 · 0 · 1572 · 20. The worklist is unchanged from the 2026-09-28
+  sync and the head drifted by one row: 6526 Megan Higginson left the top five because four of its
+  seven qualifying shoots are dated 2025-09-28 and aged out of the trailing year at the overnight
+  recompute, and 11679 took the fifth place. That is the ordering tracking the data, and it is why
+  step 2 takes the reference the same minute as the curls.
+
+  **All thirteen rows of the step 3 table passed.** The sorted head and `totalCount` equal to the
+  runner's first two lines; the same `totalCount` unsorted with `rolling365ParentCount` absent from
+  every row; the 1 → 0 transition inside page 6 (thirteen rows at one ending at 12338, then zeros
+  from id 7 ascending); page 108's sixteen rows with no nulls, every count 0 and ids ascending;
+  `only_once` with the sort a **200** with every `orderCount` 1 and `totalCount` 478 sorted and
+  unsorted; the four sort 400s and the three filter 400s; the export a 200 whose CSV carried twelve
+  columns ending `Shoots (365d)`, first data row 11510 reading 26, and 2,691 data rows, with its
+  bad-sort twin a 400; `lapsed` 1,572; `anchor` 20, every count ≥ 12 and descending;
+  `lapsed ∧ anchor` **0**; and `totalCount` equal with and without the sort on all four shapes
+  (2,691 · 414 · 81 · 979).
+
+  **Latency (step 4), five interleaved pairs so each call sits in the same warm window.** The sort
+  costs nothing measurable in production:
+
+  | Shape, 25 per page | unsorted median | sorted median | delta |
+  | :--- | --: | --: | --: |
+  | `account_type=unset` | 379 ms | 303 ms | −76 ms |
+  | the same with `only_once` | 634 ms | 563 ms | −71 ms |
+
+  Both medians are lower sorted than unsorted, and the pre-push unsorted baseline kept in the
+  prerequisites corroborates from the other side: 453 ms median before the deploy against 379 ms
+  after it, with the same warm-up curve inside it (724 → 322 ms). The widest single pair ran
+  +64 ms, inside the 115 ms spread of the unsorted series itself (317–432 ms), so nothing comes
+  near the ~50 ms threshold in a way the run-to-run noise does not already cover. A first attempt
+  measured five consecutive sorted calls with no interleaved baseline and read
+  760 → 461 → 361 → 297 → 339 ms; that is dyno warm-up, not sort cost, and it is why step 4 now
+  interleaves. Discarded rather than recorded.
+
+  **One number worth keeping, not a finding.** The worklist export took **12.9 s** (12,852 ms and
+  12,938 ms on two runs) for 2,691 rows, about 4.8 ms a row. That is the per-row `Account#owner`
+  lookup behind the Email / Phone / First Name / Last Name columns, which
+  `AccountCsvExportService`'s notes already call the pre-existing cost; the twelfth column this
+  slice adds is one batched `pluck` for the whole result set. No pre-4c export was timed, so the
+  figure is recorded rather than attributed. It sits inside Heroku's 30 s H12 window with room, and
+  an unfiltered export covers more rows than this filtered one, so the margin is narrower there.
+  The bad-sort export was rejected in 3–10 ms, before any query.
 - `<date>`: **9.60.0 released (event 3).** `<tag, RELEASE.txt SHA, chunk delta, the ops checks>`.
