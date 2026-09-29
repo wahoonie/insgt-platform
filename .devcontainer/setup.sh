@@ -4,6 +4,17 @@ set -e
 export PATH="$HOME/.local/bin:$PATH"
 eval "$(mise activate bash)"
 
+echo "🔧 Allowing git to operate on /workspace..."
+# Docker Desktop's VirtioFS reports the bind-mount root (/workspace) as root:root, while
+# every directory inside it maps to vscode correctly and stays writable. Git 2.35+ refuses
+# to touch a repo whose worktree looks like it belongs to another user, so the platform
+# repo itself dies with "dubious ownership" once the kernel refreshes its cached attributes
+# for that inode — usually partway through a session, not at startup. Only the share root
+# misreports, so the nested app repos are unaffected and need no exception. This lives here
+# because ~/.gitconfig is copied fresh from the Mac on every container create.
+git config --global --get-all safe.directory | grep -qx /workspace \
+  || git config --global --add safe.directory /workspace
+
 echo "💎 Installing Ruby dependencies..."
 for dir in /workspace/apps/insgt-*/; do
   if [ -f "$dir/Gemfile" ]; then
