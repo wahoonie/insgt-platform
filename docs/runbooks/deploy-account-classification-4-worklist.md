@@ -1,11 +1,12 @@
 # Runbook: Account Classification Slice 4 — Worklist Ordering Deploy (events 2 and 3)
 
-**Last updated:** 2026-09-29
+**Last updated:** 2026-10-01
 **Repos:** insgt-api (event 2), insgt-ops (event 3)
 **Estimated duration:** ~20 min for event 2 (most of it the curl table); ~15 min for event 3
 **Status:** Event 2 (sub-slice 4c) **deployed 2026-09-29** as release v641, every row of step 3
-verified in production — see the deploy log. Event 3 (sub-slice 4d, insgt-ops 9.60.0) is not yet
-built, so its section is a placeholder.
+verified in production — see the deploy log. Event 3 (sub-slice 4d, insgt-ops 9.60.0) **released
+2026-09-30** as release stamp 1790765225, all fourteen on-site rows passing. insgt-ops 9.61.0
+followed the same day, so 9.60.0 is no longer the live build — see Rollback.
 
 ## Summary
 
@@ -297,7 +298,8 @@ npm run test                                           # vitest — 520 examples
 npm run build:prod                                     # green before anything ships
 git tag v9.60.0 && git push origin main --tags
 npm run deploy:prod                                    # build:prod + upload + invalidate
-aws s3 cp s3://insgt-apps/ops/releases/0834506b/RELEASE.txt -   # the SHA that shipped; record it below
+aws s3 ls s3://insgt-apps/ops/releases/                        # archives are keyed by epoch stamp, not SHA
+aws s3 cp s3://insgt-apps/ops/releases/<stamp>/RELEASE.txt -    # the newest stamp; record its sha below
 ```
 
 `package-lock.json` carries an uncommitted version bump to 9.59.0 that predates this branch; the
@@ -355,6 +357,10 @@ cd apps/insgt-ops
 npm run rollback                     # lists releases with SHA and branch
 npm run rollback -- <epoch>          # the 9.59.0 release
 ```
+
+**9.61.0 (d4c3a9ac, stamp 1790786238) sits on top of 9.60.0.** Rolling back to 9.59.0 also removes
+9.61.0's lifecycle/value badge and dropdown descriptions. To drop only 9.61.0, roll back to
+1790765225 (9.60.0); the API order rule above still holds for either.
 
 **The window is real but bounded.** Silent deferred updates have been live since v9.55.0, so a
 client already running 9.60.0 keeps it until its next update check (`UPDATE_CHECK_INTERVAL_MS`,
@@ -438,7 +444,17 @@ every export is back to eleven columns.
   figure is recorded rather than attributed. It sits inside Heroku's 30 s H12 window with room, and
   an unfiltered export covers more rows than this filtered one, so the margin is narrower there.
   The bad-sort export was rejected in 3–10 ms, before any query.
-- `<date>`: **9.60.0 released (event 3).** `<tag, RELEASE.txt SHA, the fourteen on-site rows>`.
+- 2026-09-30, 06:47 EDT: **9.60.0 released (event 3).** `main` merge 0834506b of
+  `feat/account-worklist-sort`, tagged `v9.60.0`; release stamp **1790765225** (10:47:05 UTC), three
+  minutes after the merge. **All fourteen on-site rows passed.** Step 1's `aws s3 cp …/0834506b/…`
+  pointed at a path that does not exist — archives are keyed by epoch stamp — and is corrected
+  above. This entry's stamp is identified by its time; its own `RELEASE.txt` was not read.
+
+  9.61.0 followed at 12:37 EDT: `v9.61.0` on d4c3a9ac (the lifecycle and value classification
+  badge, and the lifecycle and value descriptions in the dropdowns), release stamp **1790786238**,
+  whose `RELEASE.txt` reads `sha=d4c3a9ac`, `branch=main`, `date=2026-09-30T16:37:24Z`,
+  `deployed_by=pangurbahn`. It is outside this runbook's scope and recorded here only because it
+  changes what a rollback of event 3 removes.
   Verified on the dev sync 2026-09-29 before release: Vitest 520 examples in 30 files, Cypress 112
   examples across the ten accounts specs, `ng build` green. The worklist head read
   `[26, 16, 12, 7, 6]` — 11510, 4513, 11213, 6526, 11575 — matching the runner's reference row for
