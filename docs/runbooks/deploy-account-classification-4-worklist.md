@@ -264,35 +264,82 @@ RESULT:
 Nothing to deploy. Team Type = **Unset** still lists the worklist, unordered, and the count matches
 the runner's second line. An export from the page downloads with twelve columns.
 
-## Steps — event 3 (insgt-ops 9.60.0; sub-slice 4d, not yet built)
+## Steps — event 3 (insgt-ops 9.60.0, sub-slice 4d)
 
-Placeholder until `feat/account-worklist-sort` exists (plan commits 10–17, G17–G19). Preconditions,
-both from this runbook: event 2 deployed and **every row of step 3 passing in production**.
+Preconditions, both from this runbook: event 2 deployed, and **every row of step 3 passing in
+production** — an unknown `sort` was ignored rather than 400ed before event 2, so a 9.60.0 ops
+against a pre-event-2 API would sort nothing and say nothing.
+
+What ships: `feat/account-worklist-sort`, sixteen commits, `659b2cd5..387fa8f1`. Eight are the
+plan's commits 10–17; the other eight came out of implementation and review, and three of those are
+worth knowing before the on-site checks:
+
+- `8f0d8dad` fixes a **pre-existing** defect, not one this branch introduced. Since 9.59.0 the Team
+  Type filter and column vanished on any cold load — a refresh, or a pasted link — because the role
+  gate was captured at construction while `AuthGuardService` activates the route on the token alone
+  and the session roles land after it. The worklist button would have inherited it. This is why the
+  checklist below tests a **hard reload**, which nobody thought to do for 9.59.0.
+- `304fdf32` moves the filter form into `data-access/` — the page was at `angular-core`'s 400-line
+  limit and the segment filters needed the room.
+- `dd559fe5`, `e922fa39`, `6fbfb1ae`, `387fa8f1` are fix-ups; each message names what it corrects.
+
+### 1. Release
 
 `scripts/deploy.sh` neither tags nor refuses a dirty tree (it warns and deploys anyway), and the tag
 series already skips `v9.53.0` and `v9.54.0`, so the release is stated step by step:
 
 ```bash
 cd apps/insgt-ops
-git checkout main && git pull --ff-only && [ -z "$(git status --porcelain)" ] && echo clean
+git checkout main && git merge --no-ff feat/account-worklist-sort
+git pull --ff-only && [ -z "$(git status --porcelain)" ] && echo clean
 grep '"version"' package.json                          # 9.60.0
+npm run test                                           # vitest — 520 examples, 30 files
 npm run build:prod                                     # green before anything ships
 git tag v9.60.0 && git push origin main --tags
 npm run deploy:prod                                    # build:prod + upload + invalidate
-aws s3 cp s3://insgt-apps/ops/releases/<epoch>/RELEASE.txt -   # the SHA that shipped; record it below
+aws s3 cp s3://insgt-apps/ops/releases/0834506b/RELEASE.txt -   # the SHA that shipped; record it below
 ```
 
-Then on `https://ops.insightphotos.net/#/accounts` (a hard reload first): press **Classification
-worklist** → Team Type reads Unset, Sort by reads the 365-day option, the URL carries
-`accountType=unset&sort=rolling_365_parent_count`, the request carries
-`sort=rolling_365_parent_count&direction=desc`, the first row is the runner's first id with its
-count under **Shoots (365d)**, the header arrows are inert; page 2 continues the server order;
-**Clear** removes the column, the arrows return, the URL is bare;
-`/#/accounts?sort=rolling_365_parent_count` in a new tab loads sorted on entry with Team Type
-"Any". Lifecycle = Lapsed and Find → the request carries `lifecycle_type=lapsed` and the count
-matches the runner's fourth line; Value = Anchor with Lifecycle = Lapsed → the empty state;
-`/#/accounts?lifecycleType=lapsed` restores the select and searches on entry. Record the
-`ng build` chunk delta.
+`package-lock.json` carries an uncommitted version bump to 9.59.0 that predates this branch; the
+tree is only "clean" once it is dealt with. Every `chore: bumped version` commit in this repo's
+history touches `package.json` alone, so 9.60.0 followed that and left the lockfile as it found it.
+
+### 2. On site
+
+On `https://ops.insightphotos.net/#/accounts`, signed in as admin, **with a hard reload first**.
+Measured against the dev sync on 2026-09-29; production numbers come from the step 2 runner, taken
+the same minute as these checks.
+
+| # | Do | Expect |
+| :-- | :-- | :-- |
+| 1 | Hard reload the page | Team Type, Sort by and **Classification worklist** are all present. Before `8f0d8dad` the first and third were missing after any reload |
+| 2 | Press **Classification worklist** | One request, carrying `accountType=unset`, `sort=rolling_365_parent_count`, `direction=desc`. Two requests means it went through a control's change handler and the first was an unfiltered scan |
+| 3 | Read the controls | Team Type **Unset**, Sort by **Shoots in last 365 days, most first** |
+| 4 | Read the URL | `?accountType=unset&sort=rolling_365_parent_count` — and **no** `direction` |
+| 5 | Read the grid | A **Shoots (365d)** column between Order Count and Orders; first row is the runner's first id with its count; counts descend down the page |
+| 6 | Look for a zero and a dash | A row reading `0` is a real zero, not an em dash. An em dash means no metrics row — `??`, never `\|\|` |
+| 7 | Click any header arrow | Nothing happens. All seven carry `mat-sort-header-disabled` while the server holds the order |
+| 8 | Page 2 | Continues the server order; counts keep descending across the boundary |
+| 9 | Press **Clear** | Column gone, arrows live again, URL bare |
+| 10 | Open `/#/accounts?sort=rolling_365_parent_count` in a new tab | Loads sorted on entry, Team Type "Any", request carries `direction=desc` |
+| 11 | Open `/#/accounts?sort=password_digest` | Neither restores nor requests a sort; the page opens normally rather than on an error alert |
+| 12 | Lifecycle = **Lapsed**, Find | Request carries `lifecycleType=lapsed`; the count matches the runner's fourth line |
+| 13 | Value = **Anchor** with Lifecycle = Lapsed | The empty state. §4.3's structural zero — `lapsed` implies a null value tier — not a bug |
+| 14 | Open `/#/accounts?lifecycleType=6` | Ignored. The integer is what the column stores; the wire takes the name |
+
+If a sorted request 200s with no `rolling365ParentCount` on any row, the API is not the one event 2
+deployed — stop and check the release, because that is exactly what a rolled-back API looks like.
+
+### 3. Record
+
+Bundle delta, measured on the branch against `main`:
+
+| | main | 9.60.0 | delta |
+| :-- | --: | --: | --: |
+| Initial total, transfer | 564.21 kB | 564.31 kB | +0.10 kB |
+| account-list lazy chunk, raw | 22,897 B | 26,175 B | +3,278 B |
+
+No new dependency and no new chunk.
 
 ## Rollback
 
@@ -313,8 +360,9 @@ npm run rollback -- <epoch>          # the 9.59.0 release
 client already running 9.60.0 keeps it until its next update check (`UPDATE_CHECK_INTERVAL_MS`,
 5 min, or sooner on a trigger) and then a safe reload — the next navigation, a return to the tab
 after 10 s hidden, or 60 s idle (plan G19). Roll the ops build back, wait for that window to pass
-(or tell the two users to reload), then roll the API back if it must go too. `DEPLOY.md:111–113`'s
-"propagation is fast" sentence predates silent updates; 4d's doc commit corrects it.
+(or tell the two users to reload), then roll the API back if it must go too. `DEPLOY.md`'s
+"propagation is fast" sentence predated silent updates and was corrected in `09bee3c9`, along with
+the two Open items that still described them as planned.
 
 ### insgt-api (event 2)
 
@@ -390,4 +438,10 @@ every export is back to eleven columns.
   figure is recorded rather than attributed. It sits inside Heroku's 30 s H12 window with room, and
   an unfiltered export covers more rows than this filtered one, so the margin is narrower there.
   The bad-sort export was rejected in 3–10 ms, before any query.
-- `<date>`: **9.60.0 released (event 3).** `<tag, RELEASE.txt SHA, chunk delta, the ops checks>`.
+- `<date>`: **9.60.0 released (event 3).** `<tag, RELEASE.txt SHA, the fourteen on-site rows>`.
+  Verified on the dev sync 2026-09-29 before release: Vitest 520 examples in 30 files, Cypress 112
+  examples across the ten accounts specs, `ng build` green. The worklist head read
+  `[26, 16, 12, 7, 6]` — 11510, 4513, 11213, 6526, 11575 — matching the runner's reference row for
+  row, with `direction=desc` on the request and absent from the URL, and all seven sort headers
+  inert while sorted. Two review rounds; the findings and the one deferred limitation are in the
+  branch's commit messages.

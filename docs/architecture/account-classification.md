@@ -1,9 +1,13 @@
 # Account Classification Architecture
 
 **Repo:** `insgt-api` · **Consumers:** `insgt-ops` teams page, Pipedrive nightly push
-**Status:** Slices 1a and 1b deployed to production 2026-09-10, with slice 4's column and API; slice 2 deployed to production 2026-09-11; slice 3 deployed to production 2026-09-14; slice 4a/4b (the organization type audit and the tiered backfill) deployed 2026-09-28 and `APPLY` run the same day; see §9
-**Version:** 7 · **Last updated:** 2026-09-28 (slice 4a/4b implemented)
-**Supersedes:** v6 (2026-09-14), v5 (2026-09-11), v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§15 for what changed and why.
+**Status:** Slices 1a and 1b deployed to production 2026-09-10, with slice 4's column and API; slice 2
+deployed 2026-09-11; slice 3 deployed 2026-09-14; slice 4a/4b deployed and `APPLY` run 2026-09-28;
+slice 4c deployed 2026-09-29 (`master` merge 4cf0975); slice 4d merged to insgt-ops `main` as 0834506b and
+tagged 9.60.0 2026-09-30; D6 closed 2026-09-29, slice 6 redefined; see §9
+**Version:** 8 · **Last updated:** 2026-09-30 (D6 closed; 4d merged)
+**Supersedes:** v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11), v4 (2026-09-10), v3 (2026-09-08),
+v2 (2026-09-05), v1 (2026-08-27). See §10–§16 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
 `account-classification-drift-audit-2026-09-07.md` (the evidence behind v3),
 `shift-memo-slice-1b-2026-09-10.md` (what slice 1b moves, account by account),
@@ -31,7 +35,7 @@ Classify all active accounts along four independent axes so that segments can be
 | **Type** | What kind of business is this? | `accounts.account_type` | Manual, rarely |
 | **Lifecycle** | How recently did they buy? | `account_metrics.lifecycle_type` | Nightly |
 | **Value** | How much do they buy? | `account_metrics.value_type` / `peak_value_type` | Nightly |
-| **Origin** | Where did they come from? | `accounts.marketing_source_id` (self-reported) + a derived acquisition reference, column **undecided — see D6** | Set once |
+| **Origin** | Where did they come from? | `accounts.marketing_source_id` — self-reported at signup, set by a scheduler, or derived once from the host of the last headshot event before the account's first paid listing shoot (§5.5) | Set once |
 
 These are orthogonal by design. Every earlier attempt to express recency and frequency in a
 single flat enum produced overlapping and non-exhaustive categories.
@@ -55,8 +59,10 @@ is a real reconciliation problem and is scoped into slice 7 (§9) rather than as
 
 ### Non-goals
 
-- No `acquisition_channel` enum merging self-reported source with derived event origin. Two
-  facts, two columns.
+- No `acquisition_channel` enum and no separate acquisition column. Event attribution writes into
+  `accounts.marketing_source_id`, the column the marketing-source reports already read, and only
+  when that column is NULL. A derived value is recoverable by query (§5.5), so no provenance column
+  is added.
 - No `Dormant` lifecycle value. `>3 years` does not change the action taken; sort within
   `lapsed` by `most_recent_shoot_at` instead.
 - No `account_type` on the customer-facing order form.
@@ -222,21 +228,34 @@ it; the ops order-type form reads and writes it.
 KPI read the scopes; the only id list left is the margin-only
 `SHOOT_UNIVERSE_EXCLUDED_ORDER_TYPE_IDS` (§10).
 
-### 3.2 `marketing_events` — no `event_type`
+### 3.2 `marketing_events` — headshot events only; add `organization_id`
 
-v2 proposed a five-value `event_type` on `marketing_events`. **Not added, and not planned.**
+`marketing_events` groups the headshot orders from one headshot event. The current flow:
 
-`marketing_events` is a headshot-event-only container: it groups the orders a
-`MarketingEventImport` creates against one `order_type_id`
-(`app/models/marketing_event_import.rb`). Paparazzi, caravan, and sponsorship work exist as
-orders and are classified by `order_types.category_type` (`paparazzi` is `marketing`). Per-event
-reporting therefore reads `orders.marketing_event_id` joined to `order_types.category_type`; a
-second kind column on the event table would duplicate that.
+1. A scheduler creates the event's container order in insgt-ops, so it can be scheduled, given a
+   location and assigned a photographer.
+2. A `marketing_events` row is created with `marketing_events.order_id` pointing at that order.
+3. After the event, `POST /orders/headshot` creates one headshot order per agent, matching an
+   existing account by email first (the active `Email` row's user, then that user's owner account),
+   then by account name (`first last`), and creating the account only if neither matches
+   (`OrderHeadshot.find_or_create_account`, `lib/order_headshot.rb`). Each headshot order carries
+   `orders.marketing_event_id`.
 
-There is no partial implementation anywhere: no column, no enum, no factory, no spec, no consumer
-in insgt-ops. `marketing_events` has no organisation association either — v2 said it did; it has
-`orders` and an optional scheduling `order` only. Recorded here because no commit message records
-the decision.
+`MarketingEventImport` (`app/models/marketing_event_import.rb`) is legacy and no longer used: 135
+import rows, the last created 2023-10-27.
+
+**Headshot only, with a legacy exception.** In the system's early days some paparazzi events were
+recorded as `marketing_events` rows. That is no longer done. Those rows stay, are identified by the
+slice 6 host read-out, and are mapped to no host (§3.5), which keeps them out of attribution.
+Paparazzi, caravan and sponsorship work today exists only as orders classified by
+`order_types.category_type`.
+
+**No `event_type`.** v2 proposed a five-value `event_type`. Not added and not planned: with one
+current kind of event the column would carry one value.
+
+**Host organization.** v7 said `marketing_events` has no organization association; true until
+slice 6, and the host existed only inside the event name (`2022-04-08 PSAR Chula Vista-Headshots`,
+`2024-03-26 NSDCR Headshots`). Slice 6 adds `marketing_events.organization_id`; see §3.5.
 
 ### 3.3 `accounts` — add `account_type`
 
@@ -253,23 +272,19 @@ on. Defaulting to `agent` would erase it across every existing row. There is no 
 validation for the same reason, and `spec/factories/accounts.rb` deliberately sets no default so
 the unset state is exercised.
 
-**`accounts.marketing_event_id` was not added.** v2's derived-origin column assumed an event is
-the acquiring unit. The open alternative is `accounts.acquisition_order_id`, a foreign key to
-`orders`, on the theory that acquisition is captured uniformly across event and non-event order
-types — an event order still carries `orders.marketing_event_id`, so the event is reachable through
-the order. This is decision **D6**, open; see §7. Nothing in code or commit history argues either
-side yet; the arguments below are the ones raised in review.
+**No acquisition column is added to `accounts`.** Neither `accounts.marketing_event_id` (v2) nor
+`accounts.acquisition_order_id` (v3's alternative). D6 closed 2026-09-29, §7: the only acquisition
+path worth crediting is a headshot event, the first order of any non-event account carries no
+channel information, and what the business measures is the host organization, not the event.
+Attribution is written into `marketing_source_id` instead (§5.5).
 
-- For `acquisition_order_id`: one column covers every acquisition path, event or not; the event
-  is one join away; it keeps working if events stop being the only lead-generation vehicle.
-- For `marketing_event_id`: it answers the per-event ROI question directly and matches v2 §5.5 as
-  written; an order reference is indirect for that report.
-
-Until D6 closes, slice 6 is blocked and §5.5 is stale.
-
-`marketing_source_id` stays exactly as it is. Self-reported channel at signup and derived
-acquisition are different facts and both are worth keeping. Do not add organization rows to
-`marketing_sources` to represent headshot events.
+`marketing_source_id` holds three kinds of value in one column: self-reported (required at online
+signup), set by a scheduler in insgt-ops, or derived from a headshot event host (§5.5). The
+derivation writes only where the column is NULL and never overwrites; a scheduler's later edit wins.
+Headshot-created accounts are **not** given a source at creation: attending a free event is not
+being sourced as a paying customer. v7's "do not add organization rows to `marketing_sources`" is
+withdrawn — host organizations (NARPM, PSAR, NAHREP) already exist as sources, and the mapping from
+organization to source is explicit (§3.5).
 
 ### 3.4 `account_metrics` — nine columns and one index, in two slices
 
@@ -436,6 +451,36 @@ Q7. The calculator calls the method rather than restating the condition, and cal
 rather than `users.count` because the shift memo builds the calculator on an unsaved
 `Account.new(id:)`, where the association is a null scope.
 
+### 3.5 `marketing_events.organization_id` and `organizations.marketing_source_id`
+
+```ruby
+add_reference :marketing_events, :organization, foreign_key: true, null: true  # the host
+add_reference :organizations, :marketing_source, foreign_key: true, null: true  # what the host counts as
+```
+
+Two hops rather than a source on the event. The host is the fact recorded per event; which source a
+host counts as is recorded once per organization, so twenty PSAR events cannot disagree about PSAR.
+A source column on the event beside `organization_id` would be two columns that can contradict each
+other on every row.
+
+**NULL on `marketing_events.organization_id` means "no outside host"** — an event Insight Photos ran
+itself, or a legacy paparazzi row. It is deliberate, and the ops event form enforces it: choosing a
+host is required, with "Hosted by Insight Photos" as an option stored as NULL. Only rows created
+outside the form are ambiguous between "no host" and "not filled in."
+
+**NULL on `organizations.marketing_source_id` means the organization is not a marketing source.**
+Most organizations are brokerages and never host an event. A host without a source is legitimate:
+its converts stay unattributed on the account and are still counted by organization in the ROI
+report.
+
+**Host backfill, from the event name, by hand.** The `category_type` pattern (§3.1): a read-out
+lists each distinct host token parsed from `marketing_events.name` with its event count, every name
+it could not parse, and every event whose orders are not headshot orders. Dan maps each token to an
+`organization_id` or to `nil` in an explicit map committed in the migration. The migration raises on
+any event the map misses and any token mapped twice. Location tokens (`Chula Vista`) are ignored
+unless a chapter is a separate organization. Organization-to-source mappings are set the same way,
+for hosts only. The column stays nullable, because deliberate NULLs are expected.
+
 ---
 
 ## 4. Enums
@@ -485,6 +530,13 @@ typed brokerage. The name proxy (own name or a linked organization matching `%pr
 nine accounts, six of which also satisfy the `agent` rule. Those are **held out** of the `agent`
 write and printed as the memo's hand-classification list (c), so the worklist keeps them at its
 head. Decision 3, 2026-09-15.
+
+**Slice 6 changes one input to this backfill's proxy.** The property-manager hold-out reads
+`marketing_source_id` = the source keyed `narpm`. From slice 6 that value can be *derived* — an
+account that converted after a NARPM-hosted headshot event — as well as self-reported. The 2026-09-28
+`APPLY` is unaffected. A future re-run plans only rows still NULL, and would hold out any such
+account as a property-manager candidate rather than typing it `agent`; attendance at a NARPM event is
+the same kind of signal the proxy was reaching for, so this is accepted, not guarded.
 
 **Known test patterns are a review list, never a write** (the memo's list (d)): the net catches
 paying customers (2479 and 9958 on every run). Everything else stays NULL. The write is
@@ -947,14 +999,45 @@ neither scheduled nor completed has no date and falls out of it (0 such rows tod
 
 ### 5.5 Origin
 
-**Stale pending D6.** v2 derived origin into `accounts.marketing_event_id` from the account's
-earliest `brand` or `marketing` order that carried an event. That column was not added (§3.3).
+An account's origin is `accounts.marketing_source_id`. Self-reported and scheduler-set values are
+entered by people. Event attribution is **derived nightly and written once**:
 
-The rule survives in shape: set once, from the account's **earliest** order only, immutable —
-which is why it lives on `accounts` and not in `account_metrics`. An account that has been buying
-for three years and then attends a PSAR headshot event was not acquired by that event. But the
-target column, and therefore the predicate, are undecided until D6 resolves between
-`marketing_event_id` and `acquisition_order_id`. Do not implement from this section.
+For every active account with `marketing_source_id IS NULL` and `account_type` not `internal`:
+
+1. The account has at least one paid listing shoot:
+   `Order.qualifying_parents.where.not(paid_at: nil)`, composed as `to_sql` per §5.1. The earliest
+   is its first paid listing shoot.
+2. It has at least one active order carrying a `marketing_event_id` dated before that first paid
+   listing shoot, both dated by `Order.shoot_date_sql` with ties broken by `orders.created_at` then
+   `orders.id` (slice 6 pins the tiebreak in the contract spec). The **latest** such order is the
+   crediting one.
+3. Its event has an `organization_id`, and that organization has a `marketing_source_id`.
+
+If all three hold, write the organization's source to the account, stamped `updated_by_id =
+User.system` and one batch `updated_at`, following slice 4b. Any missing link leaves the account NULL.
+
+The rules this encodes, decided 2026-09-29 (the touch reversed to last on 2026-09-30):
+
+- **Last touch, no time limit.** An account created at a March 2025 headshot event whose first
+  listing is November 2026 credits the event. Three events before the first listing credit the most
+  recent of the three, however far back the others reach.
+- **Credited on the first paid listing, not on attendance.** Before that, the account is an attendee.
+- **Only events before the first paid listing, not any event order.** An account that bought
+  listings and later attended an event is not credited. Because `POST /orders/headshot` matches
+  existing accounts, that customer's headshot lands on the existing account, where this rule sees it
+  dated after the paid listing.
+- **Set once.** A later refund, soft-delete or reschedule does not unset it, and an event order
+  recorded later that would have been the last touch does not move it.
+- **The account is the unit.** Person-level attribution waits on the accounts-versus-users workstream.
+
+**Provenance is recoverable, not stored.** A derived value is one where the three conditions hold and
+the account's source equals the host's. A scheduler's override of it is intended to win.
+
+**The ROI report does not depend on the write.** Per host organization: attendees (accounts whose
+last headshot order — before the first paid listing shoot, where there is one — is at that host's
+events), converts (those with a paid listing shoot), and their lifetime value, with events with no
+host listed separately. The denominator is only available from `orders.marketing_event_id`. The
+write makes converts visible in the existing marketing-source reports and in Pipedrive.
 
 ### 5.6 Cancel At Door
 
@@ -1010,7 +1093,12 @@ rather than adding a second job.
    dropping a mechanism that would have been wrong on day one for every row, would have made this
    the first column to read its own previous value, and would have broken the shift memo's
    unsaved-account path.
-4. Push changed computed fields to Pipedrive.
+4. Derive event attribution into `accounts.marketing_source_id` (§5.5). A separate step after the
+   metrics recompute, not a merge on `AccountMetrics::Calculator`: `Calculator#compute` promises it
+   does not look at the row and runs on an unsaved `Account.new(id:)` for the shift memo, and this
+   step writes `accounts`, not `account_metrics`. The first run backfills all of history; it runs as
+   a dry run with a memo first (§9, slice 6).
+5. Push changed computed fields to Pipedrive.
 
 **Thresholds live in one Ruby config object**, not scattered across the job. Retuning a boundary
 should not require a migration; the nightly run backfills.
@@ -1053,8 +1141,8 @@ Same principle as storing numerators alongside rates.
 - The job writes to an **explicit whitelist of field IDs**. A push that syncs "everything on the
   account" will eventually overwrite a Judgment label set by hand, and that is the failure that
   makes the sync untrustworthy.
-- The whitelist ships with Type, Lifecycle, and Value. Origin joins it when D6 closes and slice 6
-  lands (§9).
+- The whitelist ships with Type, Lifecycle, Value and Origin (`marketing_source_id`). Origin is read
+  from the column and never pushed back.
 - Debounce `value_type` changes: require the new value to hold before writing, so boundary
   oscillation does not fill the activity feed.
 - **Reconciliation precedes push.** See §9, slice 7.
@@ -1063,8 +1151,8 @@ Same principle as storing numerators alongside rates.
 
 ## 7. Resolved decisions
 
-All five v1 open decisions are closed. One new decision, D6, is open. Recorded with reasoning
-because the answers are not obvious from the schema.
+All five v1 open decisions and D6 are closed. Recorded with reasoning because the answers are not
+obvious from the schema.
 
 **D1 — Does a child order update `most_recent_shoot_at`? → Yes.**
 Reversed from v1's recommendation. A child order is a real photographer visit to the property on
@@ -1115,9 +1203,15 @@ memo records the move.
 **D5 — Confirm the coined column names. → Switch to `lifecycle_type`, `value_type`,
 `peak_value_type`.** See §3.0.
 
-**D6 — Which column records acquisition: `accounts.marketing_event_id` or
-`accounts.acquisition_order_id`? → Open.**
-See §3.3 for the arguments recorded so far. Slice 6 and §5.5 wait on it. Slice 7 does not.
+**D6 — Which column records acquisition? → Neither `accounts.marketing_event_id` nor
+`accounts.acquisition_order_id`; closed 2026-09-29.** Attribution is written into
+`accounts.marketing_source_id` from the headshot event's host organization, on the account's first
+paid listing shoot (§5.5). `acquisition_order_id`'s claimed advantage was uniform coverage of every
+path, but the first order of a non-event account carries no channel information, and online signup
+already captures the self-reported channel. `marketing_event_id` recorded the wrong unit: the
+business judges hosts, not events. Two hops, `marketing_events.organization_id` →
+`organizations.marketing_source_id` (§3.5), record the host once per event and the mapping once per
+organization.
 
 ---
 
@@ -1216,9 +1310,9 @@ the `file:line` evidence.
 | 1b | Rewrite existing `account_metrics` and `AccountQuery` consumers onto the scopes + shift memo | **Deployed 2026-09-10** (`master` merge 514e5c4 of 7aa170b..afeb1f7); memos `shift-memo-slice-1b-2026-09-10.md` (dev restore) and `shift-memo-slice-1b-2026-09-10-production.md` (the hand-over copy) | everything |
 | 2 | New `account_metrics` numeric columns incl. `active_user_count` + nightly recompute | **Deployed 2026-09-11** (`master` merge d98632f of cf0745d..ca49f32, 16 commits); migration `20260911120000` logged 13:24:41 UTC, recompute 2 min 36.89 s over 4,078 accounts, 0 failed, every invariant 0; runbook `deploy-account-classification-2.md` | 3, teams page |
 | 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | **Deployed 2026-09-14** (`master` merge f811e97 of b6621c2..f8abdd7, 7 commits; pushed 17:26 EDT). Recompute 2 min 37.79 s over 4,136 accounts, 0 failed; all 11 invariants 0; the re-derivation check 0 mismatches over all 4,136 rows; all six spot checks exact; `accounts:joint_ownership` tier labels and segment rows identical to the pre-change code. Migrations `20260912120000` (four columns) and `20260912120001` (one index), `lib/account_classification.rb`, three enums on `AccountMetric`, `lifecycle_run_sql` + `classification` on the calculator, four fields on the metrics endpoint, both rake read-outs reconciled onto the config. Suite 1,688 examples 0 failures; sweep 1 min 03 s over 4,078 accounts 0 failed on the dev restore; all 11 invariants 0; both migrations run migrate/rollback/migrate; `accounts:joint_ownership` byte-identical. Plan `../plans/account-classification-slice-3.md`, runbook `deploy-account-classification-3.md` | teams page, 7 |
-| 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; insgt-ops 9.59.0 (filter, column, dialog) live 2026-09-14; **4a (organization type audit) and 4b (tiered backfill) deployed 2026-09-28** (`master` merge 25a694c3 of e195ae98..e59a0e19), `APPLY` at 19:52:47 UTC writing 1,420 rows; plan `../plans/account-classification-slice-4.md`, runbook `deploy-account-classification-4-backfill.md`. 4c (API sort key), 4d (ops worklist control, 9.60.0) and 4e (retiring the four constants) not started | 7 |
+| 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; insgt-ops 9.59.0 (filter, column, dialog) live 2026-09-14; **4a (organization type audit) and 4b (tiered backfill) deployed 2026-09-28** (`master` merge 25a694c3 of e195ae98..e59a0e19), `APPLY` at 19:52:47 UTC writing 1,420 rows; plan `../plans/account-classification-slice-4.md`, runbook `deploy-account-classification-4-backfill.md`. **4c (API sort key) deployed 2026-09-29** (`master` merge 4cf0975 of 1f4e5a9..fceee13, 7 commits; release v641; runbook `deploy-account-classification-4-worklist.md`). 4d (ops worklist control) merged to insgt-ops `main` as 0834506b and tagged 9.60.0 on 2026-09-30; its release is not yet recorded in the runbook's event 3 log. 4e (retiring the four constants) not started | 7 |
 | 5 | `marketing_events.event_type` + backfill | **Void.** See §3.2 | — |
-| 6 | Acquisition reference derivation (§5.5) | **Blocked on D6** | per-event ROI |
+| 6 | Event attribution (§3.5, §5.5): 6a host columns, host backfill and the required ops host field; 6b nightly derivation with a dry-run memo before the first write; 6c per-host ROI report | **Unblocked 2026-09-29** (D6 closed); not started | Origin in 7, the headshot-event ROI decision |
 | 7 | Pipedrive reconciliation + whitelisted push | Not started | — |
 
 **Slices 1a and 1b deployed together on 2026-09-10.** 1a alone changed nothing anyone sees and 1b
@@ -1281,9 +1375,15 @@ into the CRM is an operational event regardless of whether the data is right. `a
 `lifecycle_type` are what answer it, which is why slice 7 depends on 3 and 4 rather than on 2
 alone.
 
-**Slice 7 no longer depends on 5 or 6.** v2's push whitelist implied four axes; Origin was the
-only one that reached Pipedrive through slices 5 and 6. With 5 void and 6 blocked, the whitelist
-ships with Type, Lifecycle, and Value, and Origin is added to it when D6 closes and slice 6 lands.
+**Slice 7 no longer depends on 5, and 6 is optional for it.** Origin is `marketing_source_id`, which
+already exists and can be pushed from the start. Slice 6 changes values in that column, not its
+shape; if 7 ships first, 6b's first run reaches Pipedrive as ordinary field updates, and should be
+debounced like a first push.
+
+**Slice 6b is visible.** Its first run moves accounts out of "no source" and into PSAR, NAHREP,
+NARPM and the other hosts in `MarketingSourceMetricsService` and the marketing-source accounts
+report. As with slice 1b, the dry-run memo — every account it would write, grouped by host, with
+lifetime value — goes to Don before the numbers change.
 
 ---
 
@@ -1529,3 +1629,31 @@ had the run's exit code not been checked first.
 minutes earlier. The rehearsal's memo came out identical to production's apart from the stamps
 (`account-type-backfill-memo-2026-09-28-test.md`), which is the strongest confirmation a
 backfill of judgment data can have before it writes.
+
+## 16. Changes from v7
+
+Sourced from the D6 working session of 2026-09-29 (Dan, with Claude) and the business request of
+2026-09-30 that reversed its first-touch draft to last touch.
+
+| Area | v7 | v8 | Why |
+| :--- | :--- | :--- | :--- |
+| D6 | Open: `marketing_event_id` vs `acquisition_order_id` | Closed: neither; attribution into `marketing_source_id` | Only headshot events are credited; a non-event first order carries no channel; hosts, not events, are what's judged |
+| §1 Origin | Self-reported column plus an undecided derived column | One column, three writers, derived value written once and only into NULL | D6 |
+| §3.2 | Headshot-only container, created by `MarketingEventImport`; no organization association | Created by the scheduler with a container order, filled by `POST /orders/headshot`; `MarketingEventImport` legacy; early paparazzi rows noted; gains `organization_id` | Corrected by Dan; v7 described the legacy path |
+| §3.3 | "Do not add organization rows to `marketing_sources`" | Withdrawn; hosts are already sources | The rows exist |
+| §3.5 | — | Two host columns, NULL semantics, hand-mapped backfill, required ops field | New |
+| §4.1 | NARPM proxy reads a self-reported source | Notes the source can be derived from slice 6 on | Semantic change to a shipped input |
+| §5.5 | Stale pending D6 | The derivation, its five rules, and the ROI report | D6 |
+| §5.5 touch | First touch in shape: "from the account's **earliest** order only" | Last touch: the latest event order before the first paid listing shoot; an account whose earliest order was a non-event order can now be credited | Business request, 2026-09-30, reversing the working session's first-touch draft before commit |
+| §6 | Four steps | Attribution step added, separate from the calculator | Writes `accounts` |
+| §9 | Slice 6 blocked; slice 7 Origin waits on 6 | Slice 6 unblocked and cut 6a–6c; Origin pushable from 7's start; 4c deployed, 4d merged | D6; 4c shipped, 4d merged |
+
+### What slice 6 changes in shipped work
+
+- **Slices 1a–3: nothing.** No scope, column, enum or metric changes; `account_metrics` is untouched.
+  The nightly sweep gains a step, outside the calculator.
+- **Slice 4b: no re-run, one changed input.** See §4.1. The `APPLY` of 2026-09-28 stands.
+- **Slice 4c: nothing.** The worklist sort reads `rolling_365_parent_count`.
+- **Slice 4e (not shipped): nothing structural.** The four constants are account-id exclusions, not
+  source logic. Order relative to slice 6 does not matter.
+- **Marketing-source reports: numbers move** on 6b's first run, by design. Memo first.
