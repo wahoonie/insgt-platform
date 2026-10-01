@@ -1,9 +1,9 @@
 # Runbook: Account Classification Slice 4 — Backfill Deploy (events 1 and 4)
 
-**Last updated:** 2026-09-28
+**Last updated:** 2026-10-01
 **Repos:** insgt-api
 **Estimated duration:** ~30 min for event 1 (most of it reading two memos); ~15 min for event 4
-**Status:** Event 1 deployed to production 2026-09-28; `APPLY` ran at 19:52:47 UTC (release not recorded). Event 4 (the retirement, sub-slice 4e) not yet built.
+**Status:** Event 1 deployed to production 2026-09-28; `APPLY` ran at 19:52:47 UTC (release not recorded). Event 4 (the retirement, sub-slice 4e) **deployed 2026-10-01** as release v642; the KPI moved by exactly the predicted −9 accounts and −600 cents.
 
 ## Summary
 
@@ -33,11 +33,11 @@ rises by the memo's written count, **Internal** gains 549 and 885, and the **Uns
 by the total written. The marketing-source KPI does **not** move: the four internal-account
 constants stay in force until event 4.
 
-**Deploy event 4** (sub-slice 4e, four commits on `feat/account-classification-slice-4-retire`, not
-yet built) retires the four constants onto `Account.account_type_internal`. It is gated on a
-production invariant this runbook establishes at step 7, and it is the one event that moves an
-owner-visible number (the KPI's `total_accounts` and gross). Its section is a placeholder until
-4e exists.
+**Deploy event 4** (sub-slice 4e, seven commits on `feat/account-classification-slice-4-retire`)
+retires the four constants — and four literal `account_id != 2` filters in the headshot read-outs
+the plan had not named — onto `Account.account_type_internal`. It is gated on step 7's invariant
+re-read the day of the push, and it is the one event that moves an owner-visible number (the KPI's
+`total_accounts` and gross).
 
 ## Where the commands run
 
@@ -95,8 +95,9 @@ will have been typed by hand through ops since, so expect fewer writes, never mo
       wc -l tmp/account-type-before-2026-09-28.txt     # <n> rows; 33 on the 2026-09-28 sync
       ```
 
-- [ ] Baseline kept for event 4 (skip for event 1 alone): the marketing-source KPI's
-      `total_accounts` and `total_gross_cents`, and `rake metrics:margin_ltv_exclusions_manifest`
+- [ ] Baseline kept for event 4 (skip for event 1 alone): taken at step 11 the day of the push,
+      not here — the KPI drifts with every paid order (+521,000 cents between 2026-09-28 and
+      2026-10-01), so a baseline from another day cannot explain a delta.
 
 ## Steps — event 1
 
@@ -354,24 +355,101 @@ count (invariant 8's sum). 11510 is still Unset.
 **Production, 2026-09-28:** not recorded. From invariant 8 the expected reads are Agent 1,435,
 Internal 11, Unset 2,691; unverified on the ops screen.
 
-## Steps — event 4 (retirement; not yet built)
+## Steps — event 4 (retirement)
 
-Placeholder until `feat/account-classification-slice-4-retire` exists (plan commits 18–21, G20,
-G21). Preconditions, both from this runbook: `APPLY` has run in production and invariant 7 holds
-(`Account.account_type_internal.pluck(:id) ⊇ [2, 89, 2555]`).
+Ships sub-slice 4e: `feat/account-classification-slice-4-retire`, seven commits a20c77c..a87d247 —
+one per retired list (marketing-source KPI, margin-LTV read-outs, `AccountReport`, the audit
+read-outs), the headshot read-outs' `account_id != 2`, a spec helper that moves `accounts_id_seq`
+past a pinned id, and the `headshot_email_list` header fix. No migration, no window, nothing
+written. Every `NOT IN` takes the subquery text and every `unnest` the plucked ids cast
+`::integer[]` (plan G21), so an empty internal set excludes nothing rather than everything.
 
-Before the push, capture the KPI baseline (`KpisController#marketing_sources`: `total_accounts`,
-`total_gross_cents`) and `heroku run rake metrics:margin_ltv_exclusions_manifest -a insgtapi`.
-After: `total_accounts` falls by exactly the number of active `internal` accounts outside
-{2, 2555} — **9** after `APPLY` (3, 4, 5, 6, 89, 1534, 11589, 549, 885); the manifest lists all
-eleven by name; `accounts:composition`'s "Excluded:" line names the same set;
-`EXCLUDED_ACCOUNT_IDS=` still narrows it. A gross delta not explained by those names is a
-finding. This table is the slice's shift memo.
+Both reads below run against production **before the push**, while it still runs the old code, the
+same day. Steps 10 and 11 write to local `tmp/`.
 
-| | Before | After | Delta |
-| :-- | --: | --: | --: |
-| `total_accounts` | `4142` | `<n>` | −9 |
-| `total_gross_cents` | `372408100` | `<n>` | `<explained by the nine>` |
+### 10. The precondition, and the delta it predicts
+
+Anyone can retype an account in the ops dialog, so step 7's result does not carry over. Line 2 is
+the gate: `false` means 2, 89 or 2555 is no longer internal and the push would narrow the
+exclusion — **STOP**. Lines 4–5 are the expected after-push delta, computed from the day's data;
+write them down before pushing.
+
+```bash
+heroku run --no-tty --exit-code rails runner '
+  internal_ids = Account.account_type_internal.order(:id).pluck(:id)
+  puts "1 internal ids (#{internal_ids.size}): #{internal_ids.inspect}"
+  puts "2 includes 2, 89, 2555: #{([2, 89, 2555] - internal_ids).empty?}   expect true; false is a STOP"
+  puts "3 soft-deleted internal: #{Account.account_type_internal.where(status_type: 2).pluck(:id).inspect}   expect []"
+  newly_excluded = Account.account_type_internal.where(status_type: 1).where.not(id: [2, 2555]).order(:id)
+  paid_gross_sql = <<~SQL
+    SELECT o.account_id, COALESCE(SUM(COALESCE(o.order_type_price, 0) + COALESCE(svc.services_total, 0)), 0)::bigint AS gross
+      FROM orders o
+      LEFT JOIN LATERAL (
+        SELECT SUM((os.price + COALESCE(os.discount_price, 0)) * COALESCE(os.quantity, 1)) AS services_total
+          FROM order_services os WHERE os.order_id = o.id AND os.status_type = 1
+      ) svc ON TRUE
+     WHERE o.paid_at IS NOT NULL AND o.parent_pays IS NOT TRUE AND o.status_type = 1
+       AND o.account_id IN (#{newly_excluded.select(:id).to_sql})
+     GROUP BY o.account_id
+  SQL
+  gross_by_id = ActiveRecord::Base.connection.select_rows(paid_gross_sql).to_h { |id, gross| [id.to_i, gross.to_i] }
+  puts "4 expected total_accounts delta: -#{newly_excluded.count}"
+  puts "5 expected total_gross_cents delta: -#{gross_by_id.values.sum}"
+  newly_excluded.each { |account| puts format("  %-6s %-28s %s", account.id, account.name, gross_by_id.fetch(account.id, 0)) }
+' -a insgtapi | tee tmp/retire-precondition-$(date +%F).txt
+```
+
+The paid-order definition is the KPI's own (`paid_at IS NOT NULL AND parent_pays IS NOT TRUE`,
+active orders, active order services), so line 5 predicts the gross delta exactly rather than
+approximately.
+
+### 11. Baseline
+
+`MarketingSourceMetricsService.call` is what `KpisController#marketing_sources` serves, so the
+runner reads the KPI page's numbers without a token.
+
+```bash
+heroku run --no-tty --exit-code rails runner '
+  metadata = MarketingSourceMetricsService.call[:metadata]
+  puts "total_accounts: #{metadata[:total_accounts]}"
+  puts "total_gross_cents: #{metadata[:total_gross_cents]}"
+' -a insgtapi | tee tmp/retire-kpi-before-$(date +%F).txt
+
+heroku run --no-tty --exit-code rake metrics:margin_ltv_exclusions_manifest -a insgtapi \
+  | tee tmp/retire-manifest-before-$(date +%F).txt
+```
+
+Before the push the manifest's "excluded ACCOUNTS" section lists 2 and 2555 only.
+
+### 12. Deploy code
+
+```bash
+git checkout master && git merge --no-ff feat/account-classification-slice-4-retire
+git push origin master
+git push heroku master
+heroku releases -n 1 -a insgtapi        # record the release beside the deploy log entry
+```
+
+No maintenance mode, nothing to migrate.
+
+### 13. After
+
+Re-run step 11 with `after` in the file names. Expected:
+
+- `total_accounts` and `total_gross_cents` each move by exactly step 10's lines 4 and 5. A delta
+  those names do not explain is a finding — this table is the slice's shift memo.
+- The manifest's "excluded ACCOUNTS" section lists every id from step 10's line 1, by name; the
+  order-type section is unchanged.
+- Optional, same set: `accounts:composition`'s "Excluded:" line names the same ids, and
+  `EXCLUDED_ACCOUNT_IDS=2,2555` still narrows it.
+
+**Production, 2026-10-01** (release v642):
+
+| | Before | After | Delta | Expected (step 10) |
+| :-- | --: | --: | --: | --: |
+| `total_accounts` | 4,142 | 4,133 | −9 | −9 |
+| `total_gross_cents` | 372,929,100 | 372,928,500 | −600 | −600 (6 Todd McTesterson 500, 11589 Rav Test 100) |
+| Manifest "excluded ACCOUNTS" | 2, 2555 | all eleven by name | +9 | step 10's line 1 |
 
 ## Rollback
 
@@ -383,6 +461,9 @@ heroku rollback --app insgtapi
 
 Leaves the written rows in place, **which is correct**: they are data, the ops dialog edits them,
 and old code reads `account_type` exactly as new code does. Nothing else to undo.
+
+Rolling back event 4 the same way restores the four literal lists and the `account_id != 2`
+filters; it writes nothing, so nothing else to undo. The KPI returns to the old rule's numbers.
 
 ### Data (only if ever wanted)
 
@@ -420,3 +501,20 @@ The actor alone would not do: console writes already carry `updated_by_id = 1`.
   batch; all eleven spot checks as reasoned. The one-row difference from the morning sync's 1,417 is
   the day's drift. Not recorded: the release number and the step 9 ops counts. Event 4's baseline
   captured: `total_accounts` 4,142, `total_gross_cents` 372,408,100.
+- 2026-10-01: **event 4 verified on the dev sync** (the day's production sync: 4,144 active
+  accounts, eleven internal). Suite 1,835 examples, 0 failures. Every new spec seen red first and
+  each unit's deliberate break pasted red: a bound plucked array emptied the KPI table (G21's
+  `NOT IN (NULL)`); an uncast empty `unnest` raised `cannot determine type of empty array`; the
+  wrong enum or the restored literal reddened each read-out; the sequence helper without its
+  `setval` collided on `accounts_pkey` with the sequence reset to 1. Read-only checks: KPI
+  4,142 → 4,133 and −600 cents, both equal to the old rule re-derived beside the new; the drill-down
+  summed to the summary for every source; manifest, composition, joint ownership and churn all
+  named the same eleven; composition 4,133 in scope, 4,142 with `EXCLUDED_ACCOUNT_IDS=2,2555`,
+  4,144 with it empty; margin cohort `n` 1,576 → 1,575 (549). `predeploy-review-rails` with the
+  Codex pass: no blockers; the two should-fixes (the sequence collision, `headshot_email_list`'s
+  NameError) fixed as 21cff34 and a87d247.
+- 2026-10-01, 15:07 EDT: **event 4 deployed to production.** Merged `--no-ff` as b0dc6c4 (seven
+  commits, a20c77c..a87d247), pushed to origin and heroku; release **v642**, deploy b0dc6c4c by
+  ops@insightphotos.net at 15:07:13 -0400. No migration. Step 10 at 14:59 EDT: internal = the eleven,
+  ⊇ {2, 89, 2555} true, none soft-deleted, expected delta −9 accounts and −600 cents. Step 13's
+  table exact on both lines; the manifest names all eleven, its order-type section identical.

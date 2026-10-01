@@ -4,10 +4,11 @@
 **Status:** Slices 1a and 1b deployed to production 2026-09-10, with slice 4's column and API; slice 2
 deployed 2026-09-11; slice 3 deployed 2026-09-14; slice 4a/4b deployed and `APPLY` run 2026-09-28;
 slice 4c deployed 2026-09-29 (`master` merge 4cf0975); slice 4d released as insgt-ops 9.60.0
-2026-09-30; D6 closed 2026-09-29, slice 6 redefined; see §9
-**Version:** 8 · **Last updated:** 2026-10-01 (4d released)
-**Supersedes:** v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11), v4 (2026-09-10), v3 (2026-09-08),
-v2 (2026-09-05), v1 (2026-08-27). See §10–§16 for what changed and why.
+2026-09-30; slice 4e deployed 2026-10-01 (`master` merge b0dc6c4, release v642), completing slice 4;
+D6 closed 2026-09-29, slice 6 redefined; see §9
+**Version:** 9 · **Last updated:** 2026-10-01 (4e deployed)
+**Supersedes:** v8 (2026-09-30), v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11), v4 (2026-09-10),
+v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§17 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
 `account-classification-drift-audit-2026-09-07.md` (the evidence behind v3),
 `shift-memo-slice-1b-2026-09-10.md` (what slice 1b moves, account by account),
@@ -19,7 +20,7 @@ it pinned), `../runbooks/deploy-account-classification-2.md` (the slice 2 deploy
 and the eleven decisions of 2026-09-15), `organization-type-audit-2026-09-28.md` (the audit slice 4
 blocked on), `account-type-backfill-memo-2026-09-28-production.md` (what the backfill wrote, and
 its review lists), `../runbooks/deploy-account-classification-4-backfill.md` (the slice 4a/4b
-deploy and the pending event 4), and the contract spec
+and 4e deploys), and the contract spec
 `insgt-api/spec/architecture/account_classification_spec.rb` (§5.1–§5.4, §4.2–§4.3 and §4.1's
 tiers pinned on the canonical fixtures; later slices append to it).
 
@@ -564,15 +565,25 @@ children, no organization, one user with no email; `lifetime_parent_count` 0, `p
 the company's own paparazzi and events and has never bought anything, so the two lists that
 excluded it were right and the other two were harmlessly incomplete: it contributes zero to every
 figure they compute. Production has carried it as `internal` since 2026-09-14 (decision 1). The
-seed is a superset of all four constants, pinned by four examples in the backfill spec (§10's
-assert-then-delete, with the derived set living in a table). **They retire in slice 4e** (deploy
-event 4, its own branch, strictly after the production `APPLY`, whose precondition
-`Account.account_type_internal.pluck(:id) ⊇ [2, 89, 2555]` has held since 2026-09-28) onto
-`Account.account_type_internal` at eleven call sites — `marketing_source_metrics_service.rb:84`
-(bound into `:114`), `marketing_source_accounts_service.rb:53` (`:86`), `metrics.rake:202, 262,
-337, 405`, `account_report.rb:302, 685`, `accounts.rake:90–97` — with the empty-set bind form
-pinned per site (a `sanitize_sql_array` `NOT IN (?)` renders an empty array as `NULL` and excludes
-every row) and the `EXCLUDED_ACCOUNT_IDS=` override kept. Until then the lists stay in force.
+seed was a superset of all four constants, pinned by four examples in the backfill spec (§10's
+assert-then-delete, with the derived set living in a table); each example was deleted with its
+constant.
+
+**Retired in slice 4e** (deploy event 4, 2026-10-01, `master` merge b0dc6c4, release v642), after
+the precondition `Account.account_type_internal.pluck(:id) ⊇ [2, 89, 2555]` was re-read in
+production the same day. Every read-out that excluded staff and test accounts now reads
+`Account.account_type_internal`: the marketing-source KPI and its drill-down, the three margin-LTV
+read-outs and the churn report, `AccountReport`, the three `accounts:` audit read-outs, and — a
+fifth list the slice plan had not named — four literal `account_id != 2` filters in the headshot
+read-outs (`AccountReport.headshot_email_list`, `.headshot_kpi`, `.export_only_headshot`,
+`AccountExport.export_only_headshot`). The empty-set form is pinned per site: every `NOT IN` takes
+`Account.account_type_internal.select(:id).to_sql` as subquery text (a `sanitize_sql_array`
+`NOT IN (?)` renders an empty array as `NULL` and excludes every row), every `unnest` the plucked
+ids cast `::integer[]`, and `where.not` takes the relation. No rake file reads the set at load —
+a model referenced there aborts every `rake` invocation — and the `EXCLUDED_ACCOUNT_IDS=` override
+on the `accounts:` read-outs is kept. The KPI moved by exactly the prediction: `total_accounts`
+4,142 → 4,133 (the nine internal accounts outside {2, 2555}), `total_gross_cents` −600 (accounts 6
+and 11589). An id is no longer a reason to exclude: each consumer's spec keeps an untyped account 2.
 
 **The organization type audit** (`organizations:audit_types`, `lib/tasks/organizations.rake`,
 slice 4a) answered the four questions v6 raised here. Five of the eight `type_of` values carry rows
@@ -591,8 +602,9 @@ since 2026-09-14, so hand classification runs through ops: 24 typed rows on 2026
 2026-09-28 (agent 17 · property_manager 6 · commercial 1 · internal 9). The backfill ran in
 production on 2026-09-28 at 19:52:47 UTC: 1,420 rows written (`agent` 1,418, `internal` 2), five
 held out, both self-checks OK, worklist 4,111 → 2,691; memo
-`account-type-backfill-memo-2026-09-28-production.md`. The worklist ordering (4c, 4d) and the
-retirement (4e) remain.
+`account-type-backfill-memo-2026-09-28-production.md`. The worklist ordering shipped as 4c
+(2026-09-29) and 4d (insgt-ops 9.60.0, 2026-09-30); the retirement as 4e (2026-10-01). Slice 4 is
+complete.
 
 ### 4.2 `account_metrics.lifecycle_type`
 
@@ -1310,7 +1322,7 @@ the `file:line` evidence.
 | 1b | Rewrite existing `account_metrics` and `AccountQuery` consumers onto the scopes + shift memo | **Deployed 2026-09-10** (`master` merge 514e5c4 of 7aa170b..afeb1f7); memos `shift-memo-slice-1b-2026-09-10.md` (dev restore) and `shift-memo-slice-1b-2026-09-10-production.md` (the hand-over copy) | everything |
 | 2 | New `account_metrics` numeric columns incl. `active_user_count` + nightly recompute | **Deployed 2026-09-11** (`master` merge d98632f of cf0745d..ca49f32, 16 commits); migration `20260911120000` logged 13:24:41 UTC, recompute 2 min 36.89 s over 4,078 accounts, 0 failed, every invariant 0; runbook `deploy-account-classification-2.md` | 3, teams page |
 | 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | **Deployed 2026-09-14** (`master` merge f811e97 of b6621c2..f8abdd7, 7 commits; pushed 17:26 EDT). Recompute 2 min 37.79 s over 4,136 accounts, 0 failed; all 11 invariants 0; the re-derivation check 0 mismatches over all 4,136 rows; all six spot checks exact; `accounts:joint_ownership` tier labels and segment rows identical to the pre-change code. Migrations `20260912120000` (four columns) and `20260912120001` (one index), `lib/account_classification.rb`, three enums on `AccountMetric`, `lifecycle_run_sql` + `classification` on the calculator, four fields on the metrics endpoint, both rake read-outs reconciled onto the config. Suite 1,688 examples 0 failures; sweep 1 min 03 s over 4,078 accounts 0 failed on the dev restore; all 11 invariants 0; both migrations run migrate/rollback/migrate; `accounts:joint_ownership` byte-identical. Plan `../plans/account-classification-slice-3.md`, runbook `deploy-account-classification-3.md` | teams page, 7 |
-| 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; insgt-ops 9.59.0 (filter, column, dialog) live 2026-09-14; **4a (organization type audit) and 4b (tiered backfill) deployed 2026-09-28** (`master` merge 25a694c3 of e195ae98..e59a0e19), `APPLY` at 19:52:47 UTC writing 1,420 rows; plan `../plans/account-classification-slice-4.md`, runbook `deploy-account-classification-4-backfill.md`. **4c (API sort key) deployed 2026-09-29** (`master` merge 4cf0975 of 1f4e5a9..fceee13, 7 commits; release v641; runbook `deploy-account-classification-4-worklist.md`). **4d (ops worklist control) released 2026-09-30** as insgt-ops 9.60.0 (`main` merge 0834506b, release stamp 1790765225), all fourteen on-site checks passing; 9.61.0 followed the same day. 4e (retiring the four constants) not started | 7 |
+| 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; insgt-ops 9.59.0 (filter, column, dialog) live 2026-09-14; **4a (organization type audit) and 4b (tiered backfill) deployed 2026-09-28** (`master` merge 25a694c3 of e195ae98..e59a0e19), `APPLY` at 19:52:47 UTC writing 1,420 rows; plan `../plans/account-classification-slice-4.md`, runbook `deploy-account-classification-4-backfill.md`. **4c (API sort key) deployed 2026-09-29** (`master` merge 4cf0975 of 1f4e5a9..fceee13, 7 commits; release v641; runbook `deploy-account-classification-4-worklist.md`). **4d (ops worklist control) released 2026-09-30** as insgt-ops 9.60.0 (`main` merge 0834506b, release stamp 1790765225), all fourteen on-site checks passing; 9.61.0 followed the same day. **4e (retiring the four constants onto `account_type_internal`) deployed 2026-10-01** (`master` merge b0dc6c4 of a20c77c..a87d247, 7 commits; release v642); KPI −9 accounts, −600 cents, both as predicted; runbook `deploy-account-classification-4-backfill.md` event 4. **Slice 4 complete** | 7 |
 | 5 | `marketing_events.event_type` + backfill | **Void.** See §3.2 | — |
 | 6 | Event attribution (§3.5, §5.5): 6a host columns, host backfill and the required ops host field; 6b nightly derivation with a dry-run memo before the first write; 6c per-host ROI report | **Unblocked 2026-09-29** (D6 closed); not started | Origin in 7, the headshot-event ROI decision |
 | 7 | Pipedrive reconciliation + whitelisted push | Not started | — |
@@ -1361,10 +1373,10 @@ pushed idempotently like `join_shoots!`, the export inheriting or stripping the 
 **Slice 4's organization type audit ran in production on 2026-09-28** (§4.1,
 `organization-type-audit-2026-09-28.md`): `property_manager` is not derivable from this schema, so
 the backfill shipped two tiers and holds the property-manager candidates out for hand
-classification. What remains is cut as `../plans/account-classification-slice-4.md` describes: the
-API sort key (4c, deploy event 2), the ops worklist control as 9.60.0 (4d, event 3), then the
-retirement of the four constants (4e, event 4, behind the production invariant that has held since
-the `APPLY`).
+classification. The rest shipped as `../plans/account-classification-slice-4.md` cut it: the API
+sort key (4c, deploy event 2, 2026-09-29), the ops worklist control as 9.60.0 (4d, event 3,
+2026-09-30), then the retirement of the four constants (4e, event 4, 2026-10-01, behind the
+production invariant re-read that day).
 
 **Slice 7 is two jobs, not one.** Roughly 1,270 accounts exist in `insgt-api` and not in
 Pipedrive, so the push is preceded by a reconciliation, and reconciliation can create duplicates
@@ -1657,3 +1669,25 @@ Sourced from the D6 working session of 2026-09-29 (Dan, with Claude) and the bus
 - **Slice 4e (not shipped): nothing structural.** The four constants are account-id exclusions, not
   source logic. Order relative to slice 6 does not matter.
 - **Marketing-source reports: numbers move** on 6b's first run, by design. Memo first.
+
+## 17. Changes from v8
+
+Sourced from slice 4e's implementation, review and deploy (2026-10-01).
+
+| Area | v8 | v9 | Why |
+| :--- | :--- | :--- | :--- |
+| §4.1 constants | "They retire in slice 4e … Until then the lists stay in force" | Retired; the read-outs, the per-site empty-set forms and the measured KPI move | 4e deployed |
+| §4.1 scope of the retirement | Four constants at eleven call sites | Plus four literal `account_id != 2` filters in the headshot read-outs | Found by the 4e survey; Dan, 2026-10-01: move them too, though they widen a marketing email list's exclusion from one account to eleven |
+| `headshot_email_list` | — | Fixed: it raised `NameError` on an undefined `columns` before writing anything, since 2022 (27c5ef5) | Its new exclusion could not be specced otherwise; Dan, 2026-10-01 |
+| Specs pinning id 2 | — | `create_account_with_id` (`spec/support/explicit_account_ids.rb`) moves `accounts_id_seq` past the pinned id | An explicit-id insert does not advance the sequence; reproduced as an `accounts_pkey` collision with the sequence at 1 |
+| §4.1 status, §9 | 4c deployed, 4d merged, 4e not started | 4d released, 4e deployed; slice 4 complete | Shipped |
+
+### What slice 4e changes in shipped work
+
+- **Slices 1a–4d: nothing.** No scope, column, enum or metric definition changes; `account_metrics`
+  is untouched, and the nightly sweep and the worklist do not read the exclusions.
+- **Owner-visible numbers: the marketing-source KPI**, by the nine newly excluded accounts and
+  their paid gross (−600 cents on 2026-10-01). The console and rake read-outs move by the same
+  set: margin cohort `n` −1 (549), composition in scope −8.
+- **Future retyping moves these read-outs.** An account typed or untyped `internal` in the ops
+  dialog joins or leaves every exclusion on the next run, with no deploy.
