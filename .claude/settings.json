@@ -71,7 +71,12 @@
       "Bash(git remote)",
       "Bash(git remote -v)",
       "Bash(git config --get *)",
-      "Bash(git config --list *)"
+      "Bash(git config --list *)",
+      "Bash(git checkout -b:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git log:*)"
     ],
     "deny": [
       "Read(**/.env)",
