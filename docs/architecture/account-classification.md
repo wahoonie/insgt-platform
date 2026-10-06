@@ -6,9 +6,9 @@ deployed 2026-09-11; slice 3 deployed 2026-09-14; slice 4a/4b deployed and `APPL
 slice 4c deployed 2026-09-29 (`master` merge 4cf0975); slice 4d released as insgt-ops 9.60.0
 2026-09-30; slice 4e deployed 2026-10-01 (`master` merge b0dc6c4, release v642), completing slice 4;
 D6 closed 2026-09-29, slice 6 redefined; see §9
-**Version:** 9 · **Last updated:** 2026-10-01 (4e deployed)
-**Supersedes:** v8 (2026-09-30), v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11), v4 (2026-09-10),
-v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§17 for what changed and why.
+**Version:** 10 · **Last updated:** 2026-10-05 (`most_recent_shoot_at` on account rows)
+**Supersedes:** v9 (2026-10-01), v8 (2026-09-30), v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11), v4 (2026-09-10),
+v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§18 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
 `account-classification-drift-audit-2026-09-07.md` (the evidence behind v3),
 `shift-memo-slice-1b-2026-09-10.md` (what slice 1b moves, account by account),
@@ -1691,3 +1691,20 @@ Sourced from slice 4e's implementation, review and deploy (2026-10-01).
   set: margin cohort `n` −1 (549), composition in scope −8.
 - **Future retyping moves these read-outs.** An account typed or untyped `internal` in the ops
   dialog joins or leaves every exclusion on the next run, with no deploy.
+
+## 18. Changes from v9
+
+Sourced from the teams list Last Shoot column (2026-10-05, `../plans/account-list-last-shoot-column.md`).
+Not a slice: no scope, column, enum or derivation changes.
+
+| Area | v9 | v10 | Why |
+| :--- | :--- | :--- | :--- |
+| Account rows | `rolling_365_parent_count` is the only `account_metrics` value on an account payload, and only on a sorted index | `most_recent_shoot_at` also crosses on `GET /accounts`, opt-in via `includes[]=most_recent_shoot_at`, behind `reads_account_metrics?`, ISO8601 or null | The teams list's Last Shoot column. Reuses the column per §3's "do not add `last_shoot_at`"; Dan, 2026-10-05 chose it over a live order aggregate |
+| CSV export | Twelve columns | Thirteen: `Last Shoot`, appended, the stored value dated in the exporting user's time zone | The header row is an import contract; the file must agree with the screen |
+
+### What it changes in shipped work
+
+- **Slices 1a–4e: nothing.** The nightly, the worklist, the segment filters and the metrics endpoint
+  are untouched. A payload that does not send the include is byte-identical.
+- **The CSV gains a thirteenth column.** A CRM import that maps by position needs its mapping
+  extended once, as with `Shoots (365d)` in slice 4c.

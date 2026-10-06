@@ -16,9 +16,11 @@ Every app, function, and library below is its own independent git repo:
 - `git status` at `/workspace` never shows application changes. Run git inside the app directory.
 - Shared skills live here at the platform level; app-specific skills live in the app repo.
 
-## Services run on the host, not in this container
+## Services run in this container
 
-Nothing runs inside the container. To reach a service use `host.docker.internal:<port>` — `localhost` resolves to the container itself. This applies to an Angular dev server calling the API, and to anything reaching Postgres or Redis.
+`bin/dev` (driven by `Procfile.dev`) runs the app servers inside this dev container, and they reach each other on `localhost:<port>`. VS Code forwards those ports, so the Mac's browser uses `localhost` too. Postgres and Redis are sibling compose services: use `db:5432` and `redis:6379`, not `localhost`.
+
+The container is capped at 20 GB in `.devcontainer/docker-compose.yml`. Servers, VS Code's language servers and Claude sessions all share that cap. A process that dies with `terminated by SIGKILL` was almost certainly OOM-killed, so check `/sys/fs/cgroup/memory.events` before suspecting the app.
 
 | Repo | Stack | Dev port |
 |---|---|---|

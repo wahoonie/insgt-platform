@@ -5,8 +5,11 @@ services:
     build:
       context: ..
       dockerfile: .devcontainer/Dockerfile
-    mem_limit: 10g
-    memswap_limit: 10g
+    # The whole dev stack (bin/dev), VS Code's language servers and Claude
+    # sessions share this cap; at 10g the OOM killer SIGKILLed ng serve
+    # routinely. The swap headroom turns a spike into a slowdown, not a kill.
+    mem_limit: 20g
+    memswap_limit: 24g
     volumes:
       - ..:/workspace:cached
       - ${HOME}/.insight-data:/host-data:cached

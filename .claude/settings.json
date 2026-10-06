@@ -73,10 +73,13 @@
       "Bash(git config --get *)",
       "Bash(git config --list *)",
       "Bash(git checkout -b:*)",
+      "Bash(git switch:*)",
       "Bash(git branch:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(git switch -c:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [
       "Read(**/.env)",
@@ -85,6 +88,7 @@
       "Read(**/config/master.key)",
       "Read(**/config/credentials/*.key)",
       "Bash(git push *)",
+      "Bash(git merge *)",
       "Bash(git reset --hard *)",
       "Bash(git clean *)",
       "Bash(rm -rf *)",
