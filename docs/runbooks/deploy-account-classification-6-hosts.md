@@ -121,8 +121,37 @@ exactly that, and **0** unmapped.
 
 ### 5. Invariants
 
+Save the script below as `tmp/event2_invariants.rb` (insgt-api's gitignored scratch directory) and
+pipe it into a console. It is read-only: its first line sets the session read-only. It covers
+checks 1, 2, 3, 5 and 7 below, plus Foundation Escrow's url and both foreign keys validated.
+
 ```bash
-heroku run --no-tty rails console -a insgtapi < event2_invariants.rb   # read-only; first line sets the session read-only
+heroku run --no-tty rails console -a insgtapi < tmp/event2_invariants.rb
+```
+
+```ruby
+# Read-only. Slice 6 event 2 invariants (docs/plans/account-classification-slice-6.md, "Event 2").
+ActiveRecord::Base.connection.execute('SET default_transaction_read_only = on')
+connection = ActiveRecord::Base.connection
+value = ->(sql) { connection.select_value(sql) }
+
+puts "1 association organizations: #{value.("SELECT count(*) FROM organizations WHERE type_of = 9")} (expect 4)"
+puts "2 sourced organizations: #{connection.select_rows(<<~SQL).inspect} (expect NSDCR/PSAR/SDAR with their *_event keys)"
+  SELECT o.name, ms.key FROM organizations o JOIN marketing_sources ms ON ms.id = o.marketing_source_id ORDER BY o.name
+SQL
+puts "3 events with no host: #{value.("SELECT count(*) FROM marketing_events WHERE organization_id IS NULL")} (expect 10)"
+puts "  Foundation Escrow url: #{value.("SELECT url FROM organizations WHERE name = 'Foundation Escrow'").inspect}"
+event_1137 = MarketingEvent.unscoped.find(1137)
+event_14 = MarketingEvent.unscoped.find(14)
+puts "5 event 1137 host: #{event_1137.organization&.name.inspect} (expect \"PSAR\"); event 14: #{event_14.organization&.name.inspect} (expect nil)"
+metadata = MarketingSourceMetricsService.call[:metadata]
+puts "7 marketing-source KPI: #{metadata.slice(:total_accounts, :attributed_accounts).inspect} (unchanged by this deploy: it wrote no account)"
+puts "  accounts with a source: #{value.("SELECT count(*) FROM accounts WHERE marketing_source_id IS NOT NULL AND status_type = 1")}"
+puts "  FKs validated: #{connection.select_rows(<<~SQL).inspect}"
+  SELECT conrelid::regclass::text, convalidated FROM pg_constraint
+   WHERE contype = 'f' AND conrelid IN ('marketing_events'::regclass, 'organizations'::regclass)
+     AND confrelid IN ('organizations'::regclass, 'marketing_sources'::regclass)
+SQL
 ```
 
 | # | Check | Expected | 2026-10-07 |
