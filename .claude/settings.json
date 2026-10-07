@@ -97,10 +97,25 @@
       "Bash(render *)",
       "Bash(stripe *)",
       "Bash(psql *)",
-      "Bash(bundle exec rails db*)",
-      "Bash(bin/rails db*)",
       "Bash(curl *)",
       "Bash(wget *)"
+    ],
+    "ask": [
+      "Bash(bin/rails db:drop*)",
+      "Bash(bin/rails db:reset*)",
+      "Bash(bin/rails db:migrate:reset*)",
+      "Bash(bin/rails db:schema:load*)",
+      "Bash(bin/rails db:structure:load*)",
+      "Bash(bin/rails db:seed:replant*)",
+      "Bash(bin/rails db:truncate_all*)",
+
+      "Bash(bundle exec rails db:drop*)",
+      "Bash(bundle exec rails db:reset*)",
+      "Bash(bundle exec rails db:migrate:reset*)",
+      "Bash(bundle exec rails db:schema:load*)",
+      "Bash(bundle exec rails db:structure:load*)",
+      "Bash(bundle exec rails db:seed:replant*)",
+      "Bash(bundle exec rails db:truncate_all*)"
     ]
   },
   "enabledPlugins": {
