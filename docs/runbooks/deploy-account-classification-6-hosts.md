@@ -3,7 +3,7 @@
 **Last updated:** 2026-10-07
 **Repos:** insgt-api (events 1 and 2), insgt-ops (event 3)
 **Estimated duration:** ~10 min for event 1 plus the map (hours of reading, not deploying); ~15 min for event 2; ~20 min for event 3
-**Status:** Event 1 **deployed 2026-10-07**; production read-out at 12:30:10 UTC. Event 2 **deployed 2026-10-07**; `db:migrate` at 14:45:27 UTC, invariants 1–7, 9 and 10 passed (8 not run separately). Event 3 (insgt-ops 9.65.0) **not yet built**.
+**Status:** Event 1 **deployed 2026-10-07**; production read-out at 12:30:10 UTC. Event 2 **deployed 2026-10-07**; `db:migrate` at 14:45:27 UTC, invariants 1–7, 9 and 10 passed (8 not run separately). Event 3 (insgt-ops 9.65.0) **deployed 2026-10-08**; the read-out at 14:07:39 UTC shows 0 unmapped and the first event created through the picker (1432) carrying its host.
 
 ## Summary
 
@@ -25,8 +25,9 @@ source. Nothing here writes an account; the attribution that does is slice 6b, w
   validates both foreign keys. The marketing-event API accepts and renders `organizationId` and
   `organizationName`; the organization payload renders `marketingSourceId` and
   `marketingSourceName` to admin and scheduler only.
-- **Event 3** (insgt-ops 9.65.0): a required host picker on both event forms ("Hosted by Insight
-  Photos" stored as NULL), and the ninth type in `OrganizationTypes`.
+- **Event 3** (insgt-ops 9.65.0): a required host picker on the order page's create block — the
+  only place events are created — and on the edit form ("Hosted by Insight Photos" stored as NULL);
+  the ninth type in `OrganizationTypes`; and the dead `/marketing-events/new` page removed.
 
 **What moves for a human.** Events 1 and 2: nothing in the product — the marketing-source KPI does
 not move, because no account is written. Event 3: schedulers must choose a host on every new event,
@@ -69,8 +70,10 @@ both must be rolled back, roll ops back first.
       writing nothing; a green run; the cutoff proven in both directions; the scoped `down` keeping
       a hand-changed host, a post-cutoff host and an unrelated source; a re-run reusing the
       organizations it created
-- [ ] Event 3: `feat/marketing-event-host` reviewed (`predeploy-review-angular`), `ng build` clean,
-      `package.json` at 9.65.0, on a clean `main`
+- [x] Event 3: `feat/marketing-event-host` (29d75830, 121d3f23, 25e80f28, f3ab820e, 23c8233d, on top
+      of `d6c709d0`) reviewed with `predeploy-review-angular` and Codex, no blocker; `ng build` clean;
+      Vitest 596 and Cypress 52 (the order-page specs and the host spec) green; `package.json` and
+      `package-lock.json` at 9.65.0
 
 ## Steps — event 1
 
@@ -181,16 +184,19 @@ git tag v9.65.0 && npm run deploy:prod
 
 ### 7. On the site
 
-- Both forms show the host picker: the order page's create block (headshot-event orders) and
-  `/marketing-events/new`.
-- **Save without a choice** toasts and sends nothing.
+- The order page's create block (a headshot-event order, type 73, with no event yet) and an event's
+  edit page both show the host picker. `/marketing-events/new` was removed in this release: events
+  are created only from the order page.
+- **Create without a choice** toasts "Double check the form" and sends nothing.
 - **Hosted by Insight Photos** sends `organizationId: null` (network tab).
 - An existing event's edit page shows its host; an Insight event shows the Insight option.
 - The organizations page lists the four associations with type "Association".
 
 ### 8. Re-run the read-out
 
-The step 4 command. Section 6 is unchanged apart from any host set since.
+The step 4 command. Section 6 is unchanged apart from any host set since. On 2026-10-08: 197
+events, 187 with a host, 10 with none, 0 unmapped; the one new event, 1432 "SDAR Headshots", was
+created through the picker and carries SDAR (now 23).
 
 ### 9. Work through "Unmapped since the cutoff"
 
@@ -240,4 +246,4 @@ them. Proven on the dev restore on 2026-10-07.
 | 1 | 2026-10-07 | insgt-api `master` 8f1f5dc; two reference migrations; read-out at 12:30:10.007557 UTC | 196 events, identical to the restore |
 | map | 2026-10-07 | platform `bc28471`, the audit document | 196 events mapped once each |
 | 2 | 2026-10-07 | insgt-api, backfill and FK validation migrated at 14:45:27 UTC | 186 hosted, 10 no host, 0 unmapped; invariants 1–7, 9, 10 pass |
-| 3 | — | insgt-ops 9.65.0 | not yet built |
+| 3 | 2026-10-08 | insgt-ops 9.65.0; read-out at 14:07:39.267362 UTC | 197 events, 187 hosted, 10 no host, 0 unmapped; 1432 created with SDAR |
