@@ -2,16 +2,16 @@
 
 The `file:line` map for `docs/architecture/account-classification.md`. Read at Phase 0 of every slice; verify the entries the slice depends on before surveying fresh. Flat and factual: file, line, what it is, which slice or commit put it there. Paths are `apps/insgt-api` unless prefixed.
 
-Established by the drift audit of 2026-09-07 (`account-classification-drift-audit-2026-09-07.md`) against `feat/account-account-type` at 393005e; rewritten 2026-09-10 for slice 1b against `feat/account-classification-1b` at afeb1f7; re-ranged 2026-09-10 for slice 2 against `feat/account-classification-2` at ca49f32; re-ranged 2026-09-14 for slice 3 against `master` at f811e97 (slice 3 merged and deployed); extended 2026-09-28 for slice 4a/4b against `master` at 25a694c3 (the audit and the backfill merged and deployed, `APPLY` run in production); extended 2026-10-01 for slice 4e against `master` at b0dc6c4 (the retirement merged and deployed as release v642) — only the rows 4e touched were re-ranged. A moved line is a reason to update this file, not to distrust it.
+Established by the drift audit of 2026-09-07 (`account-classification-drift-audit-2026-09-07.md`) against `feat/account-account-type` at 393005e; rewritten 2026-09-10 for slice 1b against `feat/account-classification-1b` at afeb1f7; re-ranged 2026-09-10 for slice 2 against `feat/account-classification-2` at ca49f32; re-ranged 2026-09-14 for slice 3 against `master` at f811e97 (slice 3 merged and deployed); extended 2026-09-28 for slice 4a/4b against `master` at 25a694c3 (the audit and the backfill merged and deployed, `APPLY` run in production); extended 2026-10-01 for slice 4e against `master` at b0dc6c4 (the retirement merged and deployed as release v642) — only the rows 4e touched were re-ranged; extended 2026-10-08 for slice 6a against insgt-api `master` at 70c3f4e and insgt-ops `main` at b9df2e2c (the hosts deployed, 9.65.0 released) — the "Marketing events and hosts" section is new, and only the schema and organization rows 6a touched were re-ranged. A moved line is a reason to update this file, not to distrust it.
 
 ## Schema
 
 | File | Line | What it is | Slice / commit |
 | :-- | :-- | :-- | :-- |
-| `db/schema.rb` | 13 | Schema version `2026_09_12_120001` | slice 3 |
+| `db/schema.rb` | 13 | Schema version `2026_10_07_120001` | slice 6a |
 | `db/schema.rb` | 18–59 | `account_metrics`: `first_shoot_at` 42, `most_recent_shoot_at` 43; recapture columns 44–47; the five §3.4 numeric columns 48–52; **the four §3.4 label columns 53–56** (`lifecycle_type` `limit: 2`, `lifecycle_type_at` `datetime`, `value_type` and `peak_value_type` `limit: 2`), nullable, no default; unique index on `account_id` 57; **`index_account_metrics_on_lifecycle_type_and_value_type` 58**. `[account_id, lifecycle_type]` is deliberately absent (§3.4, G6) | 53–56, 58 slice 3 |
 | `db/schema.rb` | 110 | `accounts.account_type` smallint, nullable, no default | slice 4, 94485f8 |
-| `db/schema.rb` | 486–497 | `marketing_events`: no `event_type` | (slice 5 void) |
+| `db/schema.rb` | 486–499 | `marketing_events`: no `event_type`; `organization_id` 496 and its index 498 (see "Marketing events and hosts") | (slice 5 void); slice 6a |
 | `db/schema.rb` | 659 | `order_types.category_type` smallint `null: false`, no default | slice 1a, 81bf2e0 |
 | `db/schema.rb` | 728, 793 | `orders.marketing_event_id` and its index | 2015 |
 | `db/schema.rb` | 1112–1143 | `system_metrics`: mirror of the shoot-date and recapture columns (1136–1141); **no slice 2 or slice 3 column** — the mirror stops at the shared columns, and a fleet "lifecycle" is not a thing (§3.4, G6 / G10) | pre-1a / ADR 002; slices 2 and 3 by omission |
@@ -59,16 +59,54 @@ Surveyed for the organization type audit and the backfill; nothing here changed 
 
 | File | Line | What it is | Slice / commit |
 | :-- | :-- | :-- | :-- |
-| `db/schema.rb` | 819–838 | `organizations`: `type_of` smallint **NOT NULL** (820), `name` NOT NULL, `url`, `email`, `logo_file_name`, `status_type`, `parent_id` (834); no affiliation column, no `property_management` value | legacy |
+| `db/schema.rb` | 821–842 | `organizations`: `type_of` smallint **NOT NULL** (822), `name` NOT NULL, `url`, `email`, `logo_file_name`, `status_type`, `parent_id` (836), `marketing_source_id` bigint (840, slice 6a) and its index (841); no affiliation column, no `property_management` value | legacy; 840–841 slice 6a |
 | `db/schema.rb` | 117–126 | `accounts_organizations`: seven columns, **no type or role**; the `(account_id, organization_id)` index (125) is **not unique** — 113 duplicate pairs exist across statuses, 0 twice-active (audit 2026-09-28) | legacy |
-| `app/models/organization.rb` | 97–109 | `Organization.types`: mls 1, brokerage 2, lender 3, stager 4, agent 5 ("Agent team"), franchise 6, social_media 7, office 8 — a frozen hash, not an enum; three carry no rows | legacy |
-| `app/models/organization.rb` | 32–41 | `validates :type_of` as a range (1..max), not membership | legacy |
-| `app/models/organization.rb` | 43 | `default_scope { order('name ASC') }` — why the audit and the backfill compose raw SQL rather than `Organization` relations | legacy |
-| `app/models/organization.rb` | 143–145 | `set_type!` (`before_validation`): blank → brokerage on every save; a chosen brokerage cannot be told from a defaulted one (audit: upper bound 255 of 643) | legacy |
+| `app/models/organization.rb` | 103–119 | `Organization.types`: mls 1, brokerage 2, lender 3, stager 4, agent 5 ("Agent team"), franchise 6, social_media 7, office 8, **association 9** (116, with the why-not-brokerage comment 113–115 and the ops-mirror note 117–118) — a frozen hash, not an enum | legacy; 9 slice 6a |
+| `app/models/organization.rb` | 33–41 | Name uniqueness scoped to `[status_type, type_of]` (34) — why three brokerage names are held twice and the host backfill resolves by name **and** type; `validates :type_of` as a range (1..max), not membership | legacy |
+| `app/models/organization.rb` | 47 | `default_scope { order('name ASC') }` — why the audit and the backfill compose raw SQL rather than `Organization` relations | legacy |
+| `app/models/organization.rb` | 154 | `set_type!` (`before_validation`): blank → brokerage on every save; a chosen brokerage cannot be told from a defaulted one (audit: upper bound 255 of 643) | legacy |
 | `app/models/accounts_organization.rb` | 7 | Uniqueness of `(account_id, organization_id)` is a model validation scoped to active rows only | legacy |
 | `app/models/user.rb` | 188–194, 201–204, 213–228 | The API's own "brokerage present" — an active edge to an organization with `type_of = 2` (the account's and the edge's status, **not** the organization's); `update_broker` soft-deleting the old edge on every broker change (the churn behind the 1,094 soft-deleted edges); the free-text branch creating a brokerage from a name | legacy |
 | `app/models/user.rb`, `app/helpers/sessions_helper.rb:61`, `lib/account_report.rb:565`, `lib/listing_report.rb:101` | 191–194 | The four "brokerage present" sites the plan's G5 reads as R1 (strict `type_of = 2`); the ops card's "first non-MLS" (`insgt-ops src/app/features/accounts/.../account-info-card.ts:264–273`) and `AccountQuery#where_organization` (untyped, no edge status, `account_query.rb:271–276`) are the other two live definitions | surveyed slice 4 |
-| insgt-ops `src/app/shared/models/organization.model.ts:45–56`, `src/app/organizations/store/organization.service.ts:112–123` | — | The ops copy of the eight types — an audit finding with no action | surveyed slice 4 |
+| insgt-ops `src/app/shared/models/organization.model.ts:48–60`, `src/app/organizations/store/organization.service.ts:112–123` | — | The ops copy of the types, nine since 9.65.0 (`{ id: 9, name: 'Association' }` at 59); pinned by `organization.model.spec.ts` against the API's `spec/models/organization_spec.rb` | surveyed slice 4; slice 6a |
+
+## Marketing events and hosts (slice 6a)
+
+Read against insgt-api `master` at 70c3f4e and insgt-ops `main` at b9df2e2c, on 2026-10-08. 6b
+(`event_attribution.rb`, the `metrics.rake` hook) and 6c (`headshot_host_roi.rb`,
+`KpisController#headshot_hosts`, the ops KPI panel) add their rows here.
+
+| File | Line | What it is | Slice / commit |
+| :-- | :-- | :-- | :-- |
+| `db/schema.rb` | 496, 498; 1292 | `marketing_events.organization_id` integer, nullable, no default (organizations' id is serial); its index; the foreign key, validated | 6a-i 53a6108; validated 6a-ii |
+| `db/schema.rb` | 840–841; 1302 | `organizations.marketing_source_id` bigint, nullable; its index; the foreign key, validated | 6a-i 53a6108; validated 6a-ii |
+| `db/migrate/20261006120000_add_organization_to_marketing_events.rb` | 1–47 | Header: why not `add_reference` (strong_migrations), why the leading `remove_index`, same name and type as `add_reference` so `schema.rb` is unchanged; `disable_ddl_transaction!`, `INDEX_NAME`, re-runnable `up`, `down` with `algorithm: :concurrently` by hand | 6a-i 53a6108 |
+| `db/migrate/20261006120001_add_marketing_source_to_organizations.rb` | 1–30 | The same shape for `organizations.marketing_source_id` | 6a-i 53a6108 |
+| `db/migrate/20261007120000_backfill_marketing_event_hosts.rb` | 1–54; 55, 66, 84, 119, 178, 181 | The transcribed map. Header: keyed by event id, hosts resolved by name and type at run time, the cutoff rule, checks before writes, why throwaway classes, what `down` undoes. `MAP_CUTOFF` 55 (the production read-out's stamp), `NEW_HOSTS` 66 (14), `EXISTING_HOSTS` 84 (31), `EVENT_IDS_BY_HOST` 119, `NO_HOST_EVENT_IDS` 178 (10), `SOURCE_KEY_BY_HOST` 181 (3) | 6a-ii 1a1c7fb |
+| same | 202, 222, 241, 273, 325 | `up`; `down` (only what `up` wrote and is still there; created organizations kept); `map_problems` (every map offender in one raise); `resolution_problems` (0 or 2+ rows, a name under another type); `verify_written!` (per host, then per sourced host) | 6a-ii 1a1c7fb |
+| `db/migrate/20261007120001_validate_marketing_event_host_foreign_keys.rb` | 1–27 | Both `validate_foreign_key`s, after the backfill; `down` a deliberate no-op | 6a-ii 1a1c7fb |
+| `app/models/marketing_event.rb` | 9–16, 21, 25–29 | `belongs_to :organization, optional: true` with the NULL meaning; `organization_is_active` only when the id is present **and changing** (`will_save_change_to_organization_id?`) — an event whose host is later soft-deleted stays editable; error "must be an active organization" | 6a-ii 9d76b32 |
+| `app/models/concerns/marketing_event_query.rb` | 8–15 | `search`: `options[:includes] << :organization` (12), so `organizationName` is one query per page | 6a-ii 9d76b32 |
+| `app/controllers/marketing_events_controller.rb` | 59 | `organization_id` permitted | 6a-ii 9d76b32 |
+| `app/helpers/marketing_events_helper.rb` | 5, 8 | `organization_id` extracted; `organization_name` beside it | 6a-ii 9d76b32 |
+| `app/models/organization.rb` | 24–28, 92–93 | `belongs_to :marketing_source, optional: true` (no API write path) and `has_many :marketing_events`; `search` preloads `:marketing_source` | 6a-ii 9d76b32; 92–93 0f4d286 |
+| `app/models/marketing_source.rb` | 6 | `has_many :organizations` | 6a-ii 9d76b32 |
+| `app/helpers/organizations_helper.rb` | 12, 14–25 | `set_organization_marketing_source!`: `marketing_source_id` (public id) and `marketing_source_name`, inside `authorize_for_system?(:system_admin, :system_scheduler)`, **omitted** otherwise — the payload reaches agents through `sessions_helper.rb`'s `broker` block | 6a-ii 0f4d286 |
+| `lib/tasks/marketing_events.rake` | 1–22, 23, 26, 49, 176, 182–185 | `marketing_events:audit_hosts`, module `MarketingEventAudit`: header (one task, two jobs; the parse is a draft); `ACRONYMS` 26 (PSAR NSDCAR NSDCR SDAR SDREA YPN); `OFFSET_PATTERN` 49 (`MAP_CUTOFF` must carry `Z` or an offset); the task 176; the empty-table refusal 182–185. Dates print in UTC: `scheduled_at` has date-only rows at midnight Eastern, so a Pacific date is a day early | 6a-i a85b694 |
+| `lib/order_headshot.rb` | 45–53, 69–102 | `find_order_for_account` stamps `marketing_event_id` and **never `scheduled_at`** (every event order's shoot date is its completion log, 1–30 days late — plan M8); `find_or_create_account` by email, then by exact `"first last"` | legacy; surveyed 6a |
+| `spec/models/organization_spec.rb` | 1–53 | The nine integers pinned; association valid; above-max rejected; blank still → brokerage | 6a-i 0e71d2b |
+| `spec/lib/tasks/marketing_events_rake_spec.rb` | 1–266 | 20 examples: every section; the cutoff's offset rule, both ways; UTC dates under a Pacific zone; the empty-table refusal | 6a-i a85b694 |
+| `spec/requests/marketing_events_spec.rb` | 1–193 | 16 examples: create and update with a host, a present null, an absent key; 422 on a soft-deleted, unknown or `"0"` id, never a 500; an edit to an event whose host was soft-deleted since still saves; hosts read in one query on the index | 6a-ii 9d76b32 |
+| `spec/requests/organizations_marketing_source_spec.rb` | 1–106 | 7 examples: the keys for admin and scheduler, null for a host without a source, omitted from the session's `broker` block, ignored on `PUT`, one query on the index | 6a-ii 0f4d286 |
+| `spec/factories/marketing_events.rb`, `spec/factories/organizations.rb` | 1–13; 11 | No default host on events (the NULL state is exercised); `trait :association` | 6a-i 53a6108 |
+| insgt-ops `src/app/marketing-events/data-access/marketing-event-host.model.ts` | 22–55 | `MarketingEventHost` (`{ kind: 'insight' }` or `{ kind: 'organization', id, name }`), `INSIGHT_HOST`, `INSIGHT_HOST_LABEL`; `hostFromMarketingEvent` (null → Insight, undefined → no choice), `organizationIdFromHost` (Insight → `null`), `hostLabel`. The object value is what lets `Validators.required` tell "no choice" from Insight | 9.65.0, 121d3f23 |
+| insgt-ops `…/data-access/marketing-event-host.service.ts` | 40–47 | Composition client on `organizations/autocomplete`, `term` only. Named at `createClient`, because `setUrl` is discarded by `all()`; not `OrganizationService.autocomplete`, whose `resourceType` (`organization.service.ts:107`) empties the result | 9.65.0, 121d3f23 |
+| insgt-ops `src/app/marketing-events/components/marketing-event-host-picker/marketing-event-host-picker.{ts,html}` | ts 48–56, 65, 82–86, 109, 130 | Standalone, OnPush `ControlValueAccessor` over `mat-autocomplete`: `vm` 65; typing clears the choice (82, `clearChoice` 130), 200 ms debounce 86; `writeValue` never emits. Insight pinned first; `data-cy` `marketing-event-host-input`, `-insight`, `-option` | 9.65.0, 121d3f23 |
+| insgt-ops `src/app/orders/summary/create-marketing-event.component.{ts,html}` | ts 72–75, 84; html 74–75 | The only create path: `host: [undefined, Validators.required]`, mapped to `organizationId` on submit; picker in `data-cy="create-marketing-event-host"`. `OrderEditModule` imports the picker (`order-edit.module.ts:48, 95`) | 9.65.0, 25e80f28 |
+| insgt-ops `src/app/marketing-events/form/marketing-event-form.component.{ts,html}` | ts 67–70, 89–90; html 73–74 | The edit form (edit-only since f3ab820e removed `/marketing-events/new`): host control from `hostFromMarketingEvent`, mapped on emit; `data-cy="marketing-event-form-host"`. Module imports the picker | 9.65.0, 25e80f28 |
+| insgt-ops `src/app/shared/models/marketing-event.model.ts` | 10–14 | `organizationId?: number \| null`, `organizationName?: string \| null`; the forms never read them directly | 9.65.0, 25e80f28 |
+| insgt-ops `cypress/e2e/marketing-events/marketing-event-host.cy.ts` | 1–193 | 7 examples, the outbound-body contract: edit page (stored host, NULL host, clearing a host to `null`); create block (blocks without a host, Insight → `null`, a searched id, an edited host blocks); the search carries `term` and no `resourceType` | 9.65.0, 25e80f28 |
+| insgt-ops `…/marketing-event-host.model.spec.ts`, `src/app/shared/models/organization.model.spec.ts` | 1–65; 1–39 | Vitest: both mappings and the round trip; the nine type ids | 9.65.0, 121d3f23; 29d75830 |
 
 ## Query concerns and services
 
@@ -200,7 +238,7 @@ Surveyed for the organization type audit and the backfill; nothing here changed 
 | :-- | :-- |
 | `CLAUDE.md` §Testing | Adding a required column; adding a nullable column whose NULL means something (the recipe the five slice 2 columns follow) |
 | `README.md` §Migrations | strong_migrations and the four-migration NOT NULL sequence |
-| `insgt-platform/docs/architecture/account-classification.md` | The contract, v6 (2026-09-14) |
+| `insgt-platform/docs/architecture/account-classification.md` | The contract, v11 (2026-10-08) |
 | `insgt-platform/docs/plans/account-classification-slice-2.md` | Slice 2's survey, plan, the fourteen gaps and Dan's decisions on the six open questions |
 | `insgt-platform/docs/architecture/shift-memo-slice-1b-2026-09-10.md`, `…-production.md` | What slice 1b moved; the hand-over copy |
 | `insgt-platform/docs/runbooks/deploy-account-classification-1a-1b.md` | Deploying 1a and 1b together |
@@ -211,7 +249,36 @@ Surveyed for the organization type audit and the backfill; nothing here changed 
 | `insgt-platform/docs/architecture/organization-type-audit-2026-09-28.md` | The audit slice 4 blocked on: the production read-out, the four answers, five findings (13 dangling edges to organization 15; 255 of 643 defaulted brokerages; 113 duplicate pairs; both "no code path" counts; the ops copy), and the typed-edge recommendation to §8 Q7 (slice 4a) |
 | `insgt-platform/docs/architecture/account-type-backfill-memo-2026-09-28-production.md`, `-test.md` | What the backfill wrote in production (1,420 rows at 19:52:47 UTC, both self-checks OK) and its review lists (a)–(g); the `-test.md` is the dress rehearsal on a 19:05 UTC production sync, identical apart from the stamps (slice 4b) |
 | `insgt-platform/docs/runbooks/deploy-account-classification-4-backfill.md` | Deploying 4a/4b: no window, the audit's verdict as the gate, dry run then STOP, `APPLY`, the second dry run, nine invariants (the local-file comparisons on the host), eleven spot checks, the pair-keyed reversal; event 4's placeholder and its captured KPI baseline (slice 4a/4b) |
+| `insgt-platform/docs/plans/account-classification-slice-6.md` | Slice 6's survey, plan, the slice cut into six sub-slices and seven deploy events, gaps G1–G20, Appendix A and the decisions OQ1–OQ11 of 2026-10-06 |
+| `insgt-platform/docs/architecture/marketing-event-host-audit-2026-10-07.md` | The host of every event that existed at the cutoff: the rules, the map by host, the totals the post-backfill read-out must reproduce, the draft token table, the production run verbatim (slice 6a) |
+| `insgt-platform/docs/runbooks/deploy-account-classification-6-hosts.md` | Deploying 6a: events 1–3, no window; the read-out and the STOP for the map; the backfill, the invariant script, the curls; the ops release; the deferred items (slice 6a) |
 | `insgt-platform/docs/decisions/002-recapture-order-type.md` | ADR 002 |
+
+## Branch and deploy state, 2026-10-08 (slice 6a deployed)
+
+| Ref | Head | Carries |
+| :-- | :-- | :-- |
+| `heroku/master`, `origin/master`, `master` | **70c3f4e** | Slices 1a–4e and 6a. 6a-i merged as 8f1f5dc (2026-10-07; 0e71d2b the ninth type, 53a6108 the columns, a85b694 the read-out), migrated and read out in production at 12:30:10.007557 UTC. 6a-ii merged as 70c3f4e the same day (1a1c7fb the backfill and FK validation, 9d76b32 the event API, 0f4d286 the organization payload), migrated at 14:45:27 UTC: 14 organizations created, 186 events hosted, 10 with no host, 0 unmapped. Schema `2026_10_07_120001` |
+| insgt-ops `main` | 16ba46ad (9.65.0 released 2026-10-08, from merge b9df2e2c) | 6a-ops: 29d75830 the ninth type, 121d3f23 the picker, 25e80f28 both forms and the Cypress spec, f3ab820e `/marketing-events/new` removed, 23c8233d the version. 16ba46ad is an unrelated processing-screen change on top |
+| platform `main` | — | The host audit document and the hosts runbook merged; this write-back on `docs/slice-6-v11-part-1` |
+| dev database | production restore; dev data has drifted since the slice 6 survey | Not authoritative for 6b's numbers: the dry run on the day is |
+
+**Verification evidence, 2026-10-07/08.** insgt-api full suite 1,897 examples / 0 failures. Every
+new spec seen red first, with deliberate breaks per unit. Two review rounds over 6a-ii
+(`predeploy-review-rails`, Claude plus Codex on an rsync copy); every should-fix fixed. Two nits
+were declined (the hosts runbook's "Deferred"). insgt-ops Vitest 596 and Cypress 52 green. One
+`predeploy-review-angular` round: the lockfile version, the clear-a-host example and an interface
+turned into a type, all fixed. The Cypress breaks were run against `ng build` output served
+separately: a variant that does not compile leaves `ng serve` on the last good bundle, so a break
+run against it passes falsely.
+
+**What 6b should read first.** `EventAttribution` reads `marketing_events.organization_id` and
+`organizations.marketing_source_id` (above). Three hosts carry a source (PSAR 3405, NSDCR 3406, SDAR
+3407 in production; resolve by key, not id). Every event order's `scheduled_at` is NULL
+(`order_headshot.rb:45–53`), so §5.5's `Order.shoot_date_sql` dates attendance by the completion
+log. The plan's 6b estimate moved with the map: first write 91 → 95, SDAR event 7 → 19, attributed
+178 → 273, 103 credits to hosts with no source (audit document §3.4). These are
+estimates; the dry run is the authority.
 
 ## Branch and deploy state, 2026-10-01 (slice 4 complete)
 
