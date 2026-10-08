@@ -5,10 +5,11 @@
 deployed 2026-09-11; slice 3 deployed 2026-09-14; slice 4a/4b deployed and `APPLY` run 2026-09-28;
 slice 4c deployed 2026-09-29 (`master` merge 4cf0975); slice 4d released as insgt-ops 9.60.0
 2026-09-30; slice 4e deployed 2026-10-01 (`master` merge b0dc6c4, release v642), completing slice 4;
-D6 closed 2026-09-29, slice 6 redefined; see §9
-**Version:** 10 · **Last updated:** 2026-10-05 (`most_recent_shoot_at` on account rows)
-**Supersedes:** v9 (2026-10-01), v8 (2026-09-30), v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11), v4 (2026-09-10),
-v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§18 for what changed and why.
+D6 closed 2026-09-29, slice 6 redefined; slice 6a (event hosts) deployed 2026-10-07 (insgt-api) and
+2026-10-08 (insgt-ops 9.65.0); see §9
+**Version:** 11 · **Last updated:** 2026-10-08 (slice 6a: event hosts)
+**Supersedes:** v10 (2026-10-05), v9 (2026-10-01), v8 (2026-09-30), v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11), v4 (2026-09-10),
+v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§19 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
 `account-classification-drift-audit-2026-09-07.md` (the evidence behind v3),
 `shift-memo-slice-1b-2026-09-10.md` (what slice 1b moves, account by account),
@@ -20,7 +21,10 @@ it pinned), `../runbooks/deploy-account-classification-2.md` (the slice 2 deploy
 and the eleven decisions of 2026-09-15), `organization-type-audit-2026-09-28.md` (the audit slice 4
 blocked on), `account-type-backfill-memo-2026-09-28-production.md` (what the backfill wrote, and
 its review lists), `../runbooks/deploy-account-classification-4-backfill.md` (the slice 4a/4b
-and 4e deploys), and the contract spec
+and 4e deploys), `../plans/account-classification-slice-6.md` (slice 6's survey, plan, gaps G1–G20
+and the decisions OQ1–OQ11 of 2026-10-06), `marketing-event-host-audit-2026-10-07.md` (the host of
+every event, settled by hand), `../runbooks/deploy-account-classification-6-hosts.md` (the slice 6a
+deploys), and the contract spec
 `insgt-api/spec/architecture/account_classification_spec.rb` (§5.1–§5.4, §4.2–§4.3 and §4.1's
 tiers pinned on the canonical fixtures; later slices append to it).
 
@@ -235,7 +239,10 @@ KPI read the scopes; the only id list left is the margin-only
 
 1. A scheduler creates the event's container order in insgt-ops, so it can be scheduled, given a
    location and assigned a photographer.
-2. A `marketing_events` row is created with `marketing_events.order_id` pointing at that order.
+2. A `marketing_events` row is created with `marketing_events.order_id` pointing at that order,
+   from the create block on that order's page, which requires a host (§3.5). Since insgt-ops 9.65.0
+   that block is the only place an event is created; the standalone `/marketing-events/new` page
+   was removed (it had been broken since at least 2024-07-22).
 3. After the event, `POST /orders/headshot` creates one headshot order per agent, matching an
    existing account by email first (the active `Email` row's user, then that user's owner account),
    then by account name (`first last`), and creating the account only if neither matches
@@ -246,17 +253,24 @@ KPI read the scopes; the only id list left is the margin-only
 import rows, the last created 2023-10-27.
 
 **Headshot only, with a legacy exception.** In the system's early days some paparazzi events were
-recorded as `marketing_events` rows. That is no longer done. Those rows stay, are identified by the
-slice 6 host read-out, and are mapped to no host (§3.5), which keeps them out of attribution.
+recorded as `marketing_events` rows. That is no longer done. Those rows stay and are mapped to no host
+(§3.5), which keeps them out of attribution. They are identifiable by name only: every order on every
+event is a headshot order (type 3), so the slice 6 host read-out lists the name-only candidates
+(Marketing, Aerial Marketing, a booth, a caravan, Test, Misc.) for judgment rather than finding them
+by order type.
 Paparazzi, caravan and sponsorship work today exists only as orders classified by
 `order_types.category_type`.
 
 **No `event_type`.** v2 proposed a five-value `event_type`. Not added and not planned: with one
 current kind of event the column would carry one value.
 
-**Host organization.** v7 said `marketing_events` has no organization association; true until
-slice 6, and the host existed only inside the event name (`2022-04-08 PSAR Chula Vista-Headshots`,
-`2024-03-26 NSDCR Headshots`). Slice 6 adds `marketing_events.organization_id`; see §3.5.
+**Host organization.** Until slice 6 the host existed only inside the event name
+(`2022-04-08 PSAR Chula Vista-Headshots`, `2024-03-26 NSDCR Headshots`). Since slice 6a (2026-10-07)
+it lives on `marketing_events.organization_id`, which is the only place to read it: the name is
+a label, not a host. Every event that existed on 2026-10-07 was given its host by hand, from the
+read-out `rake marketing_events:audit_hosts` and the map in
+`marketing-event-host-audit-2026-10-07.md`. Every event created since gets its host from the ops
+form. See §3.5.
 
 ### 3.3 `accounts` — add `account_type`
 
@@ -284,8 +298,12 @@ signup), set by a scheduler in insgt-ops, or derived from a headshot event host 
 derivation writes only where the column is NULL and never overwrites; a scheduler's later edit wins.
 Headshot-created accounts are **not** given a source at creation: attending a free event is not
 being sourced as a paying customer. v7's "do not add organization rows to `marketing_sources`" is
-withdrawn — host organizations (NARPM, PSAR, NAHREP) already exist as sources, and the mapping from
-organization to source is explicit (§3.5).
+withdrawn: the hosts' sources already exist, and the mapping from organization to source is explicit
+(§3.5). v8 said the host *organizations* existed too, and they did not. `marketing_sources` carried
+`psar_event`, `nsdcr_event` and `sdar_event` (and the self-reported `narpm` and `nahrep`), but no
+`organizations` row existed for any association. Slice 6a created them (PSAR, NSDCR, SDAR and YPN,
+typed `association`) and gave the three event sources to their hosts. No `marketing_sources` row was
+added, because that table is also the public signup list.
 
 ### 3.4 `account_metrics` — nine columns and one index, in two slices
 
@@ -454,33 +472,127 @@ rather than `users.count` because the shift memo builds the calculator on an uns
 
 ### 3.5 `marketing_events.organization_id` and `organizations.marketing_source_id`
 
+**Shipped.** Slice 6a, deployed to production 2026-10-07 (insgt-api `master` merges 8f1f5dc, the
+columns and the read-out, and 70c3f4e, the backfill and the API) and 2026-10-08 (insgt-ops 9.65.0, the form).
+
 ```ruby
-add_reference :marketing_events, :organization, foreign_key: true, null: true  # the host
-add_reference :organizations, :marketing_source, foreign_key: true, null: true  # what the host counts as
+# db/migrate/20261006120000 (and 20261006120001 for organizations.marketing_source_id, bigint)
+disable_ddl_transaction!
+add_column :marketing_events, :organization_id, :integer, null: true, if_not_exists: true
+remove_index :marketing_events, name: INDEX_NAME, algorithm: :concurrently, if_exists: true
+add_index :marketing_events, :organization_id, name: INDEX_NAME, algorithm: :concurrently, if_not_exists: true
+add_foreign_key :marketing_events, :organizations, validate: false, if_not_exists: true
+# db/migrate/20261007120001, after the backfill:
+validate_foreign_key :marketing_events, :organizations
+validate_foreign_key :organizations, :marketing_sources
 ```
+
+v8's `add_reference … foreign_key: true, null: true` raises under strong_migrations 2.8 (a
+non-concurrent index and a validating foreign key, both under the write lock), as §3.4's v5 index
+snippet did. Each step is written to be re-run: `if_not_exists`, plus a leading `remove_index`
+that clears the INVALID index a failed concurrent build leaves behind (the `20260912120001`
+lesson). Each `down` spells `algorithm: :concurrently` by hand. The foreign keys are validated in
+their own file, after the backfill has written every value. That separate file was a choice; the
+gem only demands that validation not share a transaction with a write lock. The validation's `down`
+is a no-op, because Postgres has no "unvalidate". Neither event needed a window: the columns
+shipped one push before anything read them.
 
 Two hops rather than a source on the event. The host is the fact recorded per event; which source a
 host counts as is recorded once per organization, so twenty PSAR events cannot disagree about PSAR.
 A source column on the event beside `organization_id` would be two columns that can contradict each
 other on every row.
 
-**NULL on `marketing_events.organization_id` means "no outside host"** — an event Insight Photos ran
-itself, or a legacy paparazzi row. It is deliberate, and the ops event form enforces it: choosing a
-host is required, with "Hosted by Insight Photos" as an option stored as NULL. Only rows created
-outside the form are ambiguous between "no host" and "not filled in."
+**NULL on `marketing_events.organization_id` means "no outside host"**: an event Insight Photos ran
+itself, a legacy paparazzi row, or an event with no outside host on record. It is deliberate, and
+the ops form enforces it: choosing a host is required, with "Hosted by Insight Photos" as an option
+stored as NULL. Only rows created outside the form are ambiguous between "no host" and "not filled
+in", and since 2026-10-08 there are none: the backfill mapped every older event, and the form
+covers every newer one.
 
 **NULL on `organizations.marketing_source_id` means the organization is not a marketing source.**
 Most organizations are brokerages and never host an event. A host without a source is legitimate:
 its converts stay unattributed on the account and are still counted by organization in the ROI
-report.
+report. Three hosts carry a source: PSAR (`psar_event`), NSDCR (`nsdcr_event`) and SDAR
+(`sdar_event`). No source was created for any other host. `marketing_sources` is also the public
+signup list (`GET /marketing_sources` is unauthenticated), so a new row there is a customer-facing
+change, not a migration detail.
 
-**Host backfill, from the event name, by hand.** The `category_type` pattern (§3.1): a read-out
-lists each distinct host token parsed from `marketing_events.name` with its event count, every name
-it could not parse, and every event whose orders are not headshot orders. Dan maps each token to an
-`organization_id` or to `nil` in an explicit map committed in the migration. The migration raises on
-any event the map misses and any token mapped twice. Location tokens (`Chula Vista`) are ignored
-unless a chapter is a separate organization. Organization-to-source mappings are set the same way,
-for hosts only. The column stays nullable, because deliberate NULLs are expected.
+**Hosts are organizations, and associations are a ninth type.** `Organization.types` gains
+`association: { id: 9, name: 'Association' }`. The `type_of` validation is a range over the hash's
+max id, so it follows automatically. insgt-ops mirrors the hash as `OrganizationTypes`, and both
+repos pin the nine integers in a spec, because nothing links the two copies at build time.
+Associations are not typed `brokerage`. Slice 4's `agent` tier and `User#update_broker` read
+`type_of = 2` as "brokerage present", so a PSAR edge typed brokerage would misclassify every
+attendee. The organization-type audit advised against a ninth value (§8 Q7), but that advice was
+about representing an account's NARPM affiliation. It does not cover a kind of organization the
+hash lacks. Brokerages, lenders and agent teams host events too: 55 of the 196 mapped events, a
+practice that continues.
+
+**The host backfill: a read-out, a hand map keyed by event id, and a migration that transcribes it.**
+The `category_type` pattern (§3.1), with two changes v8 did not anticipate.
+
+1. **The read-out**, `rake marketing_events:audit_hosts` (`lib/tasks/marketing_events.rake`), is
+   read-only. It prints every event with its orders, a *draft* token parse, the active
+   organizations each non-acronym token could name, and the name-only paparazzi candidates. It was
+   run in production at 2026-10-07 12:30:10.007557 UTC, and that timestamp is the map's cutoff.
+   After the backfill the same task is the invariant: events per host with the host's source, the
+   no-host bucket, and (given `MAP_CUTOFF=`, with a `Z` or an offset) the events with no host created
+   since the cutoff.
+2. **The map is keyed by event id, and its values are host names.** v8 had Dan map each *token* to
+   an `organization_id`. That fails twice. Tokens do not survive the data: `2012-12-10` is written
+   for 2021, `Heashots` appears, NSDCAR and NSDCR are one association under its old and new names,
+   and event 22's `SDREA` is a typo for SDAR. And the host rows did not exist yet, so there was no
+   id to write. "A token mapped twice" therefore becomes "a host name that resolves to other than
+   one active organization". The settled map, with its rules, is
+   `marketing-event-host-audit-2026-10-07.md`: 186 events hosted (131 by the four associations, 55
+   by 41 brokerage, lender and agent-team organizations), 10 with no host.
+3. **Hosts are resolved by name and `type_of` at run time, never by integer id.** Name alone is
+   ambiguous: organization uniqueness is scoped to `[status_type, type_of]`, and three brokerage
+   names are each held by an active franchise row and an active brokerage row. A host is matched to
+   the one active row with its name and type. It is created only when no active row has the name
+   under any type, and the run raises when the name exists under a different type. Fourteen hosts
+   were created (the four associations; ten brokerage, lender and agent-team rows) and 31 existing
+   rows were used. Sources are resolved by `marketing_sources.key`, never by integer.
+4. **The cutoff rule.** The migration raises for any event created before `MAP_CUTOFF` that the map
+   misses, as v8 asked. Events created after the cutoff stay NULL and are listed by the read-out
+   instead. Production has no release phase, so `db:migrate` runs by hand after the push, and a
+   raise for an event created that morning would have cost a code change and a second push. On
+   2026-10-07 none existed.
+5. **Every check runs before any write, and every offender is reported in one raise**: unmapped
+   pre-cutoff events, map keys with no event, an event mapped twice, unresolvable or ambiguous
+   hosts, missing source keys. A final per-host check after the writes rolls everything back,
+   created organizations included. `down` clears only what `up` wrote and is still there. It
+   leaves the created organizations in place, because soft-delete is the repo's only delete.
+
+Location tokens (`Chula Vista`) are ignored: one PSAR, one NSDCR, one SDAR. Brokerage hosts map
+to the office row when the event name names a matching location, otherwise to the franchise row.
+
+**The API.** `POST`/`PUT /marketing_events` permit `organization_id`. An absent or null id is
+NULL, and any active organization is a valid host. A present id that does not name an active
+organization is a 422 ("must be an active organization"), checked only when the id changes. Without
+that check `belongs_to … optional: true` would let a stale id reach the foreign key as a 500, and
+checking unchanged ids would block the edit of an event whose host was later soft-deleted. The
+event payload carries `organizationId` and `organizationName`, so the edit form can render the
+current host without a second request. The index preloads `:organization`
+(`MarketingEventQuery#search`), so the name costs one query per page, not one per row.
+
+**The ops form.** One standalone host picker, a `ControlValueAccessor` over `mat-autocomplete` on
+`GET /organizations/autocomplete?term=` (term only; `OrganizationService.autocomplete` adds a type
+filter the API turns into an empty result). "Hosted by Insight Photos" is pinned first. It is
+required on the order page's create block and on the event edit form. `Validators.required` treats
+`null` as empty, so the control holds an object (`{ kind: 'insight' }` or `{ kind: 'organization',
+id, name }`), and two pure functions map it to and from `organizationId` at the form boundary.
+Insight Photos therefore reaches the API as JSON `null`, never as an omitted key; an omitted key
+would leave the host unchanged. Typing after a choice clears it, so the text shown and the value
+sent cannot disagree.
+
+**`organizations.marketing_source_id` is on the wire read-only, to admin and scheduler only.** The
+organization payload carries `marketingSourceId` (the source's public id, as on accounts) and
+`marketingSourceName` inside a `system_admin` / `system_scheduler` check. Outside that audience the
+keys are omitted, not sent as null. The check is there because `set_organization!` is embedded in
+the session's `broker` block, which agents receive, and an internal attribution must not reach a
+customer. The organizations index preloads `:marketing_source`. Nothing is permitted on write. The
+column is set only by migration, for hosts only. Ops does not render it yet.
 
 ---
 
@@ -1313,10 +1425,10 @@ visits rather than shoots — the rename touches consumers for a precision gain 
 
 ## 9. Delivery slices
 
-Independently shippable, in dependency order. Status as of 2026-09-11; the codebase notes carry
+Independently shippable, in dependency order. Status as of 2026-10-08; the codebase notes carry
 the `file:line` evidence.
 
-| # | Slice | Status 2026-09-11 | Unblocks |
+| # | Slice | Status | Unblocks |
 | :-- | :--- | :--- | :--- |
 | 1a | `order_types.category_type` + exhaustive backfill + the three §5.1 scopes | **Deployed 2026-09-10** with 1b (`docs/runbooks/deploy-account-classification-1a-1b.md`); column, backfill and API 1b88f09, scopes 7aa170b | 1b |
 | 1b | Rewrite existing `account_metrics` and `AccountQuery` consumers onto the scopes + shift memo | **Deployed 2026-09-10** (`master` merge 514e5c4 of 7aa170b..afeb1f7); memos `shift-memo-slice-1b-2026-09-10.md` (dev restore) and `shift-memo-slice-1b-2026-09-10-production.md` (the hand-over copy) | everything |
@@ -1324,7 +1436,13 @@ the `file:line` evidence.
 | 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | **Deployed 2026-09-14** (`master` merge f811e97 of b6621c2..f8abdd7, 7 commits; pushed 17:26 EDT). Recompute 2 min 37.79 s over 4,136 accounts, 0 failed; all 11 invariants 0; the re-derivation check 0 mismatches over all 4,136 rows; all six spot checks exact; `accounts:joint_ownership` tier labels and segment rows identical to the pre-change code. Migrations `20260912120000` (four columns) and `20260912120001` (one index), `lib/account_classification.rb`, three enums on `AccountMetric`, `lifecycle_run_sql` + `classification` on the calculator, four fields on the metrics endpoint, both rake read-outs reconciled onto the config. Suite 1,688 examples 0 failures; sweep 1 min 03 s over 4,078 accounts 0 failed on the dev restore; all 11 invariants 0; both migrations run migrate/rollback/migrate; `accounts:joint_ownership` byte-identical. Plan `../plans/account-classification-slice-3.md`, runbook `deploy-account-classification-3.md` | teams page, 7 |
 | 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; insgt-ops 9.59.0 (filter, column, dialog) live 2026-09-14; **4a (organization type audit) and 4b (tiered backfill) deployed 2026-09-28** (`master` merge 25a694c3 of e195ae98..e59a0e19), `APPLY` at 19:52:47 UTC writing 1,420 rows; plan `../plans/account-classification-slice-4.md`, runbook `deploy-account-classification-4-backfill.md`. **4c (API sort key) deployed 2026-09-29** (`master` merge 4cf0975 of 1f4e5a9..fceee13, 7 commits; release v641; runbook `deploy-account-classification-4-worklist.md`). **4d (ops worklist control) released 2026-09-30** as insgt-ops 9.60.0 (`main` merge 0834506b, release stamp 1790765225), all fourteen on-site checks passing; 9.61.0 followed the same day. **4e (retiring the four constants onto `account_type_internal`) deployed 2026-10-01** (`master` merge b0dc6c4 of a20c77c..a87d247, 7 commits; release v642); KPI −9 accounts, −600 cents, both as predicted; runbook `deploy-account-classification-4-backfill.md` event 4. **Slice 4 complete** | 7 |
 | 5 | `marketing_events.event_type` + backfill | **Void.** See §3.2 | — |
-| 6 | Event attribution (§3.5, §5.5): 6a host columns, host backfill and the required ops host field; 6b nightly derivation with a dry-run memo before the first write; 6c per-host ROI report | **Unblocked 2026-09-29** (D6 closed); not started | Origin in 7, the headshot-event ROI decision |
+| 6 | Event attribution (§3.5, §5.5), cut in `../plans/account-classification-slice-6.md` into six sub-slices and seven deploy events | **6a complete 2026-10-08**; 6b, 6c not started. Runbook `../runbooks/deploy-account-classification-6-hosts.md` | Origin in 7, the headshot-event ROI decision |
+| 6a-i | `association: 9`; the two nullable reference columns with NOT VALID foreign keys; the read-out `marketing_events:audit_hosts` | **Deployed 2026-10-07** (`master` merge 8f1f5dc, three commits); production read-out 12:30:10 UTC, 196 events, identical to the restore; the map settled the same day (`marketing-event-host-audit-2026-10-07.md`) | 6a-ii |
+| 6a-ii | The hand-mapped host backfill and the foreign-key validation; `organization_id` accepted, `organizationId` / `organizationName` rendered; `marketingSourceId` / `marketingSourceName` on the organization payload to admin and scheduler | **Deployed 2026-10-07** (`master` merge 70c3f4e, three commits); `db:migrate` 14:45:27 UTC: 14 organizations created, 186 events hosted, 10 no host, 0 unmapped, three hosts sourced; invariants 1–7, 9, 10 pass. Suite 1,897 examples, 0 failures | 6a-ops, 6b, 6c-api |
+| 6a-ops | The required host picker on the order page's create block and the edit form; the ninth type mirrored; `/marketing-events/new` removed | **Released 2026-10-08** as insgt-ops 9.65.0 (`main` merge b9df2e2c, five commits); read-out 14:07:39 UTC: 197 events, 187 hosted, 0 unmapped; event 1432 created through the picker with SDAR; every on-site check passed | 6b |
+| 6b | `EventAttribution` (plan / `apply!`), `account_classification:attribute_event_hosts` with a dry-run memo before the first `APPLY`; then the nightly hook, its own push after `APPLY` | Not started | 7's Origin values |
+| 6c-api | `HeadshotHostRoi`, the `marketing_events:host_roi` read-out, owner-only `GET /kpis/headshot_hosts` | Not started; independent of 6b's write | 6c-ops |
+| 6c-ops | The "Headshot event hosts" panel on the KPIs page, insgt-ops 9.66.0 | Not started | — |
 | 7 | Pipedrive reconciliation + whitelisted push | Not started | — |
 
 **Slices 1a and 1b deployed together on 2026-09-10.** 1a alone changed nothing anyone sees and 1b
@@ -1392,9 +1510,11 @@ already exists and can be pushed from the start. Slice 6 changes values in that 
 shape; if 7 ships first, 6b's first run reaches Pipedrive as ordinary field updates, and should be
 debounced like a first push.
 
-**Slice 6b is visible.** Its first run moves accounts out of "no source" and into PSAR, NAHREP,
-NARPM and the other hosts in `MarketingSourceMetricsService` and the marketing-source accounts
-report. As with slice 1b, the dry-run memo — every account it would write, grouped by host, with
+**Slice 6b is visible.** Its first run moves accounts out of "no source" and into the three sourced
+hosts, PSAR, NSDCR and SDAR, in `MarketingSourceMetricsService` and the marketing-source accounts
+report. v8 named NAHREP and NARPM here. No event hosted by either exists among the 197; both are
+self-reported sources only (`nahrep`, `narpm`). Credits to the 42 hosts with no source leave the
+account's source NULL and show only in the ROI report. As with slice 1b, the dry-run memo — every account it would write, grouped by host, with
 lifetime value — goes to Don before the numbers change.
 
 ---
@@ -1708,3 +1828,41 @@ Not a slice: no scope, column, enum or derivation changes.
   are untouched. A payload that does not send the include is byte-identical.
 - **The CSV gains a thirteenth column.** A CRM import that maps by position needs its mapping
   extended once, as with `Shoots (365d)` in slice 4c.
+
+## 19. Changes from v10
+
+Sourced from slice 6a's implementation, reviews and three deploys (2026-10-06 to 2026-10-08;
+`../plans/account-classification-slice-6.md`, `marketing-event-host-audit-2026-10-07.md`,
+`../runbooks/deploy-account-classification-6-hosts.md`). The second part of slice 6's amendment, for
+§5.5 and §6, follows 6b's production `APPLY`.
+
+| Area | v10 | v11 | Why |
+| :--- | :--- | :--- | :--- |
+| §3.5 migration | `add_reference … foreign_key: true, null: true` | Re-runnable `add_column`, concurrent index with a leading `remove_index`, NOT VALID foreign key; validation in its own file after the backfill | strong_migrations 2.8 raises on v8's snippet, as on §3.4's in v5 |
+| §3.5 host type | — | `Organization.types[:association] = 9`, mirrored in insgt-ops and pinned in both repos | `type_of = 2` reads as "brokerage present" in the `agent` tier and `User#update_broker` (OQ2) |
+| §3.5 map | Each token mapped to an `organization_id` | Each **event id** mapped to a host **name**, resolved by name and `type_of` at run time; created where no active row has the name | Tokens do not survive the names; the host rows had no ids yet; three names are held by two active rows each |
+| §3.5 raise | "Raises on any event the map misses" | Raises for events created before `MAP_CUTOFF` only; later ones listed by the read-out | No release phase: a raise in `db:migrate` is a second push (OQ8) |
+| §3.5 API | — | `organization_id` permitted; 422 on a changed id that is not an active organization; `organizationId` / `organizationName` rendered; the index preloads the host | A stale id would otherwise be a 500; the edit form renders the host without a second request (OQ9) |
+| §3.5 organization payload | — | `marketingSourceId` (public id) and `marketingSourceName`, admin and scheduler only, omitted otherwise; still migration-only on write | The payload reaches agents through the session's `broker` block (OQ7) |
+| §3.5 form | "The ops event form" | One picker, required on the order page's create block and the edit form; an object-valued control so "Hosted by Insight Photos" can be both required and NULL | `Validators.required` treats `null` as empty |
+| §3.2 creation | Event created for the container order | Created only from the order page's create block; `/marketing-events/new` removed | It had been broken since at least 2024-07-22; Dan, 2026-10-07 |
+| §3.2 paparazzi rows | Identified by the read-out from their orders | Identified by name only; the read-out lists the candidates | Every event order is a headshot order |
+| §3.3 | "Host organizations (NARPM, PSAR, NAHREP) already exist as sources" | The sources exist; the organizations did not and were created by 6a | `organizations` held no association row |
+| §9 | One slice 6 row; 6b moves accounts "into PSAR, NAHREP, NARPM" | Six sub-slice rows with status; 6b moves accounts into PSAR, NSDCR and SDAR | No NAHREP or NARPM event exists |
+
+### What it changes in shipped work
+
+- **Slices 1a–4e: nothing.** No scope, metric, enum or derivation changes; `account_metrics` and the
+  nightly sweep are untouched. No account was written.
+- **The marketing-source KPI does not move** until 6b's `APPLY`. Events carry hosts; three hosts
+  carry sources; nothing reads either for an account yet.
+- **The organizations page gains a type.** "Association" appears in its type select and on the four
+  association rows.
+- **Schedulers must choose a host** to create or save an event. A host can be changed from the edit
+  page; 6b credits whatever host an event carries when it runs.
+- **Follow-ons recorded, not fixed:** the organizations autocomplete has no status filter or limit,
+  so a soft-deleted organization can be picked, and the API's 422 is the backstop.
+  `GET /marketing_event_imports` returns a 500 on any non-empty table (`DISTINCT` over two `json`
+  columns; legacy, no client). The repo sets no migration lock timeout. The composition client's
+  `setUrl` is discarded by `all()`, which is why the picker's service names its endpoint at
+  creation.

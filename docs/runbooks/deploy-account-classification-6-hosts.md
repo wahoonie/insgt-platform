@@ -192,6 +192,8 @@ git tag v9.65.0 && npm run deploy:prod
 - An existing event's edit page shows its host; an Insight event shows the Insight option.
 - The organizations page lists the four associations with type "Association".
 
+On 2026-10-08 every check above passed (Dan).
+
 ### 8. Re-run the read-out
 
 The step 4 command. Section 6 is unchanged apart from any host set since. On 2026-10-08: 197
@@ -231,7 +233,7 @@ them. Proven on the dev restore on 2026-10-07.
 ## Deferred, with reasons
 
 - **Two round-two review nits, declined by Dan on 2026-10-07.** The final check does not assert NULL
-  on the 45 unsourced hosts, and `down` re-resolves hosts by name and type rather than by the row
+  on the 42 unsourced hosts (45 less the three sourced), and `down` re-resolves hosts by name and type rather than by the row
   `up` used. Both need a write to `organizations.marketing_source_id`, which has no path outside a
   migration.
 - **`GET /marketing_event_imports` returns a 500** for any non-empty table: `ApiSearch#query`
@@ -246,4 +248,4 @@ them. Proven on the dev restore on 2026-10-07.
 | 1 | 2026-10-07 | insgt-api `master` 8f1f5dc; two reference migrations; read-out at 12:30:10.007557 UTC | 196 events, identical to the restore |
 | map | 2026-10-07 | platform `bc28471`, the audit document | 196 events mapped once each |
 | 2 | 2026-10-07 | insgt-api, backfill and FK validation migrated at 14:45:27 UTC | 186 hosted, 10 no host, 0 unmapped; invariants 1–7, 9, 10 pass |
-| 3 | 2026-10-08 | insgt-ops 9.65.0; read-out at 14:07:39.267362 UTC | 197 events, 187 hosted, 10 no host, 0 unmapped; 1432 created with SDAR |
+| 3 | 2026-10-08 | insgt-ops 9.65.0; read-out at 14:07:39.267362 UTC | 197 events, 187 hosted, 10 no host, 0 unmapped; 1432 created with SDAR; step 7 checks pass |
