@@ -3,7 +3,7 @@
 **Last updated:** 2026-10-14
 **Repos:** insgt-api
 **Estimated duration:** ~20 min for event 4 plus the memo read (Don); ~5 min for event 5 the next day
-**Status:** Not deployed. Verified on the dev sync 2026-10-14 (dry run, `APPLY`, invariants, reversal).
+**Status:** Event 4 **deployed 2026-10-14** (release v647); `APPLY` at 12:30:56 UTC wrote 94 accounts, every invariant and spot check as expected. Event 5 (the nightly hook) **deployed 2026-10-14** (release v648); its first run is 2026-10-15 02:30 UTC.
 
 ## Summary
 
@@ -48,11 +48,11 @@ dry run → invariants → spot checks. `APPLY` is a decision made on the memo, 
 
 ## Prerequisites
 
-- [ ] `feat/account-classification-slice-6-attribution` (three commits) merged to `master`; two
+- [x] `feat/account-classification-slice-6-attribution` (three commits) merged to `master`; two
       review rounds closed; `bundle exec rspec` green (1,944 examples on 2026-10-14)
 - [x] Slice 6a deployed; `rake marketing_events:audit_hosts MAP_CUTOFF=2026-10-07T12:30:10.007557Z`
       shows 0 unmapped since the cutoff (2026-10-08)
-- [ ] The KPI baseline captured the same day (step 2)
+- [x] The KPI baseline captured the same day (step 2)
 
 ## Steps — event 4
 
@@ -137,7 +137,7 @@ heroku run --no-tty --exit-code rails runner '
   puts "batch_ids: #{batch.order(:id).pluck(:id).join(",")}"
 ' -a insgtapi > tmp/attribution-invariants.txt
 grep -v "^batch_ids" tmp/attribution-invariants.txt
-ruby -rcsv -e 'puts CSV.read("tmp/attribution-dry-run.csv", headers: true).select { |row| row["action"] == "write" }.map { |row| row["account_id"].to_i }.sort.join(",")' > tmp/attribution-csv-write-ids.txt
+ruby -rcsv -e 'puts CSV.read("tmp/attribution-dry-run.csv", headers: true, encoding: "UTF-8").select { |row| row["action"] == "write" }.map { |row| row["account_id"].to_i }.sort.join(",")' > tmp/attribution-csv-write-ids.txt
 diff <(sed -n "s/^batch_ids: //p" tmp/attribution-invariants.txt) tmp/attribution-csv-write-ids.txt && echo "batch ids = CSV write ids"
 ```
 
@@ -220,3 +220,55 @@ text on the dev sync; the memo prints the day's count).
   11:57:30.340630 UTC, 0.93 s: written 94, both self-checks OK, KPI 283 exactly as predicted
   (NSDCR event 76, PSAR event 33, SDAR event 20). Second plan 0; invariants 1–6 as expected; the
   spot checks as reasoned. The printed reversal cleared 94 rows and the KPI returned to 189.
+- 2026-10-14, 08:18 EDT: **event 4 deployed to production** as release **v647**.
+  `feat/account-classification-slice-6-attribution` (40b6fd93, b6522ea4, 42bc1d20) merged to
+  `master` as 12bf9a36; two review rounds, no blocker; 1,944 examples, 0 failures. No migration.
+  - **Baseline (step 2):** `attributed_accounts` 189 of 4,153; NSDCR event 6 · PSAR event 20 · SDAR
+    event 9.
+  - **Dry run (step 3), 12:21 UTC:** universe 2,315; to write 94 (NSDCR 70 · PSAR 13 · SDAR 11); 96
+    credited to a host without a source; 9 latest-unhosted; 149 after-buyers; 13 undelivered event
+    orders (12 on event 1433). Identical to the dev rehearsal. Handed to Don before `APPLY`.
+  - **`APPLY` (step 4) at 12:30:56.771630 UTC**
+    (`../architecture/event-attribution-memo-2026-10-14-production.md`; the memo's "insgt-api
+    unknown" is v647): written 94, both self-checks OK (192 pre-sourced rows unchanged),
+    no-source accounts 3,974 → 3,880.
+  - **Second dry run (step 5), one-off dyno `run.2329`:**
+
+    ```
+    | active, not internal, with an active event order | 2,343 |
+    | already carrying a source (never written) | 122 |
+    | no source: the universe | 2,221 |
+    | no paid listing | 1,967 |
+    | attended only after the first paid listing | 149 |
+    | only undelivered event orders before buying | 0 |
+    | credited (an event order before the first paid listing) | 105 |
+    | credited, to write | 0 |
+    | credited, host is not a marketing source | 96 |
+    | credited, latest event has no host | 9 |
+    ```
+
+    Already sourced 28 → 122, the universe 2,315 → 2,221 and credited 199 → 105: each moved by
+    exactly the 94 written.
+  - **Invariants (step 6):** 1 → 94; 2 → 0; 3 → `{"nsdcr_event" => 70, "psar_event" => 13,
+    "sdar_event" => 11}`; 4 → 0; 5 → `attributed_accounts` 283 of 4,153 (6.8%), gross 374,510,000
+    unchanged; 6 → true. Batch ids = CSV write ids, after the UTF-8 fix below.
+  - **Spot checks (step 7), one-off dyno `run.9775`:** every row as reasoned.
+
+    ```
+    [[10, nil, 2, 2026-09-14 17:19:01.308540], [47, nil, 1, 2026-09-28 19:52:47.158499],
+     [77, 2, 1, 2026-10-14 12:30:56.771630], [214, 2, 1, 2026-10-14 12:30:56.771630],
+     [572, 4, 1, 2026-10-14 12:30:56.771630], [823, 2, 1, 2026-08-18 17:53:56.215203],
+     [1467, nil, 1, 2026-09-28 19:52:47.158499], [1516, nil, 1, 2026-09-28 19:52:47.158499],
+     [1534, nil, 2, 2026-09-14 13:21:53.733423], [3039, 3, 1, 2026-10-14 12:30:56.771630]]
+    ```
+
+    77, 214, 572 and 3039 carry the batch stamp and NSDCR, NSDCR, SDAR and PSAR. 10, 47, 1467,
+    1516 and 1534 stay NULL; the 2026-09-28 stamp on 47, 1467 and 1516 is slice 4b's batch, not
+    this one. 823 keeps its own `nsdcr_event` from August.
+  - **ops (step 8):** the KPIs page shows 283; account 77's edit page shows "NSDCR event" and saves.
+- 2026-10-14: **step 6's CSV cross-check fixed.** It read the CSV without `encoding: "UTF-8"` and
+  failed on an accented name (row 2156); the slice 4b runbook's version had the encoding.
+- 2026-10-14, 08:52 EDT: **event 5 deployed to production** as release **v648**. `feat: run event
+  attribution in the nightly recompute` (409655b8) merged as b05f74c2; 1,947 examples, 0 failures.
+  First run 2026-10-15 02:30 UTC: expect `Attributed 0 accounts` between "Recomputed SystemMetric"
+  and `Done.` (step 9). Not yet recorded.
