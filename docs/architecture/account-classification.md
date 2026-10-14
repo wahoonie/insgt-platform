@@ -6,10 +6,11 @@ deployed 2026-09-11; slice 3 deployed 2026-09-14; slice 4a/4b deployed and `APPL
 slice 4c deployed 2026-09-29 (`master` merge 4cf0975); slice 4d released as insgt-ops 9.60.0
 2026-09-30; slice 4e deployed 2026-10-01 (`master` merge b0dc6c4, release v642), completing slice 4;
 D6 closed 2026-09-29, slice 6 redefined; slice 6a (event hosts) deployed 2026-10-07 (insgt-api) and
-2026-10-08 (insgt-ops 9.65.0); see §9
-**Version:** 11 · **Last updated:** 2026-10-08 (slice 6a: event hosts)
-**Supersedes:** v10 (2026-10-05), v9 (2026-10-01), v8 (2026-09-30), v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11), v4 (2026-09-10),
-v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§19 for what changed and why.
+2026-10-08 (insgt-ops 9.65.0); slice 6b (event attribution) deployed 2026-10-14 (release v647, `APPLY`
+at 12:30:56 UTC writing 94 accounts; the nightly hook as v648); see §9
+**Version:** 12 · **Last updated:** 2026-10-14 (slice 6b: event attribution)
+**Supersedes:** v11 (2026-10-08), v10 (2026-10-05), v9 (2026-10-01), v8 (2026-09-30), v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11),
+v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§20 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
 `account-classification-drift-audit-2026-09-07.md` (the evidence behind v3),
 `shift-memo-slice-1b-2026-09-10.md` (what slice 1b moves, account by account),
@@ -24,8 +25,11 @@ its review lists), `../runbooks/deploy-account-classification-4-backfill.md` (th
 and 4e deploys), `../plans/account-classification-slice-6.md` (slice 6's survey, plan, gaps G1–G20
 and the decisions OQ1–OQ11 of 2026-10-06), `marketing-event-host-audit-2026-10-07.md` (the host of
 every event, settled by hand), `../runbooks/deploy-account-classification-6-hosts.md` (the slice 6a
-deploys), and the contract spec
-`insgt-api/spec/architecture/account_classification_spec.rb` (§5.1–§5.4, §4.2–§4.3 and §4.1's
+deploys), `event-attribution-memo-2026-10-14-production.md` (what the first `APPLY` wrote, every
+account by host, and what it left NULL and why),
+`../runbooks/deploy-account-classification-6-attribution.md` (the slice 6b deploys, events 4 and 5),
+and the contract spec
+`insgt-api/spec/architecture/account_classification_spec.rb` (§5.1–§5.5, §4.2–§4.3 and §4.1's
 tiers pinned on the canonical fixtures; later slices append to it).
 
 ---
@@ -645,8 +649,9 @@ write and printed as the memo's hand-classification list (c), so the worklist ke
 head. Decision 3, 2026-09-15.
 
 **Slice 6 changes one input to this backfill's proxy.** The property-manager hold-out reads
-`marketing_source_id` = the source keyed `narpm`. From slice 6 that value can be *derived* — an
-account that converted after a NARPM-hosted headshot event — as well as self-reported. The 2026-09-28
+`marketing_source_id` = the source keyed `narpm`. Since slice 6b's `APPLY` of 2026-10-14 that value
+*is* derived (§5.5) as well as self-reported — in principle: no NARPM-hosted event exists among the
+197 (§9), so no account carries a derived `narpm` and the proxy's input is unchanged in practice. The 2026-09-28
 `APPLY` is unaffected. A future re-run plans only rows still NULL, and would hold out any such
 account as a property-manager candidate rather than typing it `agent`; attendance at a NARPM event is
 the same kind of signal the proxy was reaching for, so this is accepted, not guarded.
@@ -1140,6 +1145,57 @@ For every active account with `marketing_source_id IS NULL` and `account_type` n
 If all three hold, write the organization's source to the account, stamped `updated_by_id =
 User.system` and one batch `updated_at`, following slice 4b. Any missing link leaves the account NULL.
 
+**Shipped.** Slice 6b: `EventAttribution` (`app/services/event_attribution.rb`) and the memo task
+`account_classification:attribute_event_hosts` (`lib/tasks/event_attribution.rake`), deployed
+2026-10-14 as release v647. The first `APPLY`, at 12:30:56.771630 UTC, wrote 94 accounts (NSDCR 70 ·
+PSAR 13 · SDAR 11) out of a universe of 2,315, both self-checks OK
+(`event-attribution-memo-2026-10-14-production.md`). What the implementation pinned beyond the three
+steps:
+
+- **Dating, kept as written (OQ1).** Event orders carry no `scheduled_at` (`lib/order_headshot.rb:45–53`
+  never sets it), so `Order.shoot_date_sql` dates attendance by the headshot's delivery log, 1–30
+  days after the event. An attendee who buys inside that lag reads as having bought first and is
+  not credited. The memo lists those accounts under "Credited only under the event date", so the
+  rule's cost is printed rather than hidden: 3 on 2026-10-14 (996, 1467, 1516), two of them NSDCR
+  writes not made. The follow-on is `OrderHeadshot` stamping the event date on new event orders. The
+  derivation must not "fix" this by reading `marketing_events.scheduled_at`; the contract spec pins
+  the shoot date on both sides.
+- **An undelivered event order is dropped before ranking.** With no completed log its shoot date is
+  NULL, which can be neither "before" nor "latest". An account whose only event orders are undated
+  is `skip_undated_event_order`, not an error (13 such orders on 2026-10-14, 12 of them on event
+  1433; 0 accounts affected).
+- **Strict, and the tiebreak runs latest-first.** An event order at the listing's instant did not
+  precede it. Among event orders the ranking is `shoot_date DESC, created_at DESC, id DESC`, so when
+  two events' orders share a shoot date the later-created order's host wins. The first paid listing
+  is the earliest by `(shoot_date, created_at, id)`.
+- **Last touch has no fallback.** The latest qualifying event order decides alone: when its event
+  has no host (`skip_latest_unhosted`) or its host has no source (`skip_host_no_source`), the account
+  stays NULL even if an earlier event's host carries a source. The memo prints how many accounts
+  would differ under "the latest event whose host has a source", for information only (3 on
+  2026-10-14).
+- **The universe** is active accounts with `marketing_source_id IS NULL`, an active event order, and
+  `accounts.id NOT IN (Account.account_type_internal.select(:id).to_sql)` — never `account_type <> 7`,
+  which drops every untyped account through three-valued logic (slice 4b's `COALESCE` lesson).
+  Orders, listings and accounts are filtered by `status_type`; the event's own `status_type` is not,
+  because a soft-deleted event still happened.
+- **The write is slice 4b's write.** One transaction; one `update_all` per source over the planned
+  ids **and** the derivation re-run in its `WHERE`, so a row that stopped qualifying between plan
+  and write falls out; self-check 1, planned = written per source; self-check 2, every row that
+  carried a source before the write re-reads identical afterwards (192 rows on 2026-10-14 — a
+  scheduler editing any sourced account during the seconds of an `APPLY` fails it, safely). Either
+  failure raises `SelfCheckFailed` and rolls everything back; the guarantee is statement-time. Two
+  things the write does that the three steps do not say: it clears `marketing_source_other`, because
+  `Account#marketing_source_other_blank_unless_other` would otherwise 422 the next ops save of an
+  account carrying free text beside a source that is not `other`; and it never writes a source keyed
+  `other` — a derived source is a host's — refused before the transaction and again in the
+  statement. `updated_by_id = 1` and one `updated_at = Time.current.floor(6)`: the (actor, stamp)
+  pair is the batch key and the reversal key, since console writes also carry user 1.
+- **One derivation, two readers.** `EventAttribution.credit_rows_sql` is one statement over every
+  active, non-internal account with an event order, sourced or not, carrying the account's own
+  source beside the derived host and what the rules would decide. The write reads its NULL-source
+  rows; the memo shows the already-sourced rows beside the derived host, for Don's agreement check;
+  slice 6c's ROI read-out reads the same rows. There is no second derivation.
+
 The rules this encodes, decided 2026-09-29 (the touch reversed to last on 2026-09-30):
 
 - **Last touch, no time limit.** An account created at a March 2025 headshot event whose first
@@ -1155,13 +1211,20 @@ The rules this encodes, decided 2026-09-29 (the touch reversed to last on 2026-0
 - **The account is the unit.** Person-level attribution waits on the accounts-versus-users workstream.
 
 **Provenance is recoverable, not stored.** A derived value is one where the three conditions hold and
-the account's source equals the host's. A scheduler's override of it is intended to win.
+the account's source equals the host's. A scheduler's override of it is intended to win. It wins for
+replacement only: `AccountsController#convert_market_source_public_id_to_id` returns on a blank
+source (`accounts_controller.rb:168`), so a scheduler can replace a derived source through the API
+but cannot clear it — recorded as a gap in the API, not fixed in slice 6. A whole batch is reversible
+by its (actor, stamp) pair, and the memo prints the statement.
 
 **The ROI report does not depend on the write.** Per host organization: attendees (accounts whose
 last headshot order — before the first paid listing shoot, where there is one — is at that host's
 events), converts (those with a paid listing shoot), and their lifetime value, with events with no
 host listed separately. The denominator is only available from `orders.marketing_event_id`. The
-write makes converts visible in the existing marketing-source reports and in Pipedrive.
+write makes converts visible in the existing marketing-source reports and in Pipedrive. Slice 6c
+reads `EventAttribution.credit_rows_sql`, which already carries every attendee, sourced or not, with
+what the rules decide for each; it never reads `accounts.marketing_source_id` to find converts, and
+there is no second derivation.
 
 ### 5.6 Cancel At Door
 
@@ -1221,7 +1284,18 @@ rather than adding a second job.
    metrics recompute, not a merge on `AccountMetrics::Calculator`: `Calculator#compute` promises it
    does not look at the row and runs on an unsaved `Account.new(id:)` for the shift memo, and this
    step writes `accounts`, not `account_metrics`. The first run backfills all of history; it runs as
-   a dry run with a memo first (§9, slice 6).
+   a dry run with a memo first (§9, slice 6). **Done in slice 6b:** `EventAttribution.call(dry_run:)`
+   in `metrics:recompute` (`lib/tasks/metrics.rake`), after `RecomputeAll` and its `Recomputed
+   SystemMetric` line and before `Done.`, printing `Attributed N accounts (nsdcr_event n · …)`;
+   `DRY_RUN=true` plans and prints `[DRY RUN] Would attribute …` without writing. A `StandardError`
+   is rescued, logged and printed as `Event attribution failed: …`, and the sweep's summary and exit
+   code stand — a bad night of attribution never reads as a failed recompute, and nothing is written
+   when it fails, because the write is one transaction. Not inside `RecomputeAll`, whose header
+   promises metrics only. The hook deployed as release v648 strictly after the production `APPLY` of
+   2026-10-14 (OQ6), so the first write had a memo; its first run is 2026-10-15 02:30 UTC, recorded
+   in the runbook when captured. Cost: the plan SELECT took 0.85 s on the dev sync (0.93 s with the
+   write) against a sweep of 2 min 38 s; the production sweep duration with the hook is
+   **unverified** until that first run.
 5. Push changed computed fields to Pipedrive.
 
 **Thresholds live in one Ruby config object**, not scattered across the job. Retuning a boundary
@@ -1425,7 +1499,7 @@ visits rather than shoots — the rename touches consumers for a precision gain 
 
 ## 9. Delivery slices
 
-Independently shippable, in dependency order. Status as of 2026-10-08; the codebase notes carry
+Independently shippable, in dependency order. Status as of 2026-10-14; the codebase notes carry
 the `file:line` evidence.
 
 | # | Slice | Status | Unblocks |
@@ -1436,11 +1510,11 @@ the `file:line` evidence.
 | 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | **Deployed 2026-09-14** (`master` merge f811e97 of b6621c2..f8abdd7, 7 commits; pushed 17:26 EDT). Recompute 2 min 37.79 s over 4,136 accounts, 0 failed; all 11 invariants 0; the re-derivation check 0 mismatches over all 4,136 rows; all six spot checks exact; `accounts:joint_ownership` tier labels and segment rows identical to the pre-change code. Migrations `20260912120000` (four columns) and `20260912120001` (one index), `lib/account_classification.rb`, three enums on `AccountMetric`, `lifecycle_run_sql` + `classification` on the calculator, four fields on the metrics endpoint, both rake read-outs reconciled onto the config. Suite 1,688 examples 0 failures; sweep 1 min 03 s over 4,078 accounts 0 failed on the dev restore; all 11 invariants 0; both migrations run migrate/rollback/migrate; `accounts:joint_ownership` byte-identical. Plan `../plans/account-classification-slice-3.md`, runbook `deploy-account-classification-3.md` | teams page, 7 |
 | 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; insgt-ops 9.59.0 (filter, column, dialog) live 2026-09-14; **4a (organization type audit) and 4b (tiered backfill) deployed 2026-09-28** (`master` merge 25a694c3 of e195ae98..e59a0e19), `APPLY` at 19:52:47 UTC writing 1,420 rows; plan `../plans/account-classification-slice-4.md`, runbook `deploy-account-classification-4-backfill.md`. **4c (API sort key) deployed 2026-09-29** (`master` merge 4cf0975 of 1f4e5a9..fceee13, 7 commits; release v641; runbook `deploy-account-classification-4-worklist.md`). **4d (ops worklist control) released 2026-09-30** as insgt-ops 9.60.0 (`main` merge 0834506b, release stamp 1790765225), all fourteen on-site checks passing; 9.61.0 followed the same day. **4e (retiring the four constants onto `account_type_internal`) deployed 2026-10-01** (`master` merge b0dc6c4 of a20c77c..a87d247, 7 commits; release v642); KPI −9 accounts, −600 cents, both as predicted; runbook `deploy-account-classification-4-backfill.md` event 4. **Slice 4 complete** | 7 |
 | 5 | `marketing_events.event_type` + backfill | **Void.** See §3.2 | — |
-| 6 | Event attribution (§3.5, §5.5), cut in `../plans/account-classification-slice-6.md` into six sub-slices and seven deploy events | **6a complete 2026-10-08**; 6b, 6c not started. Runbook `../runbooks/deploy-account-classification-6-hosts.md` | Origin in 7, the headshot-event ROI decision |
+| 6 | Event attribution (§3.5, §5.5), cut in `../plans/account-classification-slice-6.md` into six sub-slices and seven deploy events | **6a complete 2026-10-08; 6b complete 2026-10-14**; 6c not started. Runbooks `../runbooks/deploy-account-classification-6-hosts.md` and `../runbooks/deploy-account-classification-6-attribution.md` | Origin in 7, the headshot-event ROI decision |
 | 6a-i | `association: 9`; the two nullable reference columns with NOT VALID foreign keys; the read-out `marketing_events:audit_hosts` | **Deployed 2026-10-07** (`master` merge 8f1f5dc, three commits); production read-out 12:30:10 UTC, 196 events, identical to the restore; the map settled the same day (`marketing-event-host-audit-2026-10-07.md`) | 6a-ii |
 | 6a-ii | The hand-mapped host backfill and the foreign-key validation; `organization_id` accepted, `organizationId` / `organizationName` rendered; `marketingSourceId` / `marketingSourceName` on the organization payload to admin and scheduler | **Deployed 2026-10-07** (`master` merge 70c3f4e, three commits); `db:migrate` 14:45:27 UTC: 14 organizations created, 186 events hosted, 10 no host, 0 unmapped, three hosts sourced; invariants 1–7, 9, 10 pass. Suite 1,897 examples, 0 failures | 6a-ops, 6b, 6c-api |
 | 6a-ops | The required host picker on the order page's create block and the edit form; the ninth type mirrored; `/marketing-events/new` removed | **Released 2026-10-08** as insgt-ops 9.65.0 (`main` merge b9df2e2c, five commits); read-out 14:07:39 UTC: 197 events, 187 hosted, 0 unmapped; event 1432 created through the picker with SDAR; every on-site check passed | 6b |
-| 6b | `EventAttribution` (plan / `apply!`), `account_classification:attribute_event_hosts` with a dry-run memo before the first `APPLY`; then the nightly hook, its own push after `APPLY` | Not started | 7's Origin values |
+| 6b | `EventAttribution` (plan / `apply!`), `account_classification:attribute_event_hosts` with a dry-run memo before the first `APPLY`; then the nightly hook, its own push after `APPLY` | **Deployed 2026-10-14.** Event 4 as release v647 (`master` merge 12bf9a36 of 40b6fd93..42bc1d20, three commits; no migration): dry run 12:21 UTC identical to the dev rehearsal, handed to Don; `APPLY` at 12:30:56.771630 UTC wrote 94 accounts (NSDCR 70 · PSAR 13 · SDAR 11), both self-checks OK, no-source accounts 3,974 → 3,880; second plan 0; invariants 1–6 exact; KPI `attributed_accounts` 189 → 283 of 4,153, gross unchanged; nine spot checks as reasoned. Event 5 (the hook) as v648 (`master` merge b05f74c2 of 409655b8); first run 2026-10-15 02:30 UTC, not yet recorded. Suite 1,944 then 1,947 examples, 0 failures. Memo `event-attribution-memo-2026-10-14-production.md` | 7's Origin values |
 | 6c-api | `HeadshotHostRoi`, the `marketing_events:host_roi` read-out, owner-only `GET /kpis/headshot_hosts` | Not started; independent of 6b's write | 6c-ops |
 | 6c-ops | The "Headshot event hosts" panel on the KPIs page, insgt-ops 9.66.0 | Not started | — |
 | 7 | Pipedrive reconciliation + whitelisted push | Not started | — |
@@ -1510,12 +1584,16 @@ already exists and can be pushed from the start. Slice 6 changes values in that 
 shape; if 7 ships first, 6b's first run reaches Pipedrive as ordinary field updates, and should be
 debounced like a first push.
 
-**Slice 6b is visible.** Its first run moves accounts out of "no source" and into the three sourced
-hosts, PSAR, NSDCR and SDAR, in `MarketingSourceMetricsService` and the marketing-source accounts
-report. v8 named NAHREP and NARPM here. No event hosted by either exists among the 197; both are
-self-reported sources only (`nahrep`, `narpm`). Credits to the 42 hosts with no source leave the
-account's source NULL and show only in the ROI report. As with slice 1b, the dry-run memo — every account it would write, grouped by host, with
-lifetime value — goes to Don before the numbers change.
+**Slice 6b was visible, and moved what it said it would.** The first `APPLY` (2026-10-14) moved 94
+accounts out of "no source" and into the three sourced hosts in `MarketingSourceMetricsService` and
+the marketing-source accounts report: `attributed_accounts` 189 → 283 of 4,153 (4.6% → 6.8%), NSDCR
+event 6 → 76, PSAR event 20 → 33, SDAR event 9 → 20; `total_accounts` and gross unchanged. v8 named
+NAHREP and NARPM here. No event hosted by either exists among the 197; both are self-reported
+sources only (`nahrep`, `narpm`). Credits to hosts with no source leave the account's source NULL
+and will show only in the ROI report: 96 accounts across 28 such hosts on the day, plus 9 whose
+latest event has no host. As with slice 1b, the dry-run memo — every account it would write,
+grouped by host, with lifetime value — went to Don before the numbers changed; the hand-over copy
+is `event-attribution-memo-2026-10-14-production.md`.
 
 ---
 
@@ -1866,3 +1944,47 @@ Sourced from slice 6a's implementation, reviews and three deploys (2026-10-06 to
   columns; legacy, no client). The repo sets no migration lock timeout. The composition client's
   `setUrl` is discarded by `all()`, which is why the picker's service names its endpoint at
   creation.
+
+## 20. Changes from v11
+
+Sourced from slice 6b's implementation and its two deploys on 2026-10-14 (insgt-api `master` merges
+12bf9a36 and b05f74c2; `../runbooks/deploy-account-classification-6-attribution.md`;
+`event-attribution-memo-2026-10-14-production.md`). This is the second part of slice 6's amendment,
+the part §19 deferred to the production `APPLY`. The ROI paragraph of §5.5 — OQ10's attendee, convert
+and already-customer rules, and `GET /kpis/headshot_hosts` — waits for slice 6c's write-back; v12
+adds only the sentence 6c builds on.
+
+| Area | v11 | v12 | Why |
+| :--- | :--- | :--- | :--- |
+| §5.5 dating | Both sides dated by `Order.shoot_date_sql` | Kept; the delivery-log lag recorded, with the memo line that prices it (3 accounts on 2026-10-14) | Event orders carry no `scheduled_at` (OQ1) |
+| §5.5 undated event order | — | Dropped before ranking; `skip_undated_event_order`, never an error | A NULL date is neither "before" nor "latest" |
+| §5.5 comparison and tiebreak | "ties broken by `orders.created_at` then `orders.id`" | Strict `<`; `created_at DESC, id DESC`, so the later-created order wins | The direction decides which host wins a shared date |
+| §5.5 fallback | — | None: the latest qualifying order decides alone; the memo prints the information count | Step 2 picks one order; a fallback would be a second rule (G11) |
+| §5.5 universe | "active account … `account_type` not `internal`" | `NOT IN (Account.account_type_internal.select(:id).to_sql)`; the event's own status not filtered | `account_type <> 7` drops untyped accounts (G10); a deleted event still happened (Q15) |
+| §5.5 write | "following slice 4b" | One `update_all` per source over the planned ids with the derivation re-run; two self-checks; `marketing_source_other` cleared; `other` refused twice; one `Time.current.floor(6)` stamp | Stale `other` text 422s the next save; a derived source is a host's (G12, Q18) |
+| §5.5 readers | — | `EventAttribution.credit_rows_sql` is the one derivation the write, the memo and 6c read | One statement, one moment |
+| §5.5 provenance | "A scheduler's override is intended to win" | Wins for replacement; a derived source cannot be cleared through the API | `convert_market_source_public_id_to_id` returns on blank; recorded, not fixed |
+| §6 step 4 | Planned | Done: `EventAttribution.call(dry_run:)` after the sweep, rescued and reported; deployed as v648 after the `APPLY` | OQ6; a failed attribution must not read as a failed recompute (G15) |
+| §4.1 | "From slice 6 that value can be derived" | Derived since 2026-10-14, but no NARPM-hosted event exists, so the proxy's input is unchanged in practice | v11 §9 |
+| §9 | 6b "Not started"; "Slice 6b is visible" in the future tense | 6b deployed, with the measured move; 6c the only open sub-slice | Two deploys on 2026-10-14 |
+
+### What it changes in shipped work
+
+- **94 accounts moved** from "no source" to `nsdcr_event` (70), `psar_event` (13) and `sdar_event`
+  (11), each stamped `updated_by_id = 1, updated_at = 2026-10-14T12:30:56.771630Z`. `total_accounts`
+  and gross did not move; no `account_metrics` row changed; slices 1a–4e are untouched. The nightly
+  sweep gains one step and one log line.
+- **The plan's estimates against the day.** Writes 91 (the plan, OQ11) and 95 (the 6a notes) → 94;
+  credits to unsourced hosts 107 / 103 → 96; latest-unhosted 2 → 9; `attributed_accounts` 269 / 273
+  → 283; SDAR event 15 / 19 → 20. Dev data had drifted since the survey; the dry run on the day is the
+  authority, as the 6a notes said.
+- **The dry run reproduced exactly** between the 04:41 UTC dev sync and production eight hours
+  later: funnel, write table and KPI prediction identical; the dev `APPLY` was reversed with the
+  printed statement and the KPI returned to 189.
+- **Follow-ons recorded, not fixed:** `OrderHeadshot` stamps no event date, so every fast convert
+  keeps landing in "credited only under the event date"; a scheduler can replace a derived source
+  but not clear it; `AccountReport.headshot_event_report` (`lib/account_report.rb:8`) still parses
+  hosts from event names rather than reading `marketing_events.organization_id`; the memo header
+  prints `insgt-api unknown` in production, because the slug carries no `.git` — record the release
+  number beside it, as the runbook did; the runbook's CSV cross-check read the file without
+  `encoding: "UTF-8"` and failed on an accented name (fixed in the runbook, platform 6f76a6a).
