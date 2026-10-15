@@ -185,9 +185,25 @@ The next 02:30 UTC `metrics:recompute` prints, after "Recomputed SystemMetric" a
 `Attributed 0 accounts` (or that night's new converts). A failure prints `Event attribution failed:`
 and the metrics summary still prints.
 
+**Capture it within the hour, or it is gone.** `heroku logs` returns 100 lines by default and at
+most 1,500 (`-n`), and Logplex retains only the most recent 1,500 lines of the whole app, so a
+morning grep over the default window cannot see a 02:30 UTC run (2026-10-15, below). Scheduler
+jobs run as one-off dynos named `scheduler.X`, so filter on that base name:
+
 ```bash
-heroku logs -a insgtapi --source app | grep -E "Attributed|Event attribution failed"
+heroku logs -a insgtapi --dyno scheduler -n 1500 | grep -E "Recomputed SystemMetric|Attributed|Event attribution failed|Done\. Scanned"
 ```
+
+If the lines have already scrolled out, the database says whether the sweep ran tonight and whether
+the hook wrote anything, but it cannot tell `Attributed 0 accounts` from `Event attribution failed`
+(both write nothing). Adjust the date:
+
+```bash
+heroku run --no-tty --exit-code rails runner 'puts "account_metrics computed_at max: #{AccountMetric.maximum(:computed_at)&.utc}"; puts "accounts sourced by user 1 since 02:30 UTC: #{Account.where(updated_by_id: 1).where("updated_at >= ?", Time.utc(2026, 10, 15, 2, 30)).where.not(marketing_source_id: nil).count}"' -a insgtapi
+```
+
+To capture the line itself after a miss, start `heroku logs -a insgtapi --dyno scheduler --tail`
+before 02:30 UTC the next night, or run the first command within the hour after.
 
 ## Rollback
 
@@ -272,3 +288,9 @@ text on the dev sync; the memo prints the day's count).
   attribution in the nightly recompute` (409655b8) merged as b05f74c2; 1,947 examples, 0 failures.
   First run 2026-10-15 02:30 UTC: expect `Attributed 0 accounts` between "Recomputed SystemMetric"
   and `Done.` (step 9). Not yet recorded.
+- 2026-10-15, morning EDT: **first-run capture inconclusive.** Step 9's original command
+  (`heroku logs -a insgtapi --source app | grep …`, the default 100-line window) printed nothing.
+  That is the window, not evidence about the run: the 02:30 UTC output was hours of request
+  traffic ago and Logplex keeps 1,500 lines in all. Step 9 corrected to `--dyno scheduler -n 1500`
+  with the runner fallback. The first run is **still not recorded**; the runner check or tonight's
+  tail is the next capture.
