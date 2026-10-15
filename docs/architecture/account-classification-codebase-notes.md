@@ -73,8 +73,9 @@ Surveyed for the organization type audit and the backfill; nothing here changed 
 ## Marketing events and hosts (slice 6a)
 
 Read against insgt-api `master` at 70c3f4e and insgt-ops `main` at b9df2e2c, on 2026-10-08. 6b's
-rows are the sub-table that follows, read against `master` at b05f74c2 on 2026-10-14. 6c
-(`headshot_host_roi.rb`, `KpisController#headshot_hosts`, the ops KPI panel) adds its rows here.
+rows are the first sub-table that follows, read against `master` at b05f74c2 on 2026-10-14; 6c-api's
+are the second, read against `master` at b7b2de9f on 2026-10-15. 6c-ops adds the ops KPI panel's
+rows to the second.
 
 | File | Line | What it is | Slice / commit |
 | :-- | :-- | :-- | :-- |
@@ -112,6 +113,10 @@ rows are the sub-table that follows, read against `master` at b05f74c2 on 2026-1
 
 Read against insgt-api `master` at b05f74c2 on 2026-10-14. The contract is §5.5 and §6 step 4 (v12);
 the plan's gaps are G9–G16. No migration: the slice reads 6a's columns and writes `accounts`.
+**`event_attribution.rb` line numbers below are b05f74c2's.** 6c-api inserted lines at 18–20, 197–205,
+228–235, 244–245 and 269–272, so on b7b2de9f everything after line 17 sits 3 lines lower, after the
+`credit` CTE 11, after `credit_select_sql`'s columns 19, and from `build_row`'s hash on 24 (`plan`
+90, `credit_rows_sql` 137, `build_row` 250, `derivation` 280). The 6c-api table has the new lines.
 
 | File | Line | What it is | Slice / commit |
 | :-- | :-- | :-- | :-- |
@@ -128,6 +133,26 @@ the plan's gaps are G9–G16. No migration: the slice reads 6a's columns and wri
 | `spec/architecture/account_classification_spec.rb` | 674–757; 767 | **`event attribution (§5.5)`**, after the worklist block (652–672) and before `SQL composition` (761): latest-before-listing and only on that listing; after or at the instant; the tiebreak; no fallback; never over a value, through the plan and through the write; internal out, untyped in; never `other`. `SQL composition` also pins `credit_rows_sql` without a `?` | 6b 42bc1d20 |
 | `lib/tasks/metrics.rake` | 168–184 | **The §6 step 4 hook**: after `Recomputed SystemMetric`, `EventAttribution.call(dry_run:)`; prints `Attributed N accounts (key n · …)` or `[DRY RUN] Would attribute …`; `rescue StandardError` logs and prints `Event attribution failed: …`; the summary at 186–187 still prints. The comment names the deploy order: after the `APPLY`, never before | 6b 409655b8 |
 | `spec/lib/tasks/metrics_rake_spec.rb` | 439–501 | 3 examples with `RecomputeAll` stubbed: attributes after the sweep and before the summary, the exact three-line sequence 475; `DRY_RUN=true` writes nothing 482; a failure is reported and `Done.` still prints 491 | 6b 409655b8 |
+
+### Headshot host ROI (slice 6c-api)
+
+Read against insgt-api `master` at b7b2de9f on 2026-10-15. The contract is §5.5's last paragraph
+(v13); the plan's gaps are G17 and G20, with OQ5 and OQ10, pinned in
+`../plans/account-classification-slice-6c-api.md`. No migration and no write.
+
+| File | Line | What it is | Slice / commit |
+| :-- | :-- | :-- | :-- |
+| `app/services/event_attribution.rb` | 18–20; 198–205; 228–235; 244–245; 269–272 | The header's 6c sentence; **`latest_event_order`**, appended after `credit` (`DISTINCT ON`, `shoot_date IS NOT NULL`, `shoot_date DESC, created_at DESC, id DESC`, the crediting order's dated test and tiebreak); the four additive columns `latest_order_id`, `latest_event_id`, `latest_host_organization_id` (via `marketing_events latest_events`) and `pending_release_event_ids` (`array_to_string` of the account's undelivered orders' events — `select_all` returns a PG array as a string); their joins; their keys in `build_row`. No existing column, CTE or `ORDER BY` changed; the write never reads them | 6c-api afa851c6 |
+| `app/services/headshot_host_roi.rb` | 4–38, 40, 45–51, 55–59, 61–71, 73–80, 83–85, 87–97, 100–108, 111–124 | ARCHITECTURE NOTES (one derivation; OQ10's three rules; pending releases; point in time; why it owns the event count); `NO_HOST_LABEL` `'No host'`; **`call`** → `{ rows:, totals: }` over `EventAttribution.plan.rows`; `host_for` (crediting host when a crediting order exists, else the latest delivered host), `convert?` (`crediting_order_id` only), `already_customer?` (`derivation == 'skip_after_buying'`); `host_rows` (attendees DESC, name, id; the no-host row last, always present); `build_row`; `percentage` (nil over no attendees, `round(1)`); `totals` (`events`, `attendees`, `converts`, `conversion_percentage`, `already_customers`, `converts_lifetime_value_cents`, `pending_release_accounts`, `pending_releases`, `totals_match`); `pending_releases` per event; `event_hosts`, raw SQL over `marketing_events` × `organizations` × `marketing_sources`, any status | 6c-api 24be6600 |
+| `lib/tasks/marketing_events.rake` | 172–250; 378–385 | `module HostRoiReadout`: `header` 190 (the memo's: database, latest order, sha or `unknown`), `rules` 200, `line` 215 (host rows and the Total row share it), `table` 222, `pending` 235; **`marketing_events:host_roi`** 381 — `HeadshotHostRoi.call` named only in the task body | 6c-api df84c40d |
+| `app/controllers/kpis_controller.rb` | 33–41 | `headshot_hosts`: `@rows`, `@totals` from the service; owner-only through the class-wide `authenticate_system_owner` (401, not 403) | 6c-api c6857cff |
+| `config/routes.rb` | 118 | `get 'headshot_hosts'` in `resources :kpis`' collection | 6c-api c6857cff |
+| `app/views/kpis/headshot_hosts.json.jbuilder` | 5–14, 16–30 | `metadata` (the service's totals less the per-event breakdown) and `data` (`organizationId` null on the no-host row, `marketingSourceName` null for a host that is not a source); renames keys, computes nothing | 6c-api c6857cff |
+| `spec/services/event_attribution_spec.rb` | 264–311 | `the latest delivered event order`: latest whatever the listing, crediting order untouched; never a pending order, listed by event instead; absent when only pending; the tiebreak | 6c-api afa851c6 |
+| `spec/services/headshot_host_roi_spec.rb` | 1–215 | 14 examples: one convert under the later of two hosts 39; no listing → latest host 53; **bought first → already customer** 64; sourced counts the same 72; an unhosted crediting event → No host, never another host 83; pending releases and the point-in-time move 100–139; internal out 141; events any status 150; source key and name 159; No host last at zeros 168; order 177; rounding 186; **every attendee once** 195 | 6c-api 24be6600 |
+| `spec/lib/tasks/marketing_events_host_roi_rake_spec.rb` | 1–82 | 4 examples: the table with No host last, the Total row and the totals check; a dash for a rate over nobody; pending releases by event; none pending | 6c-api df84c40d |
+| `spec/requests/kpis_headshot_hosts_spec.rb` | 1–80 | 6 examples: 401 without a JWT and for admin, scheduler and photographer; camelCase rows, No host last, the metadata; the rows equal the service's | 6c-api c6857cff |
+| `spec/architecture/account_classification_spec.rb` | 759–805; 807 | **`headshot host ROI (§5.5)`**, immediately before `SQL composition` (now 807): a convert once under its crediting host; bought first → already customer; pending until delivered | 6c-api 9c81f15d |
 
 ## Query concerns and services
 
@@ -276,6 +301,29 @@ the plan's gaps are G9–G16. No migration: the slice reads 6a's columns and wri
 | `insgt-platform/docs/architecture/event-attribution-memo-2026-10-14-production.md` | What the first `APPLY` wrote (94 rows at 12:30:56.771630 UTC, both self-checks OK): the rules, the funnel, every written account by host, the KPI prediction, the 96 credits to unsourced hosts, the 9 latest-unhosted, the 3 credited only under the event date, the 28 already-sourced beside the derived host, the ten no-host events, the reversal (slice 6b) |
 | `insgt-platform/docs/runbooks/deploy-account-classification-6-attribution.md` | Deploying 6b: events 4 and 5, no window; the baseline, the dry run then STOP, `APPLY`, the second dry run, six invariants, nine spot checks, the ops check, the hook push strictly after `APPLY`, the pair-keyed reversal; the deploy log with the production figures (slice 6b) |
 | `insgt-platform/docs/decisions/002-recapture-order-type.md` | ADR 002 |
+
+## Branch and deploy state, 2026-10-15 (slice 6c-api deployed)
+
+| Ref | Head | Carries |
+| :-- | :-- | :-- |
+| `heroku/master`, `master` | **b7b2de9f** | Slices 1a–4e, 6a, 6b and 6c-api. Event 6 merged as b7b2de9f (afa851c6 the latest-order columns, 24be6600 the service, df84c40d the read-out, c6857cff the endpoint, 9c81f15d the contract block), release v649. No migration; schema still `2026_10_07_120001` |
+| insgt-ops `main` | 897a7b80 (9.66.0) | Untouched by 6c-api. 6c-ops is 9.67.0 or the next free version |
+| production database | — | `ANALYZE` run by hand at about 16:35 UTC: the planner's statistics were stale (counters reset, never auto-analyzed), and `credit_rows_sql` took 60.2 s before, 1.6–1.8 s after (v13 §21) |
+| dev database | production sync of 2026-10-14 04:41 UTC | Event 1433 still pending on it; production had released it by the read-out |
+
+**Verification evidence, 2026-10-15.** Full suite 1,978 examples / 0 failures. Every unit seen red
+first, then green, then red again under a deliberate break (an undelivered order ranked latest, the
+tiebreak reversed, an after-buyer as a convert, an account under two hosts, pending orders as
+attendees, the no-host row first, a 0% rate over nobody, the gate skipped, the source key served as
+its name); one break first stayed green, exposing a fixture whose latest and crediting events
+coincided, and the example was strengthened. `predeploy-review-rails` with one Codex pass on an
+rsync copy: no blocker; the shared finding (three unused `plan` queries, ~15 ms) recorded as a
+follow-on. Production matched the pre-computed shift of event 1433's release exactly.
+
+**What 6c-ops should read first.** `GET /kpis/headshot_hosts` (`kpis_controller.rb:36`, the jbuilder
+above): `metadata` carries the Total row's figures, so the panel computes nothing; `data` ends with
+the no-host row, `organizationId: null`, `name: "No host"`. A rate over no attendees is `null`. The
+release is 9.67.0 or the next free version. The endpoint takes 2–3 s in production.
 
 ## Branch and deploy state, 2026-10-14 (slice 6b deployed, `APPLY` run)
 
