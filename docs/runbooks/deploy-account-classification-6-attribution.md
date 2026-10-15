@@ -294,3 +294,11 @@ text on the dev sync; the memo prints the day's count).
   traffic ago and Logplex keeps 1,500 lines in all. Step 9 corrected to `--dyno scheduler -n 1500`
   with the runner fallback. The first run is **still not recorded**; the runner check or tonight's
   tail is the next capture.
+- 2026-10-15, later that morning: **first run verified from the database; the log line was not
+  captured.** The scheduler-filtered grep over the full 1,500-line buffer was empty too: the run's
+  lines had scrolled out. The runner check (one-off dyno `run.6115`): `account_metrics`
+  `computed_at` max **2026-10-15 02:32:26 UTC**, so the sweep ran and its last account landed about
+  two and a half minutes after the 02:30 start, in line with the 2 min 38 s baseline; accounts
+  sourced by user 1 since 02:30 UTC **0**. Consistent with `Attributed 0 accounts`; it cannot rule
+  out `Event attribution failed`, which also writes nothing. The line itself gets captured on a
+  later night: tail before 02:30 UTC, or the first command within the hour after.

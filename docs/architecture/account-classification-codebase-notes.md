@@ -291,8 +291,11 @@ after event 5. Two `predeploy-review-rails` rounds over the attribution branch, 
 runbook's prerequisites). The findings and their disposition, and the deliberate-break red output per
 unit, are in no file in the repo — the runbook and the four commits are the record's limit.
 Production reproduced the dev rehearsal exactly: the funnel, the write table, the KPI prediction,
-invariants 1–6 and the nine spot checks. The hook's first nightly run, 2026-10-15 02:30 UTC, is not
-yet recorded (runbook step 9).
+invariants 1–6 and the nine spot checks. The hook's first nightly run, 2026-10-15, is verified from
+the database only: `account_metrics` `computed_at` max 02:32:26 UTC and 0 rows written by user 1
+since 02:30 UTC, consistent with `Attributed 0 accounts` but not proof of it. The log line was not
+captured: Logplex keeps 1,500 lines and the morning grep came hours later (runbook step 9,
+corrected). A failure would also write nothing, so the next capture must be the line itself.
 
 **What 6c should read first.** `EventAttribution.credit_rows_sql` (`event_attribution.rb:134`) is the
 one derivation: every active, non-internal account with an active event order, sourced or not, with
