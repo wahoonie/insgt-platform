@@ -7,10 +7,11 @@ slice 4c deployed 2026-09-29 (`master` merge 4cf0975); slice 4d released as insg
 2026-09-30; slice 4e deployed 2026-10-01 (`master` merge b0dc6c4, release v642), completing slice 4;
 D6 closed 2026-09-29, slice 6 redefined; slice 6a (event hosts) deployed 2026-10-07 (insgt-api) and
 2026-10-08 (insgt-ops 9.65.0); slice 6b (event attribution) deployed 2026-10-14 (release v647, `APPLY`
-at 12:30:56 UTC writing 94 accounts; the nightly hook as v648); see §9
-**Version:** 12 · **Last updated:** 2026-10-14 (slice 6b: event attribution)
-**Supersedes:** v11 (2026-10-08), v10 (2026-10-05), v9 (2026-10-01), v8 (2026-09-30), v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11),
-v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§20 for what changed and why.
+at 12:30:56 UTC writing 94 accounts; the nightly hook as v648); slice 6c-api (headshot host ROI)
+deployed 2026-10-15 (release v649); see §9
+**Version:** 13 · **Last updated:** 2026-10-15 (slice 6c-api: headshot host ROI)
+**Supersedes:** v12 (2026-10-14), v11 (2026-10-08), v10 (2026-10-05), v9 (2026-10-01), v8 (2026-09-30), v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11),
+v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§21 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
 `account-classification-drift-audit-2026-09-07.md` (the evidence behind v3),
 `shift-memo-slice-1b-2026-09-10.md` (what slice 1b moves, account by account),
@@ -28,6 +29,9 @@ every event, settled by hand), `../runbooks/deploy-account-classification-6-host
 deploys), `event-attribution-memo-2026-10-14-production.md` (what the first `APPLY` wrote, every
 account by host, and what it left NULL and why),
 `../runbooks/deploy-account-classification-6-attribution.md` (the slice 6b deploys, events 4 and 5),
+`../plans/account-classification-slice-6c-api.md` (6c-api's prompt and its approved plan),
+`headshot-host-roi-2026-10-15.md` (the first production read-out, per host),
+`../runbooks/deploy-account-classification-6-roi.md` (the 6c deploys, events 6 and 7),
 and the contract spec
 `insgt-api/spec/architecture/account_classification_spec.rb` (§5.1–§5.5, §4.2–§4.3 and §4.1's
 tiers pinned on the canonical fixtures; later slices append to it).
@@ -1217,14 +1221,47 @@ source (`accounts_controller.rb:168`), so a scheduler can replace a derived sour
 but cannot clear it — recorded as a gap in the API, not fixed in slice 6. A whole batch is reversible
 by its (actor, stamp) pair, and the memo prints the statement.
 
-**The ROI report does not depend on the write.** Per host organization: attendees (accounts whose
-last headshot order — before the first paid listing shoot, where there is one — is at that host's
-events), converts (those with a paid listing shoot), and their lifetime value, with events with no
-host listed separately. The denominator is only available from `orders.marketing_event_id`. The
-write makes converts visible in the existing marketing-source reports and in Pipedrive. Slice 6c
-reads `EventAttribution.credit_rows_sql`, which already carries every attendee, sourced or not, with
-what the rules decide for each; it never reads `accounts.marketing_source_id` to find converts, and
-there is no second derivation.
+**The ROI report does not depend on the write.** Per host organization: the events it held, its
+attendees, the converts among them with their lifetime value, and the already customers, with events
+that have no host in one row. The denominator is only available from `orders.marketing_event_id`.
+The write makes converts visible in the existing marketing-source reports and in Pipedrive; the
+report counts them whether or not the write has reached them.
+
+**Shipped.** Slice 6c-api: `HeadshotHostRoi` (`app/services/headshot_host_roi.rb`), the read-out
+`marketing_events:host_roi`, and the owner-only `GET /kpis/headshot_hosts`, deployed 2026-10-15 as
+release v649. The first production read-out: 2,342 attendees, 203 converts, 151 already customers
+(`headshot-host-roi-2026-10-15.md`). The rules (OQ10):
+
+- **An attendee** is an active, non-internal account with a delivered event order — a non-NULL
+  `Order.shoot_date_sql`, G9's dated test. Every attendee lands under exactly one host, so the host
+  rows and the no-host row sum to the distinct attendee count, and the report checks it.
+- **A convert** has an event order before its first paid listing shoot: it counts under the
+  crediting order's host — the order event attribution credits. When that event has no host, it
+  counts under No host, never under an earlier or a later host (last touch, no fallback).
+- **An already customer** bought its first paid listing before any event it attended. It counts
+  under the host of its latest delivered event order and is never a convert: converts measure
+  acquisition, already customers measure events serving existing clients.
+- **An attendee with no paid listing** counts under the host of its latest delivered event order.
+- **Pending release.** Headshot media is held back from release for a few days after most events,
+  for marketing reasons, so on most days some accounts have attended and received nothing yet.
+  Until the order is delivered nothing can be credited, so the account is not yet an attendee; it
+  is counted once delivered, by the next run, with no action on release. The read-out lists pending
+  releases by event, with how many accounts each will add.
+- **A point-in-time read.** An attendee with a delivered order under host A and a pending order
+  under host B sits under A until B's order releases, then moves to B. That is correct: the host is
+  the host of the latest event the agent has received. Pending releases are the usual reason the
+  numbers move between runs (event 1433's release moved PSAR 798 → 809 and SDAR 321 → 320 between
+  the 2026-10-14 sync and the 2026-10-15 read-out).
+- **Events** are every event the host has held, whatever its status, as `marketing_events:audit_hosts`
+  counts them: a soft-deleted event still happened (Q15). Converts' lifetime value is
+  `account_metrics.lifetime_value_cents`. A rate over no attendees is NULL, not 0.
+
+One derivation: `EventAttribution.credit_rows_sql` carries every attendee, sourced or not, with what
+the rules decide for each, and since 6c the account's latest delivered event order and the events of
+its pending orders, as additive columns from the same `event_orders` CTE with the crediting order's
+dated test and tiebreak. `HeadshotHostRoi` applies the rules above to those rows; it never reads
+`accounts.marketing_source_id` to find converts, `action` included, and there is no second
+derivation. The endpoint renames the service's keys and computes nothing.
 
 ### 5.6 Cancel At Door
 
@@ -1499,7 +1536,7 @@ visits rather than shoots — the rename touches consumers for a precision gain 
 
 ## 9. Delivery slices
 
-Independently shippable, in dependency order. Status as of 2026-10-14; the codebase notes carry
+Independently shippable, in dependency order. Status as of 2026-10-15; the codebase notes carry
 the `file:line` evidence.
 
 | # | Slice | Status | Unblocks |
@@ -1510,13 +1547,13 @@ the `file:line` evidence.
 | 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | **Deployed 2026-09-14** (`master` merge f811e97 of b6621c2..f8abdd7, 7 commits; pushed 17:26 EDT). Recompute 2 min 37.79 s over 4,136 accounts, 0 failed; all 11 invariants 0; the re-derivation check 0 mismatches over all 4,136 rows; all six spot checks exact; `accounts:joint_ownership` tier labels and segment rows identical to the pre-change code. Migrations `20260912120000` (four columns) and `20260912120001` (one index), `lib/account_classification.rb`, three enums on `AccountMetric`, `lifecycle_run_sql` + `classification` on the calculator, four fields on the metrics endpoint, both rake read-outs reconciled onto the config. Suite 1,688 examples 0 failures; sweep 1 min 03 s over 4,078 accounts 0 failed on the dev restore; all 11 invariants 0; both migrations run migrate/rollback/migrate; `accounts:joint_ownership` byte-identical. Plan `../plans/account-classification-slice-3.md`, runbook `deploy-account-classification-3.md` | teams page, 7 |
 | 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; insgt-ops 9.59.0 (filter, column, dialog) live 2026-09-14; **4a (organization type audit) and 4b (tiered backfill) deployed 2026-09-28** (`master` merge 25a694c3 of e195ae98..e59a0e19), `APPLY` at 19:52:47 UTC writing 1,420 rows; plan `../plans/account-classification-slice-4.md`, runbook `deploy-account-classification-4-backfill.md`. **4c (API sort key) deployed 2026-09-29** (`master` merge 4cf0975 of 1f4e5a9..fceee13, 7 commits; release v641; runbook `deploy-account-classification-4-worklist.md`). **4d (ops worklist control) released 2026-09-30** as insgt-ops 9.60.0 (`main` merge 0834506b, release stamp 1790765225), all fourteen on-site checks passing; 9.61.0 followed the same day. **4e (retiring the four constants onto `account_type_internal`) deployed 2026-10-01** (`master` merge b0dc6c4 of a20c77c..a87d247, 7 commits; release v642); KPI −9 accounts, −600 cents, both as predicted; runbook `deploy-account-classification-4-backfill.md` event 4. **Slice 4 complete** | 7 |
 | 5 | `marketing_events.event_type` + backfill | **Void.** See §3.2 | — |
-| 6 | Event attribution (§3.5, §5.5), cut in `../plans/account-classification-slice-6.md` into six sub-slices and seven deploy events | **6a complete 2026-10-08; 6b complete 2026-10-14**; 6c not started. Runbooks `../runbooks/deploy-account-classification-6-hosts.md` and `../runbooks/deploy-account-classification-6-attribution.md` | Origin in 7, the headshot-event ROI decision |
+| 6 | Event attribution (§3.5, §5.5), cut in `../plans/account-classification-slice-6.md` into six sub-slices and seven deploy events | **6a complete 2026-10-08; 6b complete 2026-10-14; 6c-api deployed 2026-10-15**; 6c-ops not started. Runbooks `../runbooks/deploy-account-classification-6-hosts.md`, `../runbooks/deploy-account-classification-6-attribution.md` and `../runbooks/deploy-account-classification-6-roi.md` | Origin in 7, the headshot-event ROI decision |
 | 6a-i | `association: 9`; the two nullable reference columns with NOT VALID foreign keys; the read-out `marketing_events:audit_hosts` | **Deployed 2026-10-07** (`master` merge 8f1f5dc, three commits); production read-out 12:30:10 UTC, 196 events, identical to the restore; the map settled the same day (`marketing-event-host-audit-2026-10-07.md`) | 6a-ii |
 | 6a-ii | The hand-mapped host backfill and the foreign-key validation; `organization_id` accepted, `organizationId` / `organizationName` rendered; `marketingSourceId` / `marketingSourceName` on the organization payload to admin and scheduler | **Deployed 2026-10-07** (`master` merge 70c3f4e, three commits); `db:migrate` 14:45:27 UTC: 14 organizations created, 186 events hosted, 10 no host, 0 unmapped, three hosts sourced; invariants 1–7, 9, 10 pass. Suite 1,897 examples, 0 failures | 6a-ops, 6b, 6c-api |
 | 6a-ops | The required host picker on the order page's create block and the edit form; the ninth type mirrored; `/marketing-events/new` removed | **Released 2026-10-08** as insgt-ops 9.65.0 (`main` merge b9df2e2c, five commits); read-out 14:07:39 UTC: 197 events, 187 hosted, 0 unmapped; event 1432 created through the picker with SDAR; every on-site check passed | 6b |
 | 6b | `EventAttribution` (plan / `apply!`), `account_classification:attribute_event_hosts` with a dry-run memo before the first `APPLY`; then the nightly hook, its own push after `APPLY` | **Deployed 2026-10-14.** Event 4 as release v647 (`master` merge 12bf9a36 of 40b6fd93..42bc1d20, three commits; no migration): dry run 12:21 UTC identical to the dev rehearsal, handed to Don; `APPLY` at 12:30:56.771630 UTC wrote 94 accounts (NSDCR 70 · PSAR 13 · SDAR 11), both self-checks OK, no-source accounts 3,974 → 3,880; second plan 0; invariants 1–6 exact; KPI `attributed_accounts` 189 → 283 of 4,153, gross unchanged; nine spot checks as reasoned. Event 5 (the hook) as v648 (`master` merge b05f74c2 of 409655b8); first run 2026-10-15: the sweep completed (`computed_at` max 02:32:26 UTC) and the hook wrote nothing (0 rows by user 1 since 02:30 UTC), as expected; the `Attributed 0 accounts` line itself was not captured, Logplex having dropped it by morning (runbook step 9). Suite 1,944 then 1,947 examples, 0 failures. Memo `event-attribution-memo-2026-10-14-production.md` | 7's Origin values |
-| 6c-api | `HeadshotHostRoi`, the `marketing_events:host_roi` read-out, owner-only `GET /kpis/headshot_hosts` | Not started; independent of 6b's write | 6c-ops |
-| 6c-ops | The "Headshot event hosts" panel on the KPIs page, insgt-ops 9.66.0 | Not started | — |
+| 6c-api | `HeadshotHostRoi`, the `marketing_events:host_roi` read-out, owner-only `GET /kpis/headshot_hosts` | **Deployed 2026-10-15** as release v649 (`master` merge b7b2de9f of afa851c6..9c81f15d, five commits; no migration). Read-out 14:49 UTC: 2,342 attendees, 203 converts, 151 already customers, 46 rows, totals check OK (`headshot-host-roi-2026-10-15.md`); the endpoint equal to it, after a production `ANALYZE` (§21). Suite 1,978 examples, 0 failures | 6c-ops |
+| 6c-ops | The "Headshot event hosts" panel on the KPIs page, insgt-ops **9.67.0** or the next free version (9.66.0 was taken on 2026-10-08) | Not started; event 6 curl-verified 2026-10-15 | — |
 | 7 | Pipedrive reconciliation + whitelisted push | Not started | — |
 
 **Slices 1a and 1b deployed together on 2026-09-10.** 1a alone changed nothing anyone sees and 1b
@@ -1988,3 +2025,52 @@ adds only the sentence 6c builds on.
   prints `insgt-api unknown` in production, because the slug carries no `.git` — record the release
   number beside it, as the runbook did; the runbook's CSV cross-check read the file without
   `encoding: "UTF-8"` and failed on an accented name (fixed in the runbook, platform 6f76a6a).
+
+## 21. Changes from v12
+
+Sourced from slice 6c-api's implementation and its deploy on 2026-10-15 (insgt-api `master` merge
+b7b2de9f, release v649; `../plans/account-classification-slice-6c-api.md`, whose plan Dan approved
+with amendments on 2026-10-15; `../runbooks/deploy-account-classification-6-roi.md`;
+`headshot-host-roi-2026-10-15.md`). This is the part of slice 6's amendment v12 deferred to 6c.
+
+| Area | v12 | v13 | Why |
+| :--- | :--- | :--- | :--- |
+| §5.5 ROI paragraph | "attendees (accounts whose last headshot order … is at that host's events), converts (those with a paid listing shoot)" | OQ10's three rules: converts under the crediting host, already customers and attendees-only under the latest delivered event's host; every attendee once | The v12 wording left the after-buyer under no host and counted it as a convert |
+| §5.5 attendee | — | A delivered event order (G9's dated test); an account with only pending orders is a pending release, counted once delivered | Media is held back for a few days after most events; nothing is credited before delivery |
+| §5.5 point in time | — | An attendee moves to a pending event's host when that order releases | The host is the latest event the agent has received |
+| §5.5 events | — | Every event by host, any status | Q15; `marketing_events:audit_hosts` counts the same way |
+| §5.5 readers | `credit_rows_sql` the one derivation | Plus four additive columns: `latest_order_id`, `latest_event_id`, `latest_host_organization_id`, `pending_release_event_ids` | An uncredited attendee's host, without a second query over orders |
+| §5.5 surfaces | — | `marketing_events:host_roi` (Markdown) and the owner-only `GET /kpis/headshot_hosts`, both from `HeadshotHostRoi` | OQ5, G17, G20 |
+| §9 | 6c-api not started; 6c-ops "insgt-ops 9.66.0" | 6c-api deployed; 6c-ops 9.67.0 or the next free version | 9.66.0 was released on 2026-10-08 (insgt-ops 897a7b80); the slice 6 plan's `:9, :25, :147, :280, :305, :401, :457, :518` corrected |
+
+### What it changes in shipped work
+
+- **Nothing a human sees moved.** The read-out is invoked by hand and the endpoint has no client
+  until 6c-ops. The nightly write is unchanged: on the dev sync the existing columns of
+  `credit_rows_sql` hashed identically before and after over all 2,343 rows, and the write plan was
+  identical (NSDCR 70 · PSAR 13 · SDAR 11).
+- **A correction to v12's figures.** The 6b memo's "only undelivered event orders before buying: 0"
+  counted undelivered orders *before buying*. The pending releases 6c counts are accounts that have
+  never bought: 11 on the 2026-10-14 sync (10 on event 1433, PSAR; 1 on event 1333, SDAR), 1 at the
+  production read-out after 1433 released. The plan's "at most one" (G9) predates event 1433.
+- **Stale production statistics, found by the endpoint.** The first owner call timed out (H12) every
+  time. Production's `pg_stat_user_tables` counters had been reset and autovacuum had never
+  re-analyzed `orders`, `order_logs`, `marketing_events`, `organizations` or `accounts`, so the
+  planner ran 6b's `sourced_event_before_listing` EXISTS as a nested loop rescanning `event_orders`
+  for every event of every account: 60.2 s, against 0.48 s for the whole query on a fresh restore.
+  A database-wide `ANALYZE` at about 16:35 UTC brought it to 1.6–1.8 s and the endpoint to 2.6 s.
+  6b's memo and the nightly hook ran the same query with no time limit, so they had very likely been
+  paying the 60 s unseen. The Rails query cache, on in `rails runner`, made the first diagnosis read
+  as "slow once, then fast"; time with `connection.uncached`.
+- **Follow-ons recorded, not fixed:** `ANALYZE` after every Heroku database event (maintenance,
+  failover, plan change, version upgrade) and after the Render cutover's restore; a nightly
+  `ANALYZE` from Heroku Scheduler after the recompute as insurance; a web `statement_timeout` under
+  Heroku's 30 s, so a runaway query errors instead of holding a thread and a connection after the
+  H12 (rake and the nightly job need a longer limit); `sourced_event_before_listing` rewritten so its
+  cost does not depend on the planner's choice, which touches an existing 6b column; `HeadshotHostRoi`
+  reaching the rows through `EventAttribution.plan`, which runs three diagnostic queries it does not
+  use (~15 ms; a public rows method on `EventAttribution` changes `plan`, out of 6c's scope);
+  `Role.system_role_tags` (`role.rb:105–113`) caching each user's roles on the class for the life of
+  the process, so a removed role keeps working on a running dyno; no scheduler-only user exists, so
+  the owner gate is verified in production only for the unauthenticated case and otherwise by the
+  request spec.
