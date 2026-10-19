@@ -1,10 +1,11 @@
 # Runbook: Account Classification Slice 6 — Headshot Host ROI Deploy (events 6 and 7)
 
-**Last updated:** 2026-10-15
-**Repos:** insgt-api (event 6); insgt-ops (event 7, filled in by the 6c-ops session)
+**Last updated:** 2026-10-19
+**Repos:** insgt-api (event 6); insgt-ops (event 7)
 **Estimated duration:** ~15 min for event 6
 **Status:** Event 6 **deployed 2026-10-15** (release v649, `master` b7b2de9f) and verified, after a
-production `ANALYZE` (deploy log). Event 7 not started.
+production `ANALYZE` (deploy log). Event 7 **released 2026-10-19** as insgt-ops 9.67.0 (`main` merge
+cbc88d5a, tag `v9.67.0`); on site, No host is the last row.
 
 ## Summary
 
@@ -18,14 +19,17 @@ Ships slice 6c-api of `docs/architecture/account-classification.md` §5.5's last
   row last. Every figure comes from `EventAttribution.credit_rows_sql`, which gains four additive
   columns (the latest delivered event order, its event and host, and the events of orders pending
   release). **No migration, no data change, no new ENV.**
-- **Event 7** (insgt-ops): the "Headshot event hosts" panel on the KPIs page. **Release 9.67.0** or
-  whatever is next — 9.66.0 is taken (insgt-ops 897a7b80, tag `v9.66.0`, 2026-10-08). Only after
-  event 6 is curl-verified.
+- **Event 7** (insgt-ops, two commits): the "Headshot event hosts" panel on the owner's KPIs page,
+  below the marketing source breakdown. One row per host, then No host, pinned last under every
+  sort; the Total line is the endpoint's `metadata`, so the panel computes nothing. **Released as
+  9.67.0** (9.66.0 was taken on 2026-10-08). Plan, evidence and decisions:
+  `docs/plans/account-classification-slice-6c-ops.md`.
 
 **What moves for a human.** Nothing on event 6's push: the read-out is invoked by hand and the
 endpoint has no client until event 7. The nightly write is unchanged: on the dev sync the
 attribution plan's existing columns hash identically on the branch and on `master` over all 2,343
-rows, and the write plan is identical (NSDCR 70 · PSAR 13 · SDAR 11).
+rows, and the write plan is identical (NSDCR 70 · PSAR 13 · SDAR 11). Event 7 adds the owner's card
+and changes nothing else: no API change, no data change.
 
 **Pending releases.** Headshot media is held back from release for a few days after most events,
 so on any day some accounts have only undelivered event orders. They are not yet attendees and are
@@ -193,11 +197,50 @@ run 2: 1.62 s
 
 ## Steps — event 7
 
-Written by the 6c-ops session: `git tag v9.67.0 && npm run deploy:prod` on a clean `main` (or the
-next free version), then on site as owner the panel's rows and totals match step 4's curl, and the
-no-host row is last.
+Strictly after event 6 is curl-verified (done 2026-10-15). `apps/insgt-ops/DEPLOY.md` is the
+procedure; these are the slice's parts of it.
+
+### 5. Merge, tag, deploy
+
+```bash
+cd apps/insgt-ops
+git switch main && git merge feat/headshot-host-roi-panel
+git status --short                    # empty: a release goes from a clean main
+git ls-remote --tags origin v9.67.0   # empty: the version is free
+git tag v9.67.0
+npm run deploy:prod                   # build:prod, upload, invalidate the control files
+```
+
+### 6. On site, as owner
+
+Open `https://ops.insightphotos.net/#/kpis`. Expected, reasoned before the release from the
+2026-10-15 read-out and checked against the dev restore on 2026-10-19 (brackets):
+
+1. A "Headshot event hosts (all time)" card below "Marketing source breakdown", after 2–3 s of
+   "Loading…" (the endpoint's production time, step 4).
+2. The last row is **No host** [10 events · 51 attendees · 9 converts · 17.6% · 3 already
+   customers · $5,540.00].
+3. Rows by converts descending [NSDCR 71, PSAR 14, SDAR 12, RE/MAX Tidal 11, Windermere Homes &
+   Estates-Rancho Bernardo 9 …], one per host in a same-minute curl of step 4 [46 rows].
+4. The Total line equals that curl's `metadata` [198 events · 2,342 attendees · 203 converts (8.7%)
+   · 151 already customers · $354,700.00 converts' lifetime value · 1 pending release]. A release
+   between the curl and the page moves attendees: take them in the same minute.
+5. Sort by Attendees, then again: No host stays last both ways.
+
+Known, kept by decision (v14 §22): a first click on Converts, the default column, leaves the order
+unchanged and clears the header arrow. The marketing source panel does the same on Gross.
+
+Results, 2026-10-19: check 2 confirmed by Dan, so the card rendered. Checks 3–5, against a
+same-minute curl, were not recorded.
 
 ## Rollback
+
+**Event 7 first**, if both must go. In insgt-ops, `npm run rollback` lists the releases and
+`npm run rollback -- <stamp>` restores 9.66.0's control files (`DEPLOY.md` §Rollback). Clients take
+it at their next update check: minutes, not seconds. The panel against an API without the endpoint
+would show its error state, not break the page, but there is no reason to leave it.
+
+**Event 6:**
 
 ```bash
 heroku rollback --app insgtapi
@@ -207,6 +250,16 @@ Nothing to undo in data: event 6 writes nothing. The nightly write runs the old 
 again, whose existing columns are identical to the new one's.
 
 ## Deploy log
+
+- 2026-10-19: **event 7 released** as insgt-ops 9.67.0 (`main` merge cbc88d5a of 1eb796c4, the
+  panel, and 0338b7fc, the version; tag `v9.67.0`). On site as owner, No host is the last row (Dan).
+  Before the release, on the branch: the panel's Cypress spec red first, then green, and seven
+  deliberate breaks each red; every KPIs-page spec 15 of 15; Vitest 609 of 609; the production
+  build's warnings identical to `main`'s; the KPIs chunk 41.47 → 50.38 kB raw, 8.66 → 9.83 kB
+  transferred. Unstubbed against the dev API, the panel rendered the endpoint's 46 rows, No host
+  last, with the Total line equal to the 2026-10-15 read-out. `predeploy-review-angular` with one
+  Codex pass: no blocker; the one should-fix (the default column's first header click) kept as is
+  by Dan (v14 §22).
 
 - 2026-10-15: **event 6 deployed** as release v649 (`master` merge b7b2de9f of the five commits
   afa851c6..9c81f15d). No migration. Read-out 14:49 UTC →

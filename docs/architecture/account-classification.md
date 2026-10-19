@@ -8,10 +8,11 @@ slice 4c deployed 2026-09-29 (`master` merge 4cf0975); slice 4d released as insg
 D6 closed 2026-09-29, slice 6 redefined; slice 6a (event hosts) deployed 2026-10-07 (insgt-api) and
 2026-10-08 (insgt-ops 9.65.0); slice 6b (event attribution) deployed 2026-10-14 (release v647, `APPLY`
 at 12:30:56 UTC writing 94 accounts; the nightly hook as v648); slice 6c-api (headshot host ROI)
-deployed 2026-10-15 (release v649); see §9
-**Version:** 13 · **Last updated:** 2026-10-15 (slice 6c-api: headshot host ROI)
-**Supersedes:** v12 (2026-10-14), v11 (2026-10-08), v10 (2026-10-05), v9 (2026-10-01), v8 (2026-09-30), v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11),
-v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§21 for what changed and why.
+deployed 2026-10-15 (release v649); slice 6c-ops (the headshot event hosts panel) released
+2026-10-19 as insgt-ops 9.67.0, completing slice 6; see §9
+**Version:** 14 · **Last updated:** 2026-10-19 (slice 6c-ops: the headshot event hosts panel)
+**Supersedes:** v13 (2026-10-15), v12 (2026-10-14), v11 (2026-10-08), v10 (2026-10-05), v9 (2026-10-01), v8 (2026-09-30), v7 (2026-09-28), v6 (2026-09-14), v5 (2026-09-11),
+v4 (2026-09-10), v3 (2026-09-08), v2 (2026-09-05), v1 (2026-08-27). See §10–§22 for what changed and why.
 **Companion files:** `account-classification-codebase-notes.md` (the `file:line` map),
 `account-classification-drift-audit-2026-09-07.md` (the evidence behind v3),
 `shift-memo-slice-1b-2026-09-10.md` (what slice 1b moves, account by account),
@@ -32,7 +33,8 @@ account by host, and what it left NULL and why),
 `../plans/account-classification-slice-6c-api.md` (6c-api's prompt and its approved plan),
 `headshot-host-roi-2026-10-15.md` (the first production read-out, per host),
 `../runbooks/deploy-account-classification-6-roi.md` (the 6c deploys, events 6 and 7),
-and the contract spec
+`../plans/account-classification-slice-6c-ops.md` (6c-ops's plan, its evidence and what the
+implementation decided), and the contract spec
 `insgt-api/spec/architecture/account_classification_spec.rb` (§5.1–§5.5, §4.2–§4.3 and §4.1's
 tiers pinned on the canonical fixtures; later slices append to it).
 
@@ -1263,6 +1265,14 @@ dated test and tiebreak. `HeadshotHostRoi` applies the rules above to those rows
 `accounts.marketing_source_id` to find converts, `action` included, and there is no second
 derivation. The endpoint renames the service's keys and computes nothing.
 
+**The ops panel.** Slice 6c-ops: the "Headshot event hosts" card on the owner-only KPIs page,
+released 2026-10-19 as insgt-ops 9.67.0, is the endpoint's only client. It renders the rows and the
+Total line as served and computes nothing; the Total line is `metadata`, never a sum of the rows.
+Rows sort by converts descending by default, and by any column either way. The no-host row,
+identified by `organizationId` null, is pinned last under every sort and never hidden, because the
+rows account for every attendee only with it. A rate over no attendees renders as a dash, and a host
+that is not a marketing source as `none`.
+
 ### 5.6 Cancel At Door
 
 **No predicate change.** Documented here because §5.1 invites the question and the schema does not
@@ -1536,7 +1546,7 @@ visits rather than shoots — the rename touches consumers for a precision gain 
 
 ## 9. Delivery slices
 
-Independently shippable, in dependency order. Status as of 2026-10-15; the codebase notes carry
+Independently shippable, in dependency order. Status as of 2026-10-19; the codebase notes carry
 the `file:line` evidence.
 
 | # | Slice | Status | Unblocks |
@@ -1547,13 +1557,13 @@ the `file:line` evidence.
 | 3 | `lifecycle_type` / `value_type` / `peak_value_type` + thresholds config | **Deployed 2026-09-14** (`master` merge f811e97 of b6621c2..f8abdd7, 7 commits; pushed 17:26 EDT). Recompute 2 min 37.79 s over 4,136 accounts, 0 failed; all 11 invariants 0; the re-derivation check 0 mismatches over all 4,136 rows; all six spot checks exact; `accounts:joint_ownership` tier labels and segment rows identical to the pre-change code. Migrations `20260912120000` (four columns) and `20260912120001` (one index), `lib/account_classification.rb`, three enums on `AccountMetric`, `lifecycle_run_sql` + `classification` on the calculator, four fields on the metrics endpoint, both rake read-outs reconciled onto the config. Suite 1,688 examples 0 failures; sweep 1 min 03 s over 4,078 accounts 0 failed on the dev restore; all 11 invariants 0; both migrations run migrate/rollback/migrate; `accounts:joint_ownership` byte-identical. Plan `../plans/account-classification-slice-3.md`, runbook `deploy-account-classification-3.md` | teams page, 7 |
 | 4 | `accounts.account_type` + ops classification UI + tiered backfill | Column, API, role gates and filter **deployed 2026-09-10** with 1a and 1b; insgt-ops 9.59.0 (filter, column, dialog) live 2026-09-14; **4a (organization type audit) and 4b (tiered backfill) deployed 2026-09-28** (`master` merge 25a694c3 of e195ae98..e59a0e19), `APPLY` at 19:52:47 UTC writing 1,420 rows; plan `../plans/account-classification-slice-4.md`, runbook `deploy-account-classification-4-backfill.md`. **4c (API sort key) deployed 2026-09-29** (`master` merge 4cf0975 of 1f4e5a9..fceee13, 7 commits; release v641; runbook `deploy-account-classification-4-worklist.md`). **4d (ops worklist control) released 2026-09-30** as insgt-ops 9.60.0 (`main` merge 0834506b, release stamp 1790765225), all fourteen on-site checks passing; 9.61.0 followed the same day. **4e (retiring the four constants onto `account_type_internal`) deployed 2026-10-01** (`master` merge b0dc6c4 of a20c77c..a87d247, 7 commits; release v642); KPI −9 accounts, −600 cents, both as predicted; runbook `deploy-account-classification-4-backfill.md` event 4. **Slice 4 complete** | 7 |
 | 5 | `marketing_events.event_type` + backfill | **Void.** See §3.2 | — |
-| 6 | Event attribution (§3.5, §5.5), cut in `../plans/account-classification-slice-6.md` into six sub-slices and seven deploy events | **6a complete 2026-10-08; 6b complete 2026-10-14; 6c-api deployed 2026-10-15**; 6c-ops not started. Runbooks `../runbooks/deploy-account-classification-6-hosts.md`, `../runbooks/deploy-account-classification-6-attribution.md` and `../runbooks/deploy-account-classification-6-roi.md` | Origin in 7, the headshot-event ROI decision |
+| 6 | Event attribution (§3.5, §5.5), cut in `../plans/account-classification-slice-6.md` into six sub-slices and seven deploy events | **6a complete 2026-10-08; 6b complete 2026-10-14; 6c complete 2026-10-19. Slice 6 complete.** Runbooks `../runbooks/deploy-account-classification-6-hosts.md`, `../runbooks/deploy-account-classification-6-attribution.md` and `../runbooks/deploy-account-classification-6-roi.md` | Origin in 7, the headshot-event ROI decision |
 | 6a-i | `association: 9`; the two nullable reference columns with NOT VALID foreign keys; the read-out `marketing_events:audit_hosts` | **Deployed 2026-10-07** (`master` merge 8f1f5dc, three commits); production read-out 12:30:10 UTC, 196 events, identical to the restore; the map settled the same day (`marketing-event-host-audit-2026-10-07.md`) | 6a-ii |
 | 6a-ii | The hand-mapped host backfill and the foreign-key validation; `organization_id` accepted, `organizationId` / `organizationName` rendered; `marketingSourceId` / `marketingSourceName` on the organization payload to admin and scheduler | **Deployed 2026-10-07** (`master` merge 70c3f4e, three commits); `db:migrate` 14:45:27 UTC: 14 organizations created, 186 events hosted, 10 no host, 0 unmapped, three hosts sourced; invariants 1–7, 9, 10 pass. Suite 1,897 examples, 0 failures | 6a-ops, 6b, 6c-api |
 | 6a-ops | The required host picker on the order page's create block and the edit form; the ninth type mirrored; `/marketing-events/new` removed | **Released 2026-10-08** as insgt-ops 9.65.0 (`main` merge b9df2e2c, five commits); read-out 14:07:39 UTC: 197 events, 187 hosted, 0 unmapped; event 1432 created through the picker with SDAR; every on-site check passed | 6b |
 | 6b | `EventAttribution` (plan / `apply!`), `account_classification:attribute_event_hosts` with a dry-run memo before the first `APPLY`; then the nightly hook, its own push after `APPLY` | **Deployed 2026-10-14.** Event 4 as release v647 (`master` merge 12bf9a36 of 40b6fd93..42bc1d20, three commits; no migration): dry run 12:21 UTC identical to the dev rehearsal, handed to Don; `APPLY` at 12:30:56.771630 UTC wrote 94 accounts (NSDCR 70 · PSAR 13 · SDAR 11), both self-checks OK, no-source accounts 3,974 → 3,880; second plan 0; invariants 1–6 exact; KPI `attributed_accounts` 189 → 283 of 4,153, gross unchanged; nine spot checks as reasoned. Event 5 (the hook) as v648 (`master` merge b05f74c2 of 409655b8); first run 2026-10-15: the sweep completed (`computed_at` max 02:32:26 UTC) and the hook wrote nothing (0 rows by user 1 since 02:30 UTC), as expected; the `Attributed 0 accounts` line itself was not captured, Logplex having dropped it by morning (runbook step 9). Suite 1,944 then 1,947 examples, 0 failures. Memo `event-attribution-memo-2026-10-14-production.md` | 7's Origin values |
 | 6c-api | `HeadshotHostRoi`, the `marketing_events:host_roi` read-out, owner-only `GET /kpis/headshot_hosts` | **Deployed 2026-10-15** as release v649 (`master` merge b7b2de9f of afa851c6..9c81f15d, five commits; no migration). Read-out 14:49 UTC: 2,342 attendees, 203 converts, 151 already customers, 46 rows, totals check OK (`headshot-host-roi-2026-10-15.md`); the endpoint equal to it, after a production `ANALYZE` (§21). Suite 1,978 examples, 0 failures | 6c-ops |
-| 6c-ops | The "Headshot event hosts" panel on the KPIs page, insgt-ops **9.67.0** or the next free version (9.66.0 was taken on 2026-10-08) | Not started; event 6 curl-verified 2026-10-15 | — |
+| 6c-ops | The "Headshot event hosts" panel on the KPIs page, insgt-ops 9.67.0 | **Released 2026-10-19** as insgt-ops 9.67.0 (`main` merge cbc88d5a of 1eb796c4..0338b7fc, two commits; tag `v9.67.0`). On site as owner, No host the last row. Cypress 15 of 15 on the KPIs page with seven deliberate breaks red; Vitest 609 of 609; against the dev API, the panel equal to the endpoint (`../plans/account-classification-slice-6c-ops.md`) | — |
 | 7 | Pipedrive reconciliation + whitelisted push | Not started | — |
 
 **Slices 1a and 1b deployed together on 2026-09-10.** 1a alone changed nothing anyone sees and 1b
@@ -2074,3 +2084,39 @@ with amendments on 2026-10-15; `../runbooks/deploy-account-classification-6-roi.
   the process, so a removed role keeps working on a running dyno; no scheduler-only user exists, so
   the owner gate is verified in production only for the unauthenticated case and otherwise by the
   request spec.
+
+## 22. Changes from v13
+
+Sourced from slice 6c-ops's implementation, its pre-deploy review and its release on 2026-10-19
+(insgt-ops `main` merge cbc88d5a, tag `v9.67.0`; `../plans/account-classification-slice-6c-ops.md`;
+`../runbooks/deploy-account-classification-6-roi.md`, event 7). No rule changes: the panel displays
+what §5.5's service computes.
+
+| Area | v13 | v14 | Why |
+| :--- | :--- | :--- | :--- |
+| §5.5 surfaces | `marketing_events:host_roi` and the owner-only `GET /kpis/headshot_hosts` | Plus the ops "Headshot event hosts" panel, the endpoint's only client | OQ5, G20 |
+| §5.5 the no-host row in ops | — | Pinned last under every sort, identified by `organizationId` null, never hidden; the Total line is the endpoint's `metadata` | The rows account for every attendee only with it; hiding it is a slice 6 trap (plan `:501`) |
+| §9 | 6c-ops not started | Released as 9.67.0; slice 6 complete | — |
+
+### What it changes in shipped work
+
+- **What a human sees.** The owner's KPIs page gains a card below the marketing source breakdown:
+  one row per host with its source or `none`, events, attendees, converts, conversion, already
+  customers and converts' lifetime value; No host last; a Total line. No API change and no data
+  change. On site, No host is the last row.
+- **Kept by decision: the default column's first header click.** Material's sort cycle runs
+  ascending, descending, cleared. Converts is the default, sorted descending, so its first click
+  clears the direction, and the panel resets a cleared direction to its default: the order does not
+  change and the header arrow disappears. Any other column shows the same on its third click. The
+  marketing source panel, which this one copies, does the same on Gross
+  (`insgt-ops src/app/kpis/components/marketing-source/marketing-source.ts:142–149`). The pre-deploy
+  review raised it as a should-fix, found by both Claude and Codex; Dan kept it as is on 2026-10-19.
+  A later review should treat it as decided, not as new.
+- **Declined: a Vitest spec for the panel's sort.** Codex suggested exporting `sortRows` and
+  `buildVm` for unit tests. The slice's non-goals say Cypress only for this component, and
+  `angular-unit-testing` keeps component logic in Cypress and forbids exporting internals for
+  tests. The pin is covered by Cypress, and two deliberate breaks of it were shown red.
+- **Follow-ons recorded, not fixed:** long host names wrap to two or three lines across eight equal
+  columns; the panel's spec, like `marketing-source.cy.ts` and `system-metrics.cy.ts`, stubs only
+  its own endpoint, so the page's other KPI calls reach the dev API during a run
+  (`kpis-order-type-channels.cy.ts` stubs all four).

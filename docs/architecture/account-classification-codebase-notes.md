@@ -2,7 +2,7 @@
 
 The `file:line` map for `docs/architecture/account-classification.md`. Read at Phase 0 of every slice; verify the entries the slice depends on before surveying fresh. Flat and factual: file, line, what it is, which slice or commit put it there. Paths are `apps/insgt-api` unless prefixed.
 
-Established by the drift audit of 2026-09-07 (`account-classification-drift-audit-2026-09-07.md`) against `feat/account-account-type` at 393005e; rewritten 2026-09-10 for slice 1b against `feat/account-classification-1b` at afeb1f7; re-ranged 2026-09-10 for slice 2 against `feat/account-classification-2` at ca49f32; re-ranged 2026-09-14 for slice 3 against `master` at f811e97 (slice 3 merged and deployed); extended 2026-09-28 for slice 4a/4b against `master` at 25a694c3 (the audit and the backfill merged and deployed, `APPLY` run in production); extended 2026-10-01 for slice 4e against `master` at b0dc6c4 (the retirement merged and deployed as release v642) — only the rows 4e touched were re-ranged; extended 2026-10-08 for slice 6a against insgt-api `master` at 70c3f4e and insgt-ops `main` at b9df2e2c (the hosts deployed, 9.65.0 released) — the "Marketing events and hosts" section is new, and only the schema and organization rows 6a touched were re-ranged; extended 2026-10-14 for slice 6b against insgt-api `master` at b05f74c2 (events 4 and 5 deployed as v647 and v648, the `APPLY` run in production) — the 6b rows are a new sub-table under "Marketing events and hosts", and only the `metrics.rake` and contract-spec rows the hook and the §5.5 block moved were re-ranged. A moved line is a reason to update this file, not to distrust it.
+Established by the drift audit of 2026-09-07 (`account-classification-drift-audit-2026-09-07.md`) against `feat/account-account-type` at 393005e; rewritten 2026-09-10 for slice 1b against `feat/account-classification-1b` at afeb1f7; re-ranged 2026-09-10 for slice 2 against `feat/account-classification-2` at ca49f32; re-ranged 2026-09-14 for slice 3 against `master` at f811e97 (slice 3 merged and deployed); extended 2026-09-28 for slice 4a/4b against `master` at 25a694c3 (the audit and the backfill merged and deployed, `APPLY` run in production); extended 2026-10-01 for slice 4e against `master` at b0dc6c4 (the retirement merged and deployed as release v642) — only the rows 4e touched were re-ranged; extended 2026-10-08 for slice 6a against insgt-api `master` at 70c3f4e and insgt-ops `main` at b9df2e2c (the hosts deployed, 9.65.0 released) — the "Marketing events and hosts" section is new, and only the schema and organization rows 6a touched were re-ranged; extended 2026-10-14 for slice 6b against insgt-api `master` at b05f74c2 (events 4 and 5 deployed as v647 and v648, the `APPLY` run in production) — the 6b rows are a new sub-table under "Marketing events and hosts", and only the `metrics.rake` and contract-spec rows the hook and the §5.5 block moved were re-ranged; extended 2026-10-15 for slice 6c-api against insgt-api `master` at b7b2de9f (event 6 deployed as v649) — the 6c-api rows are a second sub-table; extended 2026-10-19 for slice 6c-ops against insgt-ops `main` at cbc88d5a (9.67.0 released) — the ops rows close that sub-table, and the repo documentation table gains the four 6c documents. A moved line is a reason to update this file, not to distrust it.
 
 ## Schema
 
@@ -74,8 +74,8 @@ Surveyed for the organization type audit and the backfill; nothing here changed 
 
 Read against insgt-api `master` at 70c3f4e and insgt-ops `main` at b9df2e2c, on 2026-10-08. 6b's
 rows are the first sub-table that follows, read against `master` at b05f74c2 on 2026-10-14; 6c-api's
-are the second, read against `master` at b7b2de9f on 2026-10-15. 6c-ops adds the ops KPI panel's
-rows to the second.
+are the second, read against `master` at b7b2de9f on 2026-10-15, and 6c-ops's insgt-ops rows close
+it, read against `main` at cbc88d5a on 2026-10-19.
 
 | File | Line | What it is | Slice / commit |
 | :-- | :-- | :-- | :-- |
@@ -134,11 +134,15 @@ the plan's gaps are G9–G16. No migration: the slice reads 6a's columns and wri
 | `lib/tasks/metrics.rake` | 168–184 | **The §6 step 4 hook**: after `Recomputed SystemMetric`, `EventAttribution.call(dry_run:)`; prints `Attributed N accounts (key n · …)` or `[DRY RUN] Would attribute …`; `rescue StandardError` logs and prints `Event attribution failed: …`; the summary at 186–187 still prints. The comment names the deploy order: after the `APPLY`, never before | 6b 409655b8 |
 | `spec/lib/tasks/metrics_rake_spec.rb` | 439–501 | 3 examples with `RecomputeAll` stubbed: attributes after the sweep and before the summary, the exact three-line sequence 475; `DRY_RUN=true` writes nothing 482; a failure is reported and `Done.` still prints 491 | 6b 409655b8 |
 
-### Headshot host ROI (slice 6c-api)
+### Headshot host ROI (slices 6c-api and 6c-ops)
 
 Read against insgt-api `master` at b7b2de9f on 2026-10-15. The contract is §5.5's last paragraph
 (v13); the plan's gaps are G17 and G20, with OQ5 and OQ10, pinned in
-`../plans/account-classification-slice-6c-api.md`. No migration and no write.
+`../plans/account-classification-slice-6c-api.md`. No migration and no write. The insgt-ops rows at
+the end are 6c-ops's, read against insgt-ops `main` at cbc88d5a (9.67.0) on 2026-10-19; its plan,
+evidence and decisions are `../plans/account-classification-slice-6c-ops.md`. The panel copies
+insgt-ops `src/app/kpis/components/marketing-source/marketing-source.{ts,html}`: the pure functions
+at `marketing-source.ts:66–108`, the subscription and `onSort` at `:130–149`.
 
 | File | Line | What it is | Slice / commit |
 | :-- | :-- | :-- | :-- |
@@ -153,6 +157,13 @@ Read against insgt-api `master` at b7b2de9f on 2026-10-15. The contract is §5.5
 | `spec/lib/tasks/marketing_events_host_roi_rake_spec.rb` | 1–82 | 4 examples: the table with No host last, the Total row and the totals check; a dash for a rate over nobody; pending releases by event; none pending | 6c-api df84c40d |
 | `spec/requests/kpis_headshot_hosts_spec.rb` | 1–80 | 6 examples: 401 without a JWT and for admin, scheduler and photographer; camelCase rows, No host last, the metadata; the rows equal the service's | 6c-api c6857cff |
 | `spec/architecture/account_classification_spec.rb` | 759–805; 807 | **`headshot host ROI (§5.5)`**, immediately before `SQL composition` (now 807): a convert once under its crediting host; bought first → already customer; pending until delivered | 6c-api 9c81f15d |
+| insgt-ops `src/app/kpis/data-access/headshot-host-kpi.model.ts` | 5–19, 21–32, 34–37 | `HeadshotHostKpi`, the wire keys camelCase: `organizationId` null on the no-host row and the row's only identity, `conversionPercentage` `number \| null`; `HeadshotHostKpiMetadata`, the Total row, never summed in ops; `HeadshotHostKpiCollection` | 6c-ops 1eb796c4 |
+| insgt-ops `…/data-access/headshot-host-kpi.service.ts` | 6, 8, 16–18 | Gen 3 composition client on `kpis/headshot_hosts`, `providedIn: 'root'`; `all()` with no params; a 500 reaches the component through the client's `throwError` | 6c-ops 1eb796c4 |
+| insgt-ops `src/app/kpis/components/headshot-hosts/headshot-hosts.ts` | 33–52, 89, 91–111, 113–121, 123–131, 140–185 | ARCHITECTURE NOTES: computes nothing; why the no-host row is pinned rather than sorted or hidden; why the pin is in `sortRows`; no NgRx. `DEFAULT_SORT` converts descending 89; `compareRows` (a null rate sorts below 0%); **`sortRows`** 116–121, where the no-host row (`organizationId === null`) never enters the sort and is appended last; `buildVm` (`empty` only when `data` is empty); `HeadshotHosts`, standalone and OnPush: `state` and `sortState` signals 144–145, `vm` 158, the next/error subscription 160–175, `onSort` 177–184. A cleared direction resets to the default, so a first click on Converts changes nothing, as `marketing-source.ts:142–149` does on Gross; kept by decision (v14 §22) | 6c-ops 1eb796c4 |
+| insgt-ops `…/headshot-hosts/headshot-hosts.html` | 1, 4–10, 12–23, 28–29, 65–69 | `data-cy` prefix `headshot-hosts-` on the card, the four states, the Total line, the table, the rows, every cell and every sort header (`-sort-<column>`); the Total line from `metadata` 12–23; `matSortActive="converts"`, `matSortDirection="desc"` 28–29; a null rate renders `—` 65–69 | 6c-ops 1eb796c4 |
+| insgt-ops `src/app/kpis/pages/kpis-list/kpis-list.{html,module.ts}` | html 22; module 9, 28 | `<app-headshot-hosts>` after `<app-marketing-source>`; the standalone component imported into the legacy page module | 6c-ops 1eb796c4 |
+| insgt-ops `cypress/e2e/headshot-hosts/headshot-hosts.cy.ts` | 1–126; 13, 50, 60, 92–100, 105, 116 | 3 examples. The fixture 13, out of display order, with No host strictly between the hosts on converts, attendees and name; `expectColumn`, retried, 50; the happy path 60: converts descending, `none`, a dash for a null rate, cents, the Total line verbatim, then Attendees and Host each ascending and descending with No host last 92–100; empty 105; error 116. Seven deliberate breaks shown red (`../plans/account-classification-slice-6c-ops.md`) | 6c-ops 1eb796c4 |
+| insgt-ops `package.json`, `package-lock.json` | 3; 3, 9 | 9.67.0, and the lockfile's two root version fields with it (9.66.0's bump had left them at 9.65.0) | 6c-ops 0338b7fc |
 
 ## Query concerns and services
 
@@ -284,7 +295,7 @@ Read against insgt-api `master` at b7b2de9f on 2026-10-15. The contract is §5.5
 | :-- | :-- |
 | `CLAUDE.md` §Testing | Adding a required column; adding a nullable column whose NULL means something (the recipe the five slice 2 columns follow) |
 | `README.md` §Migrations | strong_migrations and the four-migration NOT NULL sequence |
-| `insgt-platform/docs/architecture/account-classification.md` | The contract, v12 (2026-10-14) |
+| `insgt-platform/docs/architecture/account-classification.md` | The contract, v14 (2026-10-19) |
 | `insgt-platform/docs/plans/account-classification-slice-2.md` | Slice 2's survey, plan, the fourteen gaps and Dan's decisions on the six open questions |
 | `insgt-platform/docs/architecture/shift-memo-slice-1b-2026-09-10.md`, `…-production.md` | What slice 1b moved; the hand-over copy |
 | `insgt-platform/docs/runbooks/deploy-account-classification-1a-1b.md` | Deploying 1a and 1b together |
@@ -300,7 +311,28 @@ Read against insgt-api `master` at b7b2de9f on 2026-10-15. The contract is §5.5
 | `insgt-platform/docs/runbooks/deploy-account-classification-6-hosts.md` | Deploying 6a: events 1–3, no window; the read-out and the STOP for the map; the backfill, the invariant script, the curls; the ops release; the deferred items (slice 6a) |
 | `insgt-platform/docs/architecture/event-attribution-memo-2026-10-14-production.md` | What the first `APPLY` wrote (94 rows at 12:30:56.771630 UTC, both self-checks OK): the rules, the funnel, every written account by host, the KPI prediction, the 96 credits to unsourced hosts, the 9 latest-unhosted, the 3 credited only under the event date, the 28 already-sourced beside the derived host, the ten no-host events, the reversal (slice 6b) |
 | `insgt-platform/docs/runbooks/deploy-account-classification-6-attribution.md` | Deploying 6b: events 4 and 5, no window; the baseline, the dry run then STOP, `APPLY`, the second dry run, six invariants, nine spot checks, the ops check, the hook push strictly after `APPLY`, the pair-keyed reversal; the deploy log with the production figures (slice 6b) |
+| `insgt-platform/docs/plans/account-classification-slice-6c-api.md` | 6c-api's prompt and its approved plan: gaps 1–7 pinned, the units, the point-in-time rule, the event 6 relationships (slice 6c-api) |
+| `insgt-platform/docs/architecture/headshot-host-roi-2026-10-15.md` | The first production read-out per host: the rules, 46 rows with No host last, totals 2,342 attendees, 203 converts and 151 already customers, the totals check, the pending release (slice 6c-api) |
+| `insgt-platform/docs/runbooks/deploy-account-classification-6-roi.md` | Deploying 6c: event 6, with no window, the read-out, relationships computed on the day, the endpoint and the production `ANALYZE`; event 7, the ops release and the on-site checks; the deploy log (slices 6c-api and 6c-ops) |
+| `insgt-platform/docs/plans/account-classification-slice-6c-ops.md` | 6c-ops's survey, plan and decisions A–D, the seven deliberate breaks, the bundle delta, and what the implementation decided that the plan did not (slice 6c-ops) |
 | `insgt-platform/docs/decisions/002-recapture-order-type.md` | ADR 002 |
+
+## Branch and deploy state, 2026-10-19 (slice 6c-ops released; slice 6 complete)
+
+| Ref | Head | Carries |
+| :-- | :-- | :-- |
+| `heroku/master`, `master` | b7b2de9f | Unchanged since 6c-api (release v649) |
+| insgt-ops `main` | **cbc88d5a** (9.67.0, tagged `v9.67.0`) | 6c-ops merged: 1eb796c4 the panel, its service and model, the page entry and the Cypress spec; 0338b7fc the version |
+| platform `docs/slice-6c-ops-plan` | — | The 6c-ops plan (1f40a55), then this write-back: the runbook's event 7, these notes, v14 |
+
+**Verification evidence, 2026-10-19.** The panel's spec red first (no request reached the
+endpoint), then green; seven deliberate breaks each red and restored byte for byte, the dev server
+confirmed serving the original after each. Every KPIs-page spec 15 of 15; Vitest 609 of 609; ESLint
+clean on the touched files; the production build's warnings identical to `main`'s; the KPIs chunk
++8.9 kB raw, +1.2 kB transferred. Unstubbed against the dev API: 46 rows, No host last, the Total
+line equal to the 2026-10-15 production read-out. `predeploy-review-angular` with one Codex pass on
+a copy: no blocker; one should-fix (the default column's first header click) kept as is by Dan;
+Codex's Vitest suggestion declined (v14 §22). On site as owner: No host the last row.
 
 ## Branch and deploy state, 2026-10-15 (slice 6c-api deployed)
 
