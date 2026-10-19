@@ -3,7 +3,7 @@
 **Repo:** `apps/insgt-ops` (`main` at 897a7b80, 9.66.0). Platform repo for the write-back only. No `insgt-api` change.
 **Contract:** `docs/architecture/account-classification.md` v13 — §5.5 "Shipped" paragraph (`:1230–1264`), §9 rows 6c-api / 6c-ops (`:1555–1556`), §21 (`:2043–2044`). Plan `docs/plans/account-classification-slice-6.md` — slice-cut row 6c-ops (`:25`), G20 ops half (`:280`), approach row (`:305`), Cypress sketch (`:358`), commits 13–14 (`:398–401`), event 7 verification (`:457`), traps (`:501`), OQ5 (`:518`), OQ10 (`:523–527`). Runbook `docs/runbooks/deploy-account-classification-6-roi.md` ("Steps — event 7", placeholder).
 **Skills loaded:** `slice-implementation`, `angular-core`, `insgt-ops-angular-developer`, `git-commit-messages`. At implementation also `angular-import-organization`, `predeploy-review-angular`.
-**Status:** Plan 2026-10-19, **approved by Dan the same day** with the recommended defaults for open decisions A–D. Implemented the same day on insgt-ops `feat/headshot-host-roi-panel` (from `main` 897a7b80) as 1eb796c4 (the panel) and 0338b7fc (9.67.0); "Implementation, 2026-10-19" at the end records the evidence and what the implementation decided that the plan did not. Not reviewed, not released. The survey findings sit in Phase 1 below; the write-back transcribes the new `file:line` rows into `account-classification-codebase-notes.md`'s 6c sub-table (its `:76–78` already reserves the place: "6c-ops adds the ops KPI panel's rows to the second").
+**Status:** Plan 2026-10-19, **approved by Dan the same day** with the recommended defaults for open decisions A–D. Implemented the same day on insgt-ops `feat/headshot-host-roi-panel` (from `main` 897a7b80) as 1eb796c4 (the panel) and 0338b7fc (9.67.0); "Implementation, 2026-10-19" at the end records the evidence and what the implementation decided that the plan did not. Reviewed by `predeploy-review-angular` with one Codex pass: no blocker; the one should-fix (the default column's first header click) kept as is by Dan. Merged as cbc88d5a and released 2026-10-19 as 9.67.0, event 7; on site, No host is the last row. The record is v14 §22 and the runbook's event 7. The survey findings sit in Phase 1 below; the write-back transcribes the new `file:line` rows into `account-classification-codebase-notes.md`'s 6c sub-table (its `:76–78` already reserves the place: "6c-ops adds the ops KPI panel's rows to the second").
 
 ---
 
@@ -429,9 +429,7 @@ On insgt-ops `feat/headshot-host-roi-panel`: 1eb796c4 `feat: add the headshot ev
 - Vite hands a build error buffered while no browser is connected to the next page that connects. It shows up as an element "covered by" `<pre class="frame">` or `<div class="tip">` during sign-in, in a run that has nothing to do with it.
 - `node_modules` had lost the `@typescript-eslint` plugins before this session; `npm install --no-audit --no-fund` restored them. npm then wanted to add 690 lockfile lines; the lockfile was put back to its pre-install copy.
 
-## Next
+## Done
 
-1. `predeploy-review-angular` over the branch diff, with its Codex pass on an rsync copy.
-2. Dan merges.
-3. Release 9.67.0 as event 7. Fill in the runbook's "Steps — event 7" and deploy log.
-4. Write-back: the codebase notes rows and v14.
+Reviewed, merged as cbc88d5a, released 2026-10-19 as 9.67.0. The write-back is the runbook's event
+7 and deploy log, the 6c-ops rows and the 2026-10-19 deploy state in the codebase notes, and v14.
