@@ -4,7 +4,9 @@
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~15 min on the day; the stamp's own check waits for the first headshot
 orders ops creates after the deploy
-**Status:** Draft — written 2026-10-21 for Dan's review; not deployed
+**Status:** **Deployed 2026-10-21** as release v650, at 09:19:57 EDT (13:19:57 UTC), `master` merge
+03384f32 of the five commits. Steps 1–3 done, as expected; steps 4 and 5 wait for the first headshot orders created
+after the deploy.
 
 ## Summary
 
@@ -63,9 +65,9 @@ scheduler's 02:15–02:45 UTC window.
 
 ## Prerequisites
 
-- [ ] Dan has merged `feat/headshot-event-date` (five commits, `3032269c..4c425277`) to `master`;
-      `bundle exec rspec` green (1,997 examples, 0 failures on 2026-10-21)
-- [ ] Step 1 reads `dated event orders 0`. That is what makes the rollback safe: after the push,
+- [x] Dan has merged `feat/headshot-event-date` (five commits, `3032269c..4c425277`) to `master`
+      (03384f32); `bundle exec rspec` green (1,997 examples, 0 failures on 2026-10-21)
+- [x] Step 1 reads `dated event orders 0`. That is what makes the rollback safe: after the push,
       every event order with a date got it from the stamp.
 
 ## Steps
@@ -90,6 +92,9 @@ rollback statement would clear it too; find out where it came from first. On the
 2026-10-19: 0 of 2,679 event orders, `event_date_only` `[996, 1467, 1516]`, null-dated 1, ROI
 2,342 attendees · 204 converts · 151 already customers · 1 pending release. Production may differ if
 1467 or 1516 were set by hand since (plan decision 3): each leaves the list once it carries a source.
+
+Results, 2026-10-21: `dated event orders 0`, so the prerequisite held. The other lines stayed in
+`tmp/headshot-date-before.txt` on the host; step 3 compares against them.
 
 ### 2. Deploy code
 
@@ -116,14 +121,25 @@ Expected, reasoned from the rules before the code existed: the only difference i
 runs moves `null_dated` down and ROI attendees up by the same accounts; re-run step 1's lines to tell
 the two apart.
 
+Results, 2026-10-21:
+```
+1c1
+< dated event orders 0   expect 0
+---
+> dated event orders 0
+```
+
+Only the suffix differs: still no dated event order, and `event_date_only`, null-dated and the ROI
+totals identical before and after the push.
+
 ### 4. The first headshot orders after the deploy
 
 Ops creates attendee orders 1–7 days after an event, so this waits for the first event's batch.
-Replace the time with step 2's release time.
+The time is step 2's release time, 2026-10-21 09:19:57 EDT.
 
 ```bash
 heroku run --no-tty --exit-code rails runner '
-  deployed_at = Time.iso8601("2026-10-22T17:05:00Z")
+  deployed_at = Time.iso8601("2026-10-21T09:19:57-04:00")
   orders = Order.event_attendance.where("orders.created_at >= ?", deployed_at).includes(:order_event).to_a
   events = MarketingEvent.unscoped.where(id: orders.map(&:marketing_event_id)).index_by(&:id)
   puts "1 new event orders #{orders.size} on events #{events.keys.sort.inspect}"
@@ -227,6 +243,12 @@ orders take the new date and differ from the CSV.
 - `docs: update the classification codebase notes for the event-date stamp`.
 
 ## Deploy log
+
+- 2026-10-21: **deployed** as release v650 at 09:19:57 EDT (13:19:57 UTC), `master` merge 03384f32
+  of the five commits `3032269c..4c425277`. No migration. Step 1 before the push: 0 dated event
+  orders. Step 3 after it: the two captures differ only by step 1's `expect 0` suffix, so nothing
+  moved at the push: still 0 dated event orders, and `event_date_only`, null-dated and the ROI totals
+  unchanged. Steps 4 and 5 wait for the first post-deploy event's headshot orders and their release.
 
 - 2026-10-21: **verified on the dev restore** (production sync of 2026-10-19 16:24 UTC). Suite 1,978
   → 1,997 examples, 0 failures; every new spec red first, then green, and each deliberate break red.
