@@ -115,6 +115,11 @@ first-seen time and occurrence count under **Baseline** in the Deploy log below.
 list is a valid baseline, and `UpgradeMarker` is always in it. Every later slice's SH check and the
 quiet week (§2.2) compare against this list.
 
+**The window spans two releases.** It opened on v659 (2026-10-26 09:51:38 -0400); v660 (`02dbb78a`,
+the listing-agent fallback `b51d97ba`) landed at 11:41:37 -0400, about 1 h 50 min in. Record each
+class's first-seen time against that boundary: a class first seen after 11:41 may come from v660's
+change rather than from errors Honeybadger was simply seeing for the first time.
+
 ### 6. Development verification (done before the deploy)
 
 Run from the dev container on 2026-10-26 against the same Honeybadger project; results in the Deploy
