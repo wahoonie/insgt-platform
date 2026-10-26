@@ -2,28 +2,29 @@
 
 The `file:line` map for `docs/architecture/rails-upgrade.md`. Read at Phase 0 of every slice; verify the entries the slice depends on before surveying fresh. Flat and factual: file, line, what it is, which slice or survey put it there. Paths are `apps/insgt-api` unless prefixed.
 
-Established by the Phase 0 survey of 2026-10-23 against insgt-api `master` at eda99450 (clean tree) and the platform repo `main`; extended the same day for document v2 (the `belongs_to` classification, the recurring tasks, the Honeybadger and branch facts — sections marked "v2"); extended on 2026-10-26 by slice 0 (insgt-api `chore/rails-upgrade-slice-0`, `d4dd6d9e`, `a641c52b` — rows marked "slice 0" and the Honeybadger gem-source section). Line numbers are as of that commit; a moved line is a reason to update this file, not to distrust it. Rails-source citations name the branch (`7-2-stable`, `8-0-stable`, `8-1-stable`) and the file; they were read on 2026-10-23 and are stable for released versions.
+Established by the Phase 0 survey of 2026-10-23 against insgt-api `master` at eda99450 (clean tree) and the platform repo `main`; extended the same day for document v2 (the `belongs_to` classification, the recurring tasks, the Honeybadger and branch facts — sections marked "v2"); extended on 2026-10-26 by slice 0 (insgt-api `chore/rails-upgrade-slice-0`, `d4dd6d9e`, `a641c52b` — rows marked "slice 0" and the Honeybadger gem-source section); extended the same day by slice 1 (insgt-api `chore/rails-upgrade-slice-1`, `5c9446da`…`a5d9b001` — rows marked "slice 1" and the "Slice 1" section; every row a slice 1 commit moved was re-verified at `a5d9b001`). Line numbers are as of the latest marked commit; a moved line is a reason to update this file, not to distrust it. Rails-source citations name the branch (`7-2-stable`, `8-0-stable`, `8-1-stable`) and the file; they were read on 2026-10-23 and are stable for released versions.
 
 ## Gemfile and lockfile
 
 | File | Line | What it is | Slice / commit |
 | :-- | :-- | :-- | :-- |
 | `Gemfile` | 4 | `ruby '3.4.10'` — unchanged by every slice (§2) | survey |
-| `Gemfile` | 28 | `gem 'rails', '~> 7.2.0'` — the only line the three version slices edit (`~> 7.2.4`, `~> 8.0.5`, `~> 8.1.4`) | survey; slices 1–3 |
-| `Gemfile` | 33 | `gem 'sidekiq', '~> 7.0'` — stays on 7.3.x (§3, OD5) | survey |
-| `Gemfile` | 35 | `gem 'string_utils'` — 2012 gem, `urlify` only (see "Gems with Rails coupling") | survey |
-| `Gemfile` | 37 | `gem 'strong_migrations'` | survey |
-| `Gemfile` | 39, 41 | the `zip_tricks` TODO and `gem 'zipline'` — zipline caps actionpack `< 8.2` (§3) | survey |
-| `Gemfile.lock` | 378 | `rails (7.2.3)`; the thirteen `= 7.2.3` component pins sit at 4–65 and 379–391 | survey |
-| `Gemfile.lock` | 295–296 | `minitest (6.0.1)` — 7.2.4's activesupport pins `minitest < 6`, so slice 1's lock downgrades it | survey |
-| `Gemfile.lock` | 367 | `rack (3.2.4)`; 7.2.x keeps the `rack < 3.3` cap, 8.x drops it | survey |
-| `Gemfile.lock` | 459–466 | `rspec-rails (8.0.4)` (`actionpack >= 7.2`) | survey |
-| `Gemfile.lock` | 508–509 | `shoulda-matchers (7.0.1)` (`activesupport >= 7.1`; 7.0.0 added Rails 8.1 support) | survey |
-| `Gemfile.lock` | 510–520 | `sidekiq (7.3.10)` (`rack >= 2.2.4, < 3.3`), `sidekiq-status (4.0.0)` (`sidekiq >= 7, < 9`) | survey |
-| `Gemfile.lock` | 528–530 | `string_utils (1.0.8)` (`activesupport >= 2.3.5`) | survey |
-| `Gemfile.lock` | 533–534 | `strong_migrations (2.8.0)` (`activerecord >= 7.2`) | survey |
-| `Gemfile.lock` | 568–571 | `zipline (2.2.0)` (`actionpack >= 6.0, < 8.2`) | survey |
-| `Gemfile.lock` | 864–868 | `RUBY VERSION ruby 3.4.10`, `BUNDLED WITH 4.0.4` | survey |
+| `Gemfile` | 29 | `gem 'rails', '~> 7.2.4'` (was `~> 7.2.0` at 28 before slice 0 inserted line 15) — the only line the three version slices edit (`~> 7.2.4` done; `~> 8.0.5`, `~> 8.1.4` next) | survey; slice 1 `5c9446da` |
+| `Gemfile` | 34 | `gem 'sidekiq', '~> 7.0'` — stays on 7.3.x (§3, OD5) | survey; +1 since slice 0 |
+| `Gemfile` | 36 | `gem 'string_utils'` — 2012 gem, `urlify` only (see "Gems with Rails coupling") | survey; +1 since slice 0 |
+| `Gemfile` | 38 | `gem 'strong_migrations'` | survey; +1 since slice 0 |
+| `Gemfile` | 40, 42 | the `zip_tricks` TODO and `gem 'zipline'` — zipline caps actionpack `< 8.2` (§3) | survey; +1 since slice 0 |
+| `Gemfile.lock` | 380 | `rails (7.2.4)`; the thirteen components at `7.2.4` with their `(= 7.2.4)` pins; `DEPENDENCIES` `rails (~> 7.2.4)` at 618 | slice 1 `5c9446da` |
+| `Gemfile.lock` | 298 | `minitest (5.27.0)` — downgraded from 6.0.1 because 7.2.4's activesupport pins `minitest < 6`; its `prism (~> 1.5)` sub-dependency line went with it (`prism (1.9.0)` stays at 357) | slice 1 `5c9446da` |
+| `Gemfile.lock` | 70, 74 | under `activesupport`: `connection_pool (>= 2.2.5, < 3)` and `minitest (>= 5.1, < 6)` — 7.2.4's gemspec constraints; `connection_pool (2.5.5)` at 126 is inside the cap | slice 1 `5c9446da` |
+| `Gemfile.lock` | 369 | `rack (3.2.4)`; 7.2.x keeps the `rack < 3.3` cap, 8.x drops it | survey; re-verified slice 1 |
+| `Gemfile.lock` | 461 | `rspec-rails (8.0.4)` (`actionpack >= 7.2`) | survey; re-verified slice 1 |
+| `Gemfile.lock` | 510 | `shoulda-matchers (7.0.1)` (`activesupport >= 7.1`; 7.0.0 added Rails 8.1 support) | survey; re-verified slice 1 |
+| `Gemfile.lock` | 512, 518 | `sidekiq (7.3.10)` (`rack >= 2.2.4, < 3.3`), `sidekiq-status (4.0.0)` (`sidekiq >= 7, < 9`) | survey; re-verified slice 1 |
+| `Gemfile.lock` | 530 | `string_utils (1.0.8)` (`activesupport >= 2.3.5`) | survey; re-verified slice 1 |
+| `Gemfile.lock` | 535 | `strong_migrations (2.8.0)` (`activerecord >= 7.2`) | survey; re-verified slice 1 |
+| `Gemfile.lock` | 570 | `zipline (2.2.0)` (`actionpack >= 6.0, < 8.2`) | survey; re-verified slice 1 |
+| `Gemfile.lock` | 868, 871 | `RUBY VERSION ruby 3.4.10`, `BUNDLED WITH 4.0.4` | survey; re-verified slice 1 |
 | `Gemfile` | 15 | `gem 'honeybadger', '~> 6.10'` (locked 6.10.0; runtime deps `logger`, `ostruct`, both already locked; Ruby `>= 3.0.0`; docs: Rails `>= 5.2`, Sidekiq "any") — the one gem added outside `rails` (§2.6); `~> 6.10` blocks a major bump | v2; slice 0 `d4dd6d9e` |
 
 Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-adapter`, `rgeo`, `sentry`, `rollbar`, `newrelic`, `image_processing`, `ruby-vips`, `mini_magick`, `bootsnap`, `brakeman`, `thruster`, `kamal`, `solid_queue`, `solid_cache`, `solid_cable`.
@@ -34,7 +35,7 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | :-- | :-- | :-- | :-- |
 | `config/application.rb` | 3 | `require 'rails/all'` — loads Active Storage, Action Cable, Action Text, Action Mailbox and the test-unit railtie even though none is used; drives `app:update`'s `skip_*` derivation (§4.2) | survey |
 | `config/application.rb` | 12 | `config.load_defaults 7.2` — bumped to `8.1` only in slice 5b | survey; slice 5 |
-| `config/application.rb` | — | `config.active_storage.draw_routes = false` — does not exist yet; added by slice 1 (OD2) | v2; slice 1 |
+| `config/application.rb` | 38–41 | the why-comment and `config.active_storage.draw_routes = false` (OD2) — the line OrderProcessingNote's design revisits (§8 item 7) | slice 1 `3a6b8e2e` |
 | `config/application.rb` | 17, 20–21 | `config.autoload_lib(ignore: %w[assets tasks])` plus the older `autoload_paths += Dir["lib/**/"]` / `eager_load_paths << lib` (redundant; §8) | survey |
 | `config/application.rb` | 24–25 | `config.hosts << 'api.insightphotos.net'`, `'insgtapi.herokuapp.com'` | fb2e1924 |
 | `config/application.rb` | 36 | `config.api_only = true` | survey |
@@ -44,16 +45,18 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `config/environments/production.rb` | 45, 48 | `config.force_ssl = true`; `ssl_options` excludes `/up` from the redirect | 7fe510d1 |
 | `config/environments/production.rb` | 51–56 | `config.logger` = `ActiveSupport::Logger.new(STDOUT)` wrapped in `TaggedLogging`; `log_tags = [:request_id]` — the 8.x template would replace this with `TaggedLogging.logger(STDOUT)` (§4.2 reject) | survey |
 | `config/environments/production.rb` | 36–38 | the commented `config.action_cable.mount_path` / `url` / `allowed_request_origins` lines — removed by §8 item 7 (OD6) together with `development.rb:69` and `config/cable.yml` | v2 |
-| `config/environments/production.rb` | 83 | `config.active_support.report_deprecations = false` — silences every deprecator (`7-2-stable activesupport/lib/active_support/railtie.rb:66–70`); slice 1 flips it to `true` and adds `config.active_support.deprecation = :notify` (OD8) | survey; slice 1 |
-| `config/environments/production.rb` | 86 | `dump_schema_after_migration = false` | survey |
-| `config/environments/production.rb` | 99 | `host_authorization` excludes `/up` | 7fe510d1 |
-| `config/environments/production.rb` | 101–111 | SendGrid SMTP: `delivery_method = :smtp`, `default_url_options` from `MAILER_URL`, `ActionMailer::Base.smtp_settings` with `SENDGRID_API_KEY` — the reason `app:update`'s production template is rejected (§4.2) | survey |
+| `config/environments/production.rb` | 82–85 | the comment, `config.active_support.report_deprecations = true` (84; was `false` at 83, which silenced every deprecator — `railtie.rb:66–70`) and `config.active_support.deprecation = :notify` (85) — every registered deprecator emits `deprecation.<gem>` (OD8). `report_deprecations` is set nowhere else (grep) | survey; slice 1 `e54247cb` |
+| `config/environments/production.rb` | 88 | `dump_schema_after_migration = false` | survey; +2 since slice 1 |
+| `config/environments/production.rb` | 101 | `host_authorization` excludes `/up` | 7fe510d1; +2 since slice 1 |
+| `config/environments/production.rb` | 103–113 | SendGrid SMTP: `delivery_method = :smtp`, `default_url_options` from `MAILER_URL`, `ActionMailer::Base.smtp_settings` with `SENDGRID_API_KEY` — the reason `app:update`'s production template is rejected (§4.2) | survey; +2 since slice 1 |
 | `config/environments/test.rb` | 29 | `show_exceptions = :rescuable` | survey |
 | `config/environments/test.rb` | 39 | `host_authorization = { exclude: ->(_request) { true } }` | survey |
 | `config/environments/test.rb` | 42 | `config.active_storage.service = :test` | survey |
-| `config/environments/test.rb` | 58 | `config.active_support.deprecation = :stderr` — slice 1 changes this to `:raise` | survey; slice 1 |
+| `config/environments/test.rb` | 57–58 | `config.active_support.deprecation = :raise` (was `:stderr`) — the deprecation gate; the contract spec asserts both the value and that every registered deprecator raises | survey; slice 1 `f5b30e12` |
+| `config/environments/test.rb` | 18 | `config.eager_load = ENV["CI"].present?` — locally the suite loads only what specs touch, so `:raise` never sees a class-body deprecation in an untouched class (§8 item 19) | slice 1 |
+| `config/environments/development.rb` | 19 | `config.server_timing = true` — `ActionDispatch::ServerTiming` subscribes to every event, so `listening?("deprecation.rails")` is `true` in development whatever the reporter does; production leaves it at the default `false` | slice 1 |
 | `config/honeybadger.yml` | 23–51 | no `api_key`, `env` or `root` (ENV and the railtie supply them). `report_data: false` top-level (23; covers any name `HONEYBADGER_ENV` supplies, which matches no section) then `development`/`test` false and `production` true (25–32); `insights.enabled: false` (36–37); `breadcrumbs.logging.enabled: false` (43–45); `sidekiq.attempt_threshold: 0` (50–51); `request.filter_keys` deliberately unset (a list replaces the gem default that filters `HTTP_AUTHORIZATION`) | slice 0 `d4dd6d9e` |
-| `README.md` | 140–144 | the 2015 add-on list: `newrelic:wayne`, `papertrail:choklad` (the log drain slice 1's Active Storage history grep looks for), `sendgrid:starter`, `scheduler:standard` | v2 |
+| `README.md` | 140–144 | the 2015 add-on list: `newrelic:wayne`, `papertrail:choklad` (the log drain slice 1's Active Storage history grep looks for), `sendgrid:starter`, `scheduler:standard`. **Stale** (`heroku addons --app insgtapi`, Dan, 2026-10-26): `papertrail (giving-idly-5477)` on plan `fixa` (about fourteen days searchable in the UI), `fixie tricycle`, `heroku-postgresql essential-1`, `rediscloud 100`, `scheduler standard`, `sendgrid silver`; no New Relic. A README fix belongs in a later insgt-api `docs:` commit | v2; slice 1 |
 | `README.md` | 146–148 | "several cron jobs setup to run under the Heroku Scheduler add on" — the cadence lives in the Heroku dashboard, not the repo (UNVERIFIED) | v2 |
 | `README.md` | 162–170 | the migrating-deploy recipe (`pg:backups:capture`, `maintenance:on`, `git push heroku master`, `db:migrate`, `restart`, `maintenance:off`) — the upgrade slices need only the push and `heroku rollback` (§2.5) | v2 |
 | `config/environments/test.rb` | 61, 64 | `disallowed_deprecation = :raise`, `disallowed_deprecation_warnings = []` | survey |
@@ -75,13 +78,13 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | :-- | :-- | :-- | :-- |
 | `config/initializers/new_framework_defaults.rb` | 10 | `action_controller.per_form_csrf_tokens = false` — inert: CSRF verification is skipped (see `application_controller.rb:2–3`); deleted with the file in slice 5b | Rails 5.0 shim, 2bfb1f01 |
 | `config/initializers/new_framework_defaults.rb` | 13 | `action_controller.forgery_protection_origin_check = false` — inert, same reason; deleted with the file in slice 5b | Rails 5.0 shim |
-| `config/initializers/new_framework_defaults.rb` | 17 | `ActiveSupport.to_time_preserves_timezone = false` — the **only** Rails deprecation in the baseline; removed in slice 1 (§4.1) | Rails 5.0 shim; slice 1 |
-| `config/initializers/new_framework_defaults.rb` | 18–20 | the comment and `active_record.belongs_to_required_by_default = false` — **removed, not relocated, in slice 4** (rule D′, §4.5, OD4); see "`belongs_to` and column nullability" below for what depends on it | Rails 5.0 shim; slice 4 |
+| `config/initializers/new_framework_defaults.rb` | (15–18) | the `to_time` comment pair, `ActiveSupport.to_time_preserves_timezone = false` (was 17, the **only** Rails deprecation in the baseline) and the blank line after it — **deleted**; `load_defaults 7.2`'s value `true` now stands. Restoring line 17 under `:raise` fails the suite at boot (`ActiveSupport::DeprecationException`, 139 load errors) | Rails 5.0 shim; slice 1 `a59df0b0` |
+| `config/initializers/new_framework_defaults.rb` | 15–16 | the comment and `active_record.belongs_to_required_by_default = false` (was 19–20) — **removed, not relocated, in slice 4** (rule D′, §4.5, OD4); see "`belongs_to` and column nullability" below for what depends on it | Rails 5.0 shim; slice 4 |
 | `config/initializers/new_framework_defaults_6_0.rb` | 1–45 | entirely commented out — dead; deleted in slice 5b | survey |
 | `config/initializers/new_framework_defaults_7_2.rb` | 1–70 | entirely commented out — dead (`load_defaults 7.2` already applies all of it); deleted in slice 5b | survey |
 | `config/initializers/new_framework_defaults_8_0.rb` | — | does not exist; generated by slice 2's `app:update`, with only `to_time_preserves_timezone = :zone` uncommented (§4.3); that line is deleted in slice 3; rows 2–3 of §4.6 flipped in 5a; the file deleted in 5b | slices 2, 3, 5 |
 | `config/initializers/new_framework_defaults_8_1.rb` | — | does not exist; generated by slice 3's `app:update`, all commented; flipped and deleted in slice 5b | slices 3, 5 |
-| `config/initializers/deprecation_reporting.rb`, `app/services/deprecation_reporter.rb` | — | do not exist; slice 1 adds the production-only `/\Adeprecation\./` subscriber and the once-per-message Honeybadger reporter (§4.2, OD8) | v2; slice 1 |
+| `config/initializers/deprecation_reporting.rb` | 17 | `Rails.application.config.to_prepare { DeprecationReporter.subscribe } if Rails.env.production?` — see the "Slice 1" section for why `to_prepare` | slice 1 `e54247cb` |
 | `config/initializers/strong_migrations.rb` | 7 | `start_after = 20260806120000` | pre-survey |
 | `config/initializers/strong_migrations.rb` | 11–12, 14 | Heroku Postgres essential-1 reports PG 15.17 (2026-08-07); "REVISIT AT THE RENDER.COM CUTOVER" | pre-survey |
 | `config/initializers/strong_migrations.rb` | 18 | `target_version = 15` — never edited by this upgrade (§2 trap) | pre-survey |
@@ -102,7 +105,10 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 
 | File / command | Line | What it is | Slice / commit |
 | :-- | :-- | :-- | :-- |
-| `bin/rails routes` | — | 592 routes; **9** are Active Storage (`/rails/active_storage/{blobs,representations,disk,direct_uploads}`), drawn because `rails/all` loads the engine and `draw_routes` is unset (grep `draw_routes` in `config/`: empty); **turned off in slice 1** (OD2) | survey; slice 1 |
+| `bin/rails routes` | — | 592 routes at the survey, **9** of them Active Storage (`/rails/active_storage/{blobs,representations,disk,direct_uploads}`), drawn because `rails/all` loads the engine and `draw_routes` was unset. After slice 1: **583, 0 Active Storage**; `POST /rails/active_storage/direct_uploads` → 404 (was 400, `ParameterMissing`) | survey; slice 1 `3a6b8e2e` |
+| every repo under `apps/`, `lib/`, `functions/` | — | slice 1 audit (2026-10-26): no `rails_blob_*`, `rails_representation_*`, `rails_storage_*`, `rails_disk_service`, `rails_direct_uploads`, `DirectUpload`, `@rails/activestorage` or `/rails/active_storage`; every `url_for` hit is an app method of that name. `insgt-galleries` and `insgt-virtual-tour` comment out `require "active_storage/engine"` (`config/application.rb:8`) | slice 1 |
+| dev restore (latest order 2026-10-24) | — | slice 1 audit: no `active_storage_*` table; 0 of 229 text/varchar/json columns in 52 tables contain `rails/active_storage`. Hosts in the 50 URL-like columns: S3 buckets (`insight-public`, `insgt-video`, `insgt-youtube`, `insgt360`, `insgt360stock`, `insgt-misc`, `insgt-site-data`), Matterport, YouTube, Vimeo, Zillow, the tour domains, customer sites — never the API host | slice 1 |
+| `lib/cloudfare.rb`, `app/models/concerns/s3_image_handler.rb`, `lib/image_handler.rb` | 15; 271; 40–46, 123, 129 | the media URL builders: `"#{ENV['IMAGE_HANDLER_ENDPOINT']}/<base64 edits>"` (the image handler, `d2e08hhdrjhri.cloudfront.net`), `https://<bucket>.s3-us-west-1.amazonaws.com/<key>`, presigned S3 upload/download URLs — no Rails route in any | slice 1 |
 | `insgt-platform/docs/plans/order-processing-note.md` | 19 | D2: `has_many_attached :attachments` via Active Storage on S3, an image thumbnail variant for the ops list, signed URLs for video — why the engine stays (OD6) and where the routes-off line is revisited (§8 item 7) | v2 |
 | `db/schema.rb` | — | no `active_storage_*` table (grep empty) — a `direct_uploads` POST fails on the missing table | survey |
 | `app/`, `lib/`, `config/`, `spec/` | — | no `has_one_attached`, `has_many_attached`, `variant`, `image_processing` (grep empty) | survey |
@@ -115,6 +121,8 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | :-- | :-- | :-- | :-- |
 | `lib/app_param.rb` | 28–34 | `search_time_params` swaps `Time.zone` to `current_user.time_zone` around parsing | survey |
 | `app/`, `lib/` | — | `.to_time` appears nowhere (grep empty); `in_time_zone` 25 sites, `Time.zone` 14, `Time.now` 135, `.to_date` 26, `strftime` 54 | survey |
+| `app/helpers/orders_helper.rb` | 93 | `time_ago_in_words(timestamp)` — the one indirect `to_time` caller found (slice 1 review); an elapsed time, unchanged by the offset step | slice 1 |
+| `spec/architecture/rails_upgrade_spec.rb` | — | pins `ActiveSupport.to_time_preserves_timezone == true` and the Pacific `to_time.utc_offset == -25_200` (2026-10-23 10:00); restoring the old line gives `false` and `0` in the container (`date +%z` → `+0000`) | slice 1 `a59df0b0` |
 | `7-2-stable railties/lib/rails/application/configuration.rb` | 117 | `load_defaults "5.0"` sets `ActiveSupport.to_time_preserves_timezone = true` directly | source |
 | `7-2-stable activesupport/lib/active_support.rb` | 117–125 | writer warns `unless value` ("pre-Ruby 2.4 behavior … removed in Rails 8.0") | source |
 | `8-0-stable railties/.../configuration.rb` | 119, 337–348 | `5.0` sets the config key to `:offset`; `8.0` sets `:zone`, `strict_freshness = true`, `Regexp.timeout ||= 1` | source |
@@ -203,13 +211,17 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `spec/support/sidekiq.rb` | 6–8 | `require 'sidekiq/testing'`; `Sidekiq::Testing.fake!` | survey |
 | `spec/support/sql_helpers.rb` | 11–21 | `sql_for` subscribes to `sql.active_record`, skipping `SCHEMA`/`TRANSACTION` by `payload[:name]` | survey |
 | `spec/support/stripe.rb`, `spec/support/geocoder.rb` | — | the Stripe and Geocoder stubs | survey |
-| `spec/models/postal_code_spec.rb` | 110–141 | `#nearby_cities` (ordered by distance, excludes deleted, excludes no-coordinates) — the haversine check | survey |
+| `spec/models/postal_code_spec.rb` | 110–148 | `#nearby_cities`, **4** examples (ordered by distance, empty without coordinates, excludes deleted, excludes cities without coordinates) — the haversine check (P4). The survey's `110–141` and "3 examples" missed the fourth at 142; the file last changed 2026-05-17 | survey; corrected slice 1 |
 | `spec/lib/stripe_card_spec.rb`, `spec/models/account_stripe_spec.rb`, `spec/models/order_issue_refund_spec.rb`, `spec/models/transaction_charge_failure_spec.rb` | — | the Stripe paths; the last two also assert `ActionMailer::Base.deliveries` | survey |
 | `spec/requests/users_directory_spec.rb` | 11 | `GET /users/directory` — JWT request spec with the pagination `metadata` contract | survey |
 | `spec/requests/orders_processing_parent_pays_spec.rb` | 12 | raw `select_all` path through `OrderSql` | survey |
 | `spec/requests/orders_processing_release_on_spec.rb`, `spec/requests/accounts_most_recent_shoot_spec.rb` | — | the `search_time_params` / time-zone request specs | survey |
 | `spec/workers/property_data_lookup_worker_spec.rb` | 3 | worker `#perform` example | survey |
-| `spec/architecture/account_classification_spec.rb` | — | the existing contract spec and the shape to copy; `spec/architecture/rails_upgrade_spec.rb` is created by slice 1 and extended by every later slice (§4.2–§4.6); `spec/services/deprecation_reporter_spec.rb` is slice 1's | slice 1 |
+| `spec/architecture/account_classification_spec.rb` | — | the existing contract spec and the shape to copy | survey |
+| `spec/architecture/rails_upgrade_spec.rb` | 1–65 | the contract spec, one `describe` per document section; slice 1's 6 examples: the version floor (`>= 7.2.4`, bumped per slice), the `to_time` pair, the gate's config value and its behaviour (every registered deprecator raises), no Active Storage route. Extended by every later slice (§4.2–§4.6) | slice 1 |
+| `spec/requests/active_storage_routes_spec.rb` | 1–14 | `POST /rails/active_storage/direct_uploads` → 404 | slice 1 `3a6b8e2e` |
+| `spec/services/deprecation_reporter_spec.rb` | 1–188 | 14 examples: the notify call, dedupe (`have_received(...).once`), a different message, the same message from another gem, first app frame and fallback, `.subscribe`, `.received?` ×3, the failure path through a real `:notify` deprecator ×4 | slice 1 |
+| slice 1 runs | — | 2026-10-26 on `chore/rails-upgrade-slice-1`: 2,013 at `master` 02dbb78a → **2,034 examples, 0 failures, 0 `DEPRECATION WARNING`** at `a5d9b001`; the 24 rspec-rails `:unprocessable_entity` warnings unchanged (they do not trip `:raise`). Two pre-existing one-second flakes, `spec/lib/tasks/account_classification_rake_spec.rb:156` and `spec/services/account_metrics/calculator_spec.rb:965`, independent of `to_time`; fixed on their own branch after the push | slice 1 |
 | `spec/support/sql_helpers.rb` | 11–21 | `sql_for` — slice 4 measures the extra association loads on an `Order` save with it (§4.5) | survey; slice 4 |
 
 ## Recurring work and workers (v2 — slices 0, 1 and 5)
@@ -220,7 +232,7 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `lib/tasks/scheduler.rake` | 19–23 | slice 0's check-in: `ENV.fetch('HONEYBADGER_CHECKIN_IMPORT_LISTINGS', nil)` then `Honeybadger.check_in(check_in_id) if check_in_id.present?`, after `Crmls.import` (17) so a raise skips it (OD11). Cadence hourly, finishing about :35 UTC (`mls_imports`, dev restore) | slice 0 `a641c52b` |
 | `lib/crmls.rb` | 94–95 | `extract_listings` returns early, without raising, when `mls.import_errors` is non-empty (failed login) — so the check-in means the task finished, not that listings arrived | slice 0 |
 | `lib/crmls.rb` | 63–106, 342, 372, 444–494 | `Crmls.import` and its `rescue`/`ensure` blocks — the regex-dense path 5a watches | v2 |
-| `app/workers/property_data_lookup_worker.rb` | 30–38 | `perform(property_id, force)` → `PropertyFactsService.call`; `rescue StandardError` logs and `update_all`s — the P3 candidate (`perform_async(0)` completes with no external call; ASSUMPTION, the slice plan confirms by reading the service) | v2 |
+| `app/workers/property_data_lookup_worker.rb` | 30–39 | `perform(property_id, force)` → `PropertyFactsService.call`. `:32–33` rescues `PropertyDataAlreadyFetchedError` and logs "…already has property data, skipping" — **P3's path** (an already-fetched property, `property_data_status: 2`; 174 on the dev restore, ids 1964 … 66237). `:34–39` rescues `StandardError`, logs, `update_all`s and **re-raises** — so v2's `perform_async(0)` ends in `fail`, not `done` (the ASSUMPTION was false) | v2; corrected slice 1 |
 | `app/workers/generate_coordinates_worker.rb` | 24–25 | `klass_name.constantize.find(id)` — `perform_async('NoSuchClass', 1)` raises `NameError` before any geocoding: slice 0's deliberately failing job (a `RecordNotFound` would be ignored by Honeybadger's default list) | v2; slice 0 |
 | sidekiq 7.3.10 `lib/sidekiq/cli.rb` | — | logs `Booted Rails <version> application in <env> environment` at start — the P3/S2 line | v2 |
 
@@ -249,6 +261,7 @@ Runner over every eager-loaded `ApplicationRecord` descendant, 2026-10-23 (the s
 | guides/uptime | monitors are created in the dashboard; success = any 20x by default; "every few minutes"; "Your Honeybadger account comes with uptime monitoring" (trial coverage UNVERIFIED) |
 | getting-started/reporting-errors | `Honeybadger.notify(exception_or_string, error_class:, error_message:, fingerprint:, tags:, context:, force:, sync:, component:, action:)`; `fingerprint` — "The `String` grouping fingerprint of the exception"; `sync: true` "skips the worker" |
 | insights/automatic-instrumentation | instruments Rails, ActiveJob, Sidekiq, Net::HTTP, Puma events; nothing about deprecations — hence slice 1's own subscriber |
+| lib/ruby/getting-started/customizing-error-grouping (read 2026-10-26) | default grouping is the error's location (file, method, line), class and component; `:fingerprint` on `notify` overrides it; "same fingerprint, same error" — context and tags never separate groups. Why slice 1's fingerprint carries the gem name |
 | Rails source | `:notify` behaviour instruments `deprecation.<gem_name>` with `message`, `callstack`, `gem_name`, `deprecation_horizon` (`activesupport/lib/active_support/deprecation/behaviors.rb:37–45`, identical on 7-2 and 8-1); `report_deprecations == false` sets `deprecators.silenced = true` (`activesupport/lib/active_support/railtie.rb:66–70`, 7-2) |
 
 ## Honeybadger — gem source and app touchpoints (slice 0, 2026-10-26)
@@ -292,6 +305,44 @@ disagree with the docs table above, the source wins.
 | `spec/lib/tasks/scheduler_rake_spec.rb` | — | 4 examples: check-in after the import; none when the id is unset or blank; none when the import raises |
 | `insgt-app/src/app/shared/pipes/order/order-payment-link.pipe.ts` | 19 | client page URLs carry `?accessToken=` — cross-origin to the API, so browsers send the origin only as `Referer` |
 
+## Slice 1 — the deprecation reporter and what it rests on (2026-10-26, at `a5d9b001`)
+
+| File | Line | What it is |
+| :-- | :-- | :-- |
+| `app/services/deprecation_reporter.rb` | 1–46 | header and ARCHITECTURE NOTES: scope, the key, the two kinds of frame, why the subscriber rescues |
+| `app/services/deprecation_reporter.rb` | 47–49 | `ERROR_CLASS = 'RailsDeprecation'`, `TAGS = 'deprecation'`, `REPORTED_MESSAGES = Concurrent::Map.new` (process-wide; specs `stub_const` it) |
+| `app/services/deprecation_reporter.rb` | 57–59 | `.subscribe` — `ActiveSupport::Notifications.subscribe(/\Adeprecation\./) { \|event\| report(event.payload) }`, returns the subscriber |
+| `app/services/deprecation_reporter.rb` | 63–67 | `.report` — the subscriber body; rescues `StandardError` into `report_failure` |
+| `app/services/deprecation_reporter.rb` | 74–76 | `.received?(text)` — any claimed key includes `text`; the deploy probe's accessor (wiring, not delivery) |
+| `app/services/deprecation_reporter.rb` | 80–95 | `report_failure` (Honeybadger notice with `deprecation_message` context) and `log_failure` (`[DeprecationReporter] Failed to report …`), each rescued on its own |
+| `app/services/deprecation_reporter.rb` | 108–119 | `#call` — `put_if_absent(identity, true)` before `Honeybadger.notify(message, error_class:, fingerprint: SHA256(identity), tags:, backtrace: raw callstack, context: { gem_name:, deprecation_horizon:, callstack: first_app_frame })` |
+| `app/services/deprecation_reporter.rb` | 125–127, 129–131 | `identity` = `"#{gem_name}: #{message}"` (changing its format regroups every `RailsDeprecation` error); `first_app_frame` = `Rails.backtrace_cleaner.clean(callstack).first \|\| callstack.first` |
+| `bin/rails runner` (development) | — | `Rails.application.deprecators` holds 16: keys `railties active_support action_dispatch active_model action_controller active_record active_job action_mailer action_view active_storage action_cable action_mailbox action_text global_id lograge dotenv`; `gem_name` is `Rails` for 14 (dotenv's included), `GlobalID`, `Lograge`. There is no `:rails` key — `[:railties]` is `Rails.deprecator`. In test all 16 raise |
+
+Rails 7.2.4 (installed gems, read-only):
+
+| File | Line | What it is |
+| :-- | :-- | :-- |
+| `railties/lib/rails/application/finisher.rb` | 18 | `setup_main_autoloader` — after `config/initializers`, so an initializer cannot reference `app/services` (`NameError`; probed) |
+| `railties/lib/rails/application/finisher.rb` | 65–69, 73–75, 77–90, 93–95 | `to_prepare` blocks registered → run (`prepare!`) → `eager_load!` → `after_initialize` hooks |
+| `railties/lib/rails/application/finisher.rb` | 192–201 | reloading off → `app.reloader.check = lambda { false }`, so `reloader.wrap` (Sidekiq, `sidekiq/rails.rb:26`) never re-runs `to_prepare` (probed: one listener after 5 reloader and 5 executor wraps) |
+| `activesupport/lib/active_support/notifications/fanout.rb` | 21–43 | `iterate_guarding_exceptions` — a single subscriber's error is re-raised as itself (more than one → `InstrumentationSubscriberError`) into the instrumenting code |
+| `activesupport/lib/active_support/deprecation/deprecators.rb` | 41–44 | `each` without a block returns an enumerator; the collection is not `Enumerable` (`map` raises `NoMethodError`) |
+| `activesupport/lib/active_support/deprecation/behaviors.rb` | 13, 37–45 | `DEFAULT_BEHAVIORS` (behaviours are lambdas; `DEFAULT_BEHAVIORS.key(b)` names them); `:notify` instruments `deprecation.<gem_name>` with `message`, `callstack`, `gem_name`, `deprecation_horizon` |
+| `activesupport/lib/active_support/deprecation/reporting.rb` | 18–29 | `warn` — `caller_locations(2)`; the full message `DEPRECATION WARNING: <text> (called from <label> at <file:line>)` names no deprecator |
+| `railties/lib/rails/backtrace_cleaner.rb` | 8, 13–26 | `APP_DIRS_PATTERN` `app\|config\|lib\|test` after stripping `Rails.root/` — `spec/` frames are silenced; on Heroku gems sit under `/app/vendor/bundle`, which the pattern also silences |
+
+Honeybadger 6.10.0 (installed gem, read-only):
+
+| File | Line | What it is |
+| :-- | :-- | :-- |
+| `agent.rb` | 128–144 | `notify` — a non-Exception, non-Hash first argument becomes `error_message` |
+| `notice.rb` | 211, 326–328 | `backtrace` = `opts[:backtrace]` or the exception's or `caller`; an empty array is truthy and would be used |
+| `notice.rb` | 167–185 | backtrace filters substitute `[GEM_ROOT]` (each `Gem.path`) and `[PROJECT_ROOT]` (`config.root_regexp`) |
+| `backtrace.rb` | 79–81 | `application?` — the frame begins `[PROJECT_ROOT]` and not `[PROJECT_ROOT]/vendor`; why the reporter sends the raw callstack |
+| `singleton.rb` | 34 | `Honeybadger.flush` delegates to the agent (S-DEP) |
+| `config/env.rb` | 6 | `HONEYBADGER_<KEY>` env vars; `HONEYBADGER_REPORT_DATA=false` reads `false` in a runner (the deploy probe's guard) |
+
 ## Gems with Rails coupling (installed sources, read-only)
 
 | Gem | File | Line | What it is |
@@ -313,7 +364,9 @@ Branch facts (OD9, verified 2026-10-23): the platform repo's `origin/HEAD` is `m
 | `insgt-platform/docs/architecture/rails-upgrade.md` | the design document this file maps |
 | `insgt-platform/docs/architecture/rails-upgrade-slices/slice-N.md` | the slice prompts (Phase 2) |
 | `insgt-platform/docs/runbooks/README.md` | runbook conventions (`Status:` header, `## Deploy log`); each slice writes `deploy-rails-upgrade-N.md` in that shape |
-| `insgt-platform/docs/runbooks/deploy-rails-upgrade-0.md` | slice 0's runbook: deploy steps, S0–S2/S9, the dev verification log (notice ids), and — after 24 h — the Honeybadger baseline every later slice's SH check compares against |
+| `insgt-platform/docs/runbooks/deploy-rails-upgrade-0.md` | slice 0's runbook: deploy steps, S0–S2/S9, the dev verification log (notice ids), and — after 24 h — the Honeybadger baseline every later slice's SH check compares against (its window spans v659 and v660) |
+| `insgt-platform/docs/runbooks/deploy-rails-upgrade-1.md` | slice 1's runbook: the eight commits, the Active Storage audit, the pre-push production-config probe, the v660 "before" captures, S-DEP, and the development verification and review log |
+| `insgt-platform/docs/plans/rails-upgrade-slice-1.md` | slice 1's Phase 0–1 plan (untracked) |
 | `insgt-platform/docs/runbooks/deploy-headshot-event-date.md` | the newest runbook, the shape to copy (`deploy-rails-upgrade-<N>.md`, one per slice; slice 0's also records the Honeybadger baseline, §4.1) |
 | `insgt-platform/docs/plans/order-processing-note.md` | the decided OrderProcessingNote design (D2 at line 19 keeps Active Storage) |
 | `insgt-platform/docs/architecture/account-classification-codebase-notes.md` | `db/schema.rb` line ranges cited there are unaffected unless slice 3's re-dump changes more than the header (OD7) |
