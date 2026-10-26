@@ -2,7 +2,7 @@
 
 The `file:line` map for `docs/architecture/rails-upgrade.md`. Read at Phase 0 of every slice; verify the entries the slice depends on before surveying fresh. Flat and factual: file, line, what it is, which slice or survey put it there. Paths are `apps/insgt-api` unless prefixed.
 
-Established by the Phase 0 survey of 2026-10-23 against insgt-api `master` at eda99450 (clean tree) and the platform repo `main`; extended the same day for document v2 (the `belongs_to` classification, the recurring tasks, the Honeybadger and branch facts — sections marked "v2"). Line numbers are as of that commit; a moved line is a reason to update this file, not to distrust it. Rails-source citations name the branch (`7-2-stable`, `8-0-stable`, `8-1-stable`) and the file; they were read on 2026-10-23 and are stable for released versions.
+Established by the Phase 0 survey of 2026-10-23 against insgt-api `master` at eda99450 (clean tree) and the platform repo `main`; extended the same day for document v2 (the `belongs_to` classification, the recurring tasks, the Honeybadger and branch facts — sections marked "v2"); extended on 2026-10-26 by slice 0 (insgt-api `chore/rails-upgrade-slice-0`, `d4dd6d9e`, `a641c52b` — rows marked "slice 0" and the Honeybadger gem-source section). Line numbers are as of that commit; a moved line is a reason to update this file, not to distrust it. Rails-source citations name the branch (`7-2-stable`, `8-0-stable`, `8-1-stable`) and the file; they were read on 2026-10-23 and are stable for released versions.
 
 ## Gemfile and lockfile
 
@@ -24,9 +24,9 @@ Established by the Phase 0 survey of 2026-10-23 against insgt-api `master` at ed
 | `Gemfile.lock` | 533–534 | `strong_migrations (2.8.0)` (`activerecord >= 7.2`) | survey |
 | `Gemfile.lock` | 568–571 | `zipline (2.2.0)` (`actionpack >= 6.0, < 8.2`) | survey |
 | `Gemfile.lock` | 864–868 | `RUBY VERSION ruby 3.4.10`, `BUNDLED WITH 4.0.4` | survey |
-| `Gemfile` | — | `gem 'honeybadger'` — does not exist yet; added by slice 0 (6.10.0, 2026-10-21; runtime deps `logger`, `ostruct`; Ruby `>= 3.0.0`; docs: Rails `>= 5.2`, Sidekiq "any") — the one gem added outside `rails` (§2.6) | v2; slice 0 |
+| `Gemfile` | 15 | `gem 'honeybadger', '~> 6.10'` (locked 6.10.0; runtime deps `logger`, `ostruct`, both already locked; Ruby `>= 3.0.0`; docs: Rails `>= 5.2`, Sidekiq "any") — the one gem added outside `rails` (§2.6); `~> 6.10` blocks a major bump | v2; slice 0 `d4dd6d9e` |
 
-Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-adapter`, `rgeo`, `honeybadger` (until slice 0), `sentry`, `rollbar`, `newrelic`, `image_processing`, `ruby-vips`, `mini_magick`, `bootsnap`, `brakeman`, `thruster`, `kamal`, `solid_queue`, `solid_cache`, `solid_cable`.
+Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-adapter`, `rgeo`, `sentry`, `rollbar`, `newrelic`, `image_processing`, `ruby-vips`, `mini_magick`, `bootsnap`, `brakeman`, `thruster`, `kamal`, `solid_queue`, `solid_cache`, `solid_cable`.
 
 ## Application and environments
 
@@ -52,7 +52,7 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `config/environments/test.rb` | 39 | `host_authorization = { exclude: ->(_request) { true } }` | survey |
 | `config/environments/test.rb` | 42 | `config.active_storage.service = :test` | survey |
 | `config/environments/test.rb` | 58 | `config.active_support.deprecation = :stderr` — slice 1 changes this to `:raise` | survey; slice 1 |
-| `config/honeybadger.yml` | — | does not exist yet; slice 0 adds it without the API key (ENV `HONEYBADGER_API_KEY`), with `report_data` explicit per environment, `insights: enabled: false`, `sidekiq: attempt_threshold: 0` | v2; slice 0 |
+| `config/honeybadger.yml` | 23–51 | no `api_key`, `env` or `root` (ENV and the railtie supply them). `report_data: false` top-level (23; covers any name `HONEYBADGER_ENV` supplies, which matches no section) then `development`/`test` false and `production` true (25–32); `insights.enabled: false` (36–37); `breadcrumbs.logging.enabled: false` (43–45); `sidekiq.attempt_threshold: 0` (50–51); `request.filter_keys` deliberately unset (a list replaces the gem default that filters `HTTP_AUTHORIZATION`) | slice 0 `d4dd6d9e` |
 | `README.md` | 140–144 | the 2015 add-on list: `newrelic:wayne`, `papertrail:choklad` (the log drain slice 1's Active Storage history grep looks for), `sendgrid:starter`, `scheduler:standard` | v2 |
 | `README.md` | 146–148 | "several cron jobs setup to run under the Heroku Scheduler add on" — the cadence lives in the Heroku dashboard, not the repo (UNVERIFIED) | v2 |
 | `README.md` | 162–170 | the migrating-deploy recipe (`pg:backups:capture`, `maintenance:on`, `git push heroku master`, `db:migrate`, `restart`, `maintenance:off`) — the upgrade slices need only the push and `heroku rollback` (§2.5) | v2 |
@@ -65,7 +65,7 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `config/cable.yml` | 7–10 | production `redis` adapter on `REDIS_URL` — unused (no Action Cable code) | survey |
 | `config/secrets.yml`, `config/secrets.yml.rb` | 13, 16, 21 | tracked, dead since 7.2 removed `Rails.application.secrets`; carry literal dev/test `secret_key_base` values (§8) | survey |
 | `config/newrelic.yml`, `config/elasticsearch.yml`, `config/spring.rb`, `bin/spring`, `bin/update` | — | orphaned (no matching gem); `bin/dev` does not exist in this repo — the platform's `bin/dev` drives `Procfile.dev` (§8) | survey |
-| `config/sidekiq_status.rb` | 1–15 | configures the sidekiq-status middleware; nothing requires this file (grep empty) and `config/sidekiq.yml` is absent — UNVERIFIED whether it loads in production (§8) | survey |
+| `config/sidekiq_status.rb` | 1–15 | configures the sidekiq-status middleware; nothing requires this file (grep empty) and `config/sidekiq.yml` is absent — UNVERIFIED whether it loads in production (§8). Slice 0 observed `Sidekiq::Status::status(jid) => nil` and `get_all => {}` in development for a job that ran — the middleware is not installed there (§4.0 P3, v3) | survey; slice 0 |
 | `Procfile` | 1–2 | `web: bundle exec puma -C config/puma.rb`; `backgroundworker: bundle exec sidekiq -c 4`; no release phase | survey |
 | `.env` | — | sets `SECRET_KEY_BASE` (8.0.2+/8.1 use it in dev/test instead of `tmp/local_secret.txt`; no cookies or verifiers in app code, so inert) | survey |
 
@@ -88,7 +88,7 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `config/initializers/json_param_key_transform.rb` | 2–6 | replaces `ActionDispatch::Request.parameter_parsers[:json]` with a deep-underscoring parser (`deep_transform_keys!`) | survey |
 | `config/initializers/wrap_parameters.rb` | 7–9 | `wrap_parameters format: [:json]` — untouched by 8.0/8.1 | survey |
 | `config/initializers/cors.rb` | 8–55 | customised `Rack::Cors` allow-list (`:41` names the Lambda photo resizer) — why the template `cors.rb` is rejected | survey |
-| `config/initializers/filter_parameter_logging.rb` | 4–8 | customised filter list (`password password_confirmation code token passw email secret key crypt salt certificate otp ssn phone phone_number phone_number_formatted`, partial-matched) — template rejected; **reused by Honeybadger** ("In Rails, this also includes existing params filters", configuration reference) and reviewed in slice 0 against the `Authorization` header and Stripe fields | survey; slice 0 |
+| `config/initializers/filter_parameter_logging.rb` | 4–8 | customised filter list (`password password_confirmation code token passw email secret key crypt salt certificate otp ssn phone phone_number phone_number_formatted`, partial-matched) — template rejected; **reused by Honeybadger for request notices only** (read from the request's `action_dispatch.parameter_filter`, gem `notice.rb:576–582`; Sidekiq job args never pass through it). Partial match filters `area_code` (via `code`) and `access_token` (via `token`); a bare `number` param goes in clear. Reviewed in slice 0 on a real notice | survey; slice 0 |
 | `config/initializers/inflections.rb` | — | identical to the stock template (no acronyms) | survey |
 | `config/initializers/content_security_policy.rb`, `cookies_serializer.rb:5`, `session_store.rb:1` | — | stock files meaningless in an API-only app; `app:update` keeps CSP because it exists; all three are §8 cleanups | survey |
 | `config/initializers/lograge.rb` | 1–7 | lograge enabled outside development; `custom_options` reads only `event.time` | survey |
@@ -217,7 +217,8 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | File | Line | What it is | Slice / commit |
 | :-- | :-- | :-- | :-- |
 | `lib/tasks/scheduler.rake` | 1–18 | the four Heroku Scheduler tasks: `import_order_photos` (`Order.import_processed_photos`), `send_delayed_notifications`, `cleanup_unused_watermarks`, `import_listings` (`Crmls.import` at 17; `Sandicor.import` commented at 16). **No recurring Sidekiq job exists** — workers are enqueued by user activity (`app/models/order.rb` ×4, `transaction.rb` ×2, `property.rb`, `postal_code.rb`, `site_export.rb`, `concerns/order_zip.rb`, `app/services/photo_classifier_service.rb`, `lib/order_image_handler_import.rb`, four rake tasks) | v2 |
-| `lib/tasks/scheduler.rake` | 17 | where slice 0's `Honeybadger.check_in(ENV['HONEYBADGER_CHECKIN_IMPORT_LISTINGS'])` goes, after `Crmls.import` (OD11) | v2; slice 0 |
+| `lib/tasks/scheduler.rake` | 19–23 | slice 0's check-in: `ENV.fetch('HONEYBADGER_CHECKIN_IMPORT_LISTINGS', nil)` then `Honeybadger.check_in(check_in_id) if check_in_id.present?`, after `Crmls.import` (17) so a raise skips it (OD11). Cadence hourly, finishing about :35 UTC (`mls_imports`, dev restore) | slice 0 `a641c52b` |
+| `lib/crmls.rb` | 94–95 | `extract_listings` returns early, without raising, when `mls.import_errors` is non-empty (failed login) — so the check-in means the task finished, not that listings arrived | slice 0 |
 | `lib/crmls.rb` | 63–106, 342, 372, 444–494 | `Crmls.import` and its `rescue`/`ensure` blocks — the regex-dense path 5a watches | v2 |
 | `app/workers/property_data_lookup_worker.rb` | 30–38 | `perform(property_id, force)` → `PropertyFactsService.call`; `rescue StandardError` logs and `update_all`s — the P3 candidate (`perform_async(0)` completes with no external call; ASSUMPTION, the slice plan confirms by reading the service) | v2 |
 | `app/workers/generate_coordinates_worker.rb` | 24–25 | `klass_name.constantize.find(id)` — `perform_async('NoSuchClass', 1)` raises `NameError` before any geocoding: slice 0's deliberately failing job (a `RecordNotFound` would be ignored by Honeybadger's default list) | v2; slice 0 |
@@ -240,7 +241,7 @@ Runner over every eager-loaded `ApplicationRecord` descendant, 2026-10-23 (the s
 
 | Page | Fact |
 | :-- | :-- |
-| gem-reference/configuration | `api_key` ← `HONEYBADGER_API_KEY`; `env` ← `HONEYBADGER_ENV` (Rails uses `Rails.env`); `report_data` ← `HONEYBADGER_REPORT_DATA`, "Defaults to false for "test", "development", and "cucumber" environments"; `development_environments` default `["development", "test", "cucumber"]`; `exceptions.ignore` adds to a built-in list that includes `ActiveRecord::RecordNotFound`; `request.filter_keys` default `['password', 'password_confirmation']` — "In Rails, this also includes existing params filters"; `sidekiq.attempt_threshold` default `0`; `sidekiq.use_component` default `true`; `insights.enabled` default `true` (v6+); no check-in keys in the config file |
+| gem-reference/configuration | `api_key` ← `HONEYBADGER_API_KEY`; `env` ← `HONEYBADGER_ENV` (Rails uses `Rails.env`); `report_data` ← `HONEYBADGER_REPORT_DATA`, "Defaults to false for "test", "development", and "cucumber" environments"; `development_environments` default `["development", "test", "cucumber"]`; `exceptions.ignore` adds to a built-in list that includes `ActiveRecord::RecordNotFound`; `request.filter_keys` default `['password', 'password_confirmation']` — "In Rails, this also includes existing params filters" (the docs page; the 6.10.0 source adds `HTTP_AUTHORIZATION`, see the gem-source table below); `sidekiq.attempt_threshold` default `0`; `sidekiq.use_component` default `true`; `insights.enabled` default `true` (v6+); no check-in keys in the config file |
 | getting-started/performing-check-ins | `Honeybadger.check_in('1MqIo1')` with the id from the project; "Now your task will check in when it's executed periodically by cron, Heroku Scheduler, etc."; "If it ever stops checking in, Honeybadger will notify you." |
 | gem-reference/cli | `honeybadger test` — "Send a test notification from Honeybadger"; `honeybadger install` sets up a new project (writes `config/honeybadger.yml` and sends a test exception, per the Rails guide) — **not used**, the key stays in ENV; `honeybadger deploy` notifies a deployment |
 | integration-guides/rails-exception-tracking | errors reported automatically in web requests, background jobs, rake tasks and `at_exit`; `Rails.error.handle` reported, `Rails.error.record` not |
@@ -249,6 +250,47 @@ Runner over every eager-loaded `ApplicationRecord` descendant, 2026-10-23 (the s
 | getting-started/reporting-errors | `Honeybadger.notify(exception_or_string, error_class:, error_message:, fingerprint:, tags:, context:, force:, sync:, component:, action:)`; `fingerprint` — "The `String` grouping fingerprint of the exception"; `sync: true` "skips the worker" |
 | insights/automatic-instrumentation | instruments Rails, ActiveJob, Sidekiq, Net::HTTP, Puma events; nothing about deprecations — hence slice 1's own subscriber |
 | Rails source | `:notify` behaviour instruments `deprecation.<gem_name>` with `message`, `callstack`, `gem_name`, `deprecation_horizon` (`activesupport/lib/active_support/deprecation/behaviors.rb:37–45`, identical on 7-2 and 8-1); `report_deprecations == false` sets `deprecators.silenced = true` (`activesupport/lib/active_support/railtie.rb:66–70`, 7-2) |
+
+## Honeybadger — gem source and app touchpoints (slice 0, 2026-10-26)
+
+Gem paths are under `honeybadger-6.10.0/lib/honeybadger/` (installed gem, read-only). Where these
+disagree with the docs table above, the source wins.
+
+| File | Line | What it is |
+| :-- | :-- | :-- |
+| `config/defaults.rb` | 261–264 | `request.filter_keys` default `["password", "password_confirmation", "HTTP_AUTHORIZATION"]` — the docs page omits the third |
+| `config/defaults.rb` | 321–324 | `exceptions.rescue_rake` default `!$stdout.tty?` — rake exceptions report on a non-TTY dyno (Heroku Scheduler; UNVERIFIED there) |
+| `config/defaults.rb` | 529–532 | `breadcrumbs.logging.enabled` default `true` (slice 0 sets it false) |
+| `config.rb` | 37, 121–130 | source order Ruby config → ENV → YAML → framework, first source holding a key wins (no merge) — so a YAML `filter_keys` list replaces the default; ENV `HONEYBADGER_REPORT_DATA` beats the YAML |
+| `config.rb` | 57 | the start-up line is `logger.debug` — production at `info` logs nothing from the gem at boot |
+| `config.rb` | 175–179 | `public?`: `report_data` true/false wins, else `!dev?` (any env name outside `development_environments` reports) |
+| `config.rb` | 491 | the YAML section is chosen by `self[:env]`, which `HONEYBADGER_ENV` overrides — `development-check` matches no section |
+| `config/env.rb` | — | `HONEYBADGER_*` vars cast by type; booleans match `true|t|1` |
+| `util/request_hash.rb` | 62–67 | every `HTTP_*` header goes into `cgi_data` |
+| `util/sanitizer.rb` | 28–33 (of `filter_key?`) | key filters are case-insensitive partial regexps |
+| `notice.rb` | 246 | the payload carries `api_key` (how the notice authenticates) — never print a serialized notice |
+| `notice.rb` | 408–415 | `sanitized_breadcrumbs` filters breadcrumb metadata only, never messages |
+| `notice.rb` | 576–582 | `params_filters` = config `filter_keys` + the request's `action_dispatch.parameter_filter`; no request (Sidekiq) → config keys only |
+| `plugins/sidekiq.rb` | error handler | notifies with `parameters:` = the job hash (args unfiltered); the `attempt_threshold` check is skipped when the job's `retry` is false |
+| `plugins/breadcrumbs.rb` | 54–60 | log wrappers prepended to `ActiveSupport::LogSubscriber`, `BroadcastLogger` and `::Logger` only if `breadcrumbs.logging.enabled` at plugin load |
+| `breadcrumbs/active_support.rb` | 23 | SQL breadcrumbs obfuscated |
+| `agent.rb` | 207–216 | `check_in(id)` takes the id or the full check-in URL; returns `response.success?` |
+| `backend/server.rb` | 44–48 | check-in is a synchronous GET; HTTP errors return a failed response, never raise |
+| `backend/null.rb` | 24–26 | the Null backend stubs `check_in` (dev and test) |
+| `cli/install.rb` | 51–80, 105 | `honeybadger install` writes the literal key into `config/honeybadger.yml` and sends a test notice — not used |
+| `cli/test.rb` | 178–180 | `honeybadger test` sends its exception through `Rails.application.call` with a mock env, no `Authorization` header |
+
+| App file | Line | What it is |
+| :-- | :-- | :-- |
+| `lib/app_jwt.rb` | 5, 15 | the JWT arrives in the `Authorization` header (`HTTP_AUTHORIZATION`) |
+| `app/controllers/transactions_controller.rb` | 54 | the Stripe token arrives as `transaction[token]` — filtered by `token` |
+| `app/controllers/accounts_controller.rb` | 163 | logs `params.require(:account).inspect` (unfiltered) — why log breadcrumbs are off |
+| `lib/auth.rb` | 34 | logs the Twilio verification object — likewise |
+| `spec/support/stripe.rb` | 14 | `WebMock.allow_net_connect!` for the whole suite — real HTTP is possible from specs; `report_data` false is the guard |
+| `.env` (gitignored) | — | holds a Honeybadger key in the dev container; dotenv loads it in development and test, so `api_key` is not nil in the suite |
+| `spec/config/honeybadger_spec.rb` | — | 8 examples: suite never reports; production alone reports; no `api_key` in any section; Insights off; log breadcrumbs off; threshold 0; `HTTP_AUTHORIZATION` filtered; a locally serialized request notice free of credentials and logged lines |
+| `spec/lib/tasks/scheduler_rake_spec.rb` | — | 4 examples: check-in after the import; none when the id is unset or blank; none when the import raises |
+| `insgt-app/src/app/shared/pipes/order/order-payment-link.pipe.ts` | 19 | client page URLs carry `?accessToken=` — cross-origin to the API, so browsers send the origin only as `Referer` |
 
 ## Gems with Rails coupling (installed sources, read-only)
 
@@ -271,6 +313,7 @@ Branch facts (OD9, verified 2026-10-23): the platform repo's `origin/HEAD` is `m
 | `insgt-platform/docs/architecture/rails-upgrade.md` | the design document this file maps |
 | `insgt-platform/docs/architecture/rails-upgrade-slices/slice-N.md` | the slice prompts (Phase 2) |
 | `insgt-platform/docs/runbooks/README.md` | runbook conventions (`Status:` header, `## Deploy log`); each slice writes `deploy-rails-upgrade-N.md` in that shape |
+| `insgt-platform/docs/runbooks/deploy-rails-upgrade-0.md` | slice 0's runbook: deploy steps, S0–S2/S9, the dev verification log (notice ids), and — after 24 h — the Honeybadger baseline every later slice's SH check compares against |
 | `insgt-platform/docs/runbooks/deploy-headshot-event-date.md` | the newest runbook, the shape to copy (`deploy-rails-upgrade-<N>.md`, one per slice; slice 0's also records the Honeybadger baseline, §4.1) |
 | `insgt-platform/docs/plans/order-processing-note.md` | the decided OrderProcessingNote design (D2 at line 19 keeps Active Storage) |
 | `insgt-platform/docs/architecture/account-classification-codebase-notes.md` | `db/schema.rb` line ranges cited there are unaffected unless slice 3's re-dump changes more than the header (OD7) |
