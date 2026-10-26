@@ -37,7 +37,7 @@ Mon 2026-10-26.
 
 ## Prerequisites
 
-- [ ] Dan has merged `chore/rails-upgrade-slice-0` (`d4dd6d9e..a641c52b`) to `master`;
+- [x] Dan has merged `chore/rails-upgrade-slice-0` (`d4dd6d9e..a641c52b`) to `master`;
       `bundle exec rspec` green (2,009 examples, 0 failures on 2026-10-26)
 - [x] `HONEYBADGER_API_KEY` in `heroku config --app insgtapi` — rotated 2026-10-26, after the
       install-time key had been written into an untracked file and printed into a session transcript
@@ -47,7 +47,7 @@ Mon 2026-10-26.
 - [x] `HONEYBADGER_CHECKIN_IMPORT_LISTINGS` in `heroku config --app insgtapi` (the check-in id, or its
       full URL — `Honeybadger.check_in` accepts either)
 - [x] Uptime check on `https://api.insightphotos.net/up`, condition Success
-- [ ] The four development notices (the `honeybadger install` test, and step 6's three) resolved, so
+- [x] The four development notices (the `honeybadger install` test, and step 6's three) resolved, so
       the Errors list starts empty for production. Step 5 filters on production either way
 
 ### 1. Before the push — the two variables are there
@@ -66,6 +66,8 @@ neither.
 git push heroku master
 heroku releases -n 1 -a insgtapi          # record the release (vNNN) and its time
 ```
+
+RECORDED: v659   Deploy 992a2ce8   ops@insightphotos.net   2026/10/26 09:51:38 -0400 (~ 19s ago)
 
 Rollback is `heroku rollback` (below). No maintenance window, no migration.
 
@@ -202,3 +204,37 @@ vars can stay: old code reads neither.
     than a payload (fixed: the serialized-notice example), `api_key` checked in one section (fixed:
     every section), `HTTP_REFERER` unfiltered (kept: Known, above). Round 2: no new findings. The
     fixes were folded into commit 1 on the unpushed branch (`55fc766f` → `d4dd6d9e`).
+- Heroku release: v659 Deploy 992a2ce8 ops@insightphotos.net 2026/10/26 09:51:38 -0400 (~ 19s ago)
+- heroku ps --app insgtapi
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+=== backgroundworker (Standard-2X): bundle exec sidekiq -c 4 (1)
+
+backgroundworker.1: up 2026/10/26 09:51:42 -0400 (~ 46s ago)
+
+=== web (Standard-2X): bundle exec puma -C config/puma.rb (2)
+
+web.1: up 2026/10/26 09:51:44 -0400 (~ 44s ago)
+web.2: up 2026/10/26 09:51:43 -0400 (~ 45s ago)
+-    heroku logs --ps backgroundworker.1 -n 300 --app insgtapi | grep Booted
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+2026-10-26T12:38:21.789693+00:00 app[backgroundworker.1]: pid=2 tid=1eq INFO: Booted Rails 7.2.3 application in production environment
+2026-10-26T12:48:07.143775+00:00 app[backgroundworker.1]: pid=2 tid=1eq INFO: Booted Rails 7.2.3 application in production environment
+2026-10-26T13:51:47.580165+00:00 app[backgroundworker.1]: pid=2 tid=1ey INFO: Booted Rails 7.2.3 application in production environment
+- curl -sS -o /dev/null -w "%{http_code}\n" https://api.insightphotos.net/up
+200
+- heroku run --no-tty --exit-code --app insgtapi rails runner '
+  puts Honeybadger.notify("rails upgrade slice 0 marker", error_class: "UpgradeMarker",
+    fingerprint: "rails-upgrade-marker", tags: "upgrade",
+    context: { rails: Rails.version, release: "<vNNN>" }, sync: true).inspect'
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+Running rails runner "
+  puts Honeybadger.notify(\"rails upgrade slice 0 marker\", error_class: \"UpgradeMarker\",
+    fingerprint: \"rails-upgrade-marker\", tags: \"upgrade\",
+    context: { rails: Rails.version, release: \"<vNNN>\" }, sync: true).inspect" on ⬢ insgtapi... up, run.4546
+I, [2026-10-26T13:53:32.003072 #4]  INFO -- honeybadger: ** [Honeybadger] Reporting error id=fbaf2cdc-e75a-41d9-a712-557106c5a058 level=1 pid=4
+I, [2026-10-26T13:53:32.058626 #4]  INFO -- honeybadger: ** [Honeybadger] Success ⚡ https://app.honeybadger.io/notice/fbaf2cdc-e75a-41d9-a712-557106c5a058 id=fbaf2cdc-e75a-41d9-a712-557106c5a058 code=201 level=1 pid=4
+"fbaf2cdc-e75a-41d9-a712-557106c5a058"
+- Confirmed the error appeared in the honeybadger admin
+- insgt-api git:(master) heroku logs --ps web.1 -n 200 --app insgtapi | grep -i honeybadger
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+ 
