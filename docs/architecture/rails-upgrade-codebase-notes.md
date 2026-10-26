@@ -364,8 +364,8 @@ Branch facts (OD9, verified 2026-10-23): the platform repo's `origin/HEAD` is `m
 | `insgt-platform/docs/architecture/rails-upgrade.md` | the design document this file maps |
 | `insgt-platform/docs/architecture/rails-upgrade-slices/slice-N.md` | the slice prompts (Phase 2) |
 | `insgt-platform/docs/runbooks/README.md` | runbook conventions (`Status:` header, `## Deploy log`); each slice writes `deploy-rails-upgrade-N.md` in that shape |
-| `insgt-platform/docs/runbooks/deploy-rails-upgrade-0.md` | slice 0's runbook: deploy steps, S0–S2/S9, the dev verification log (notice ids), and — after 24 h — the Honeybadger baseline every later slice's SH check compares against (its window spans v659 and v660) |
-| `insgt-platform/docs/runbooks/deploy-rails-upgrade-1.md` | slice 1's runbook: the eight commits, the Active Storage audit, the pre-push production-config probe, the v660 "before" captures, S-DEP, and the development verification and review log |
+| `insgt-platform/docs/runbooks/deploy-rails-upgrade-0.md` | slice 0's runbook: deploy steps, S0–S2/S9, the dev verification log (notice ids), and — after 24 h — the Honeybadger baseline every later slice's SH check compares against (its window spans v659, v660 and v661) |
+| `insgt-platform/docs/runbooks/deploy-rails-upgrade-1.md` | slice 1's runbook: the eight commits, the Active Storage audit, the pre-push production-config probe, the merge into `master` (`d37ae0df`, v661; 2,040 examples expected), the v661 "before" captures, S-DEP, and the development verification and review log |
 | `insgt-platform/docs/plans/rails-upgrade-slice-1.md` | slice 1's Phase 0–1 plan (untracked) |
 | `insgt-platform/docs/runbooks/deploy-headshot-event-date.md` | the newest runbook, the shape to copy (`deploy-rails-upgrade-<N>.md`, one per slice; slice 0's also records the Honeybadger baseline, §4.1) |
 | `insgt-platform/docs/plans/order-processing-note.md` | the decided OrderProcessingNote design (D2 at line 19 keeps Active Storage) |

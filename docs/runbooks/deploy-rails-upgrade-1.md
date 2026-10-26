@@ -28,10 +28,15 @@ Ships `docs/architecture/rails-upgrade.md` §4.2 (v3; v4 amends it after verific
 
 **No migration, no ENV change, no client release.** The reporter uses slice 0's Honeybadger key.
 
-**Production is v660** (`02dbb78a`, 2026-10-26 11:41:37 -0400), which already carries `b51d97ba`
-(fix: fall back to a live agent when a tour's agent is deactivated).
-`git merge-base --is-ancestor 02dbb78a chore/rails-upgrade-slice-1` → true, so the push adds only the
-eight commits above.
+**Production is v661** (`d37ae0df`, 2026-10-26 16:42:03 -0400), an emergency fix on `master`:
+`bb732fd7` fix: drop the second agent when its account has been deactivated, and `4b840dca` fix: render
+the tour agent when the account's owner row is deleted. Before it, v660 (`02dbb78a`, 11:41:37) carried
+`b51d97ba`. The branch is cut from `02dbb78a`, so `d37ae0df` is **not** in it. The two sides share no
+file (v661 touches only `app/models/listing.rb` and `spec/requests/listing_virtual_agent_spec.rb`), and
+`git merge-tree --write-tree master chore/rails-upgrade-slice-1` is clean. Merging the branch into
+`master` runs v661's code under 7.2.4 and `:raise` for the first time, so the suite runs on the merge
+before the push (Prerequisites). The push then adds the eight commits and the merge; v661's commits are
+live already.
 
 **What moves for a human.**
 - `to_time` on a zoned value now keeps the receiver's offset (§5 R3). No `.to_time` in `app/` or
@@ -59,9 +64,12 @@ Wed 2026-10-28, 09:30 Pacific.
 
 - [ ] **The slice 0 baseline is written** into `deploy-rails-upgrade-0.md` (its step 5, due about
       2026-10-27 10:00 ET). SH below compares against it; without it SH has nothing to compare.
-- [ ] Dan has merged `chore/rails-upgrade-slice-1` to `master`; `bundle exec rspec` green (2,034
-      examples, 0 failures, 0 `DEPRECATION WARNING` lines on 2026-10-26)
-- [x] `b51d97ba` deployed on its own: v660, 2026-10-26 11:41:37 -0400
+- [ ] Dan has merged `chore/rails-upgrade-slice-1` into `master` (`d37ae0df`, v661) and
+      `bundle exec rspec` is green **on the merge**: expected 2,040 examples (the branch's 2,034 plus
+      the 6 that `d37ae0df` adds to `listing_virtual_agent_spec.rb`, 4 → 10), 0 failures,
+      0 `DEPRECATION WARNING` lines. A different count is sourced before the push, not recomputed
+- [x] `b51d97ba` deployed on its own (v660, 11:41:37 -0400); `bb732fd7` and `4b840dca` deployed on their
+      own (v661, 16:42:03 -0400)
 - [ ] The production-config probe (step 2) printed the expected four lines
 - [ ] Pre-push captures (step 3) recorded below
 
@@ -122,7 +130,7 @@ Differences from the probe as first written, all checked against 7.2.4: `Depreca
 mapped back to their names through `DEFAULT_BEHAVIORS`; there is no `:rails` key — `:railties` is
 `Rails.deprecator`; the accessor is `received?`, named for what it proves (review round 1).
 
-### 3. Pre-push captures (on the host, on v660)
+### 3. Pre-push captures (on the host, on v661)
 
 ```bash
 heroku config --app insgtapi | grep -o '^HONEYBADGER_[A-Z_]*'
@@ -132,8 +140,9 @@ curl -sS -o /dev/null -w "%{http_code}\n" -X POST https://api.insightphotos.net/
 ```
 
 Expected: both `HONEYBADGER_` names; S4's three names (record them — S4 after the push must match);
-S8 before: `2026-10-28 17:00:00 UTC`; S-AS before: `400`. Also send S6 on v660 (step 5's command with
-`v660`) so the email path is known good before the change.
+S8 before: `2026-10-28 17:00:00 UTC`; S-AS before: `400`. Also send S6 on v661 (step 5's command with
+`v661`) so the email path is known good before the change. If another release lands before the push,
+these captures move to it.
 
 RECORDED (before):
 
@@ -192,7 +201,7 @@ heroku logs -n 1500 --app insgtapi | grep -c "status=5"
 heroku logs -n 1500 --app insgtapi | grep -ciE "error|exception"
 ```
 
-Expected: `0`; the second not above the same window on v660. S9: the first `import_listings` check-in
+Expected: `0`; the second not above the same window on v661. S9: the first `import_listings` check-in
 after the push arrives on time (about :36–:45 UTC).
 
 ### 7. 24 hours after the push (SH)
@@ -211,7 +220,7 @@ the detail.
 heroku rollback --app insgtapi
 ```
 
-Back to v660. Nothing to undo in data: no migration, the reporter's dedupe is per process and dies
+Back to v661. Nothing to undo in data: no migration, the reporter's dedupe is per process and dies
 with it, the routes return with the old slug. `RailsDeprecation` errors already in Honeybadger stay
 and can be resolved by hand.
 
@@ -294,3 +303,8 @@ and can be resolved by hand.
     `"<gem_name>: <message>"` for both the dedupe and the fingerprint. Red first (one notice for two
     gems; the old fingerprint), and each half breaks on its own: fingerprint from the message alone →
     two examples red; dedupe on the message alone → the two-gem example red.
+- 2026-10-26 16:42:03 -0400: **v661** `d37ae0df` (emergency fix, `bb732fd7` and `4b840dca`) deployed from
+  `master` outside this slice. Checked from the container: the two sides share no file;
+  `git merge-tree --write-tree master chore/rails-upgrade-slice-1` is clean. The suite was **not** run on
+  the merge here (that would merge `master` into a working tree); it is the merge prerequisite, expected
+  2,040 examples. "Before" captures and the rollback target moved to v661.

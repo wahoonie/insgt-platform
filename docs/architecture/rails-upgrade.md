@@ -2,7 +2,7 @@
 
 **Repo:** `insgt-api` · **Platform:** Heroku app `insgtapi` (Render.com cutover follows, §2)
 **Status:** v4 — slice 0 (Honeybadger) deployed (v659, 2026-10-26); slice 1 implemented and verified in
-development, deploy planned Wed 2026-10-28 (production is v660); OD11 settled; OD10 open
+development, deploy planned Wed 2026-10-28 (production is v661); OD11 settled; OD10 open
 **Version:** 4 · **Last updated:** 2026-10-26
 **Supersedes:** v3 (2026-10-26). See §9.
 **Companion files:** `rails-upgrade-codebase-notes.md` (the `file:line` map; every repo claim below
@@ -534,16 +534,19 @@ to the dyno's UTC, `2026-10-28 17:00:00 UTC`);
 `RailsDeprecation` error in Honeybadger with that message, then no further `RailsDeprecation` within
 24 h of real traffic (SH).
 
-**v4, verification as run.** Production is **v660** (`02dbb78a`, 2026-10-26 11:41:37 -0400, which added
-`b51d97ba`), so the pre-push "before" captures (S4, S6, S8, S-AS) are taken on v660. Before the push the
+**v4, verification as run.** Production is **v661** (`d37ae0df`, 2026-10-26 16:42:03 -0400, an emergency
+fix on `master` after v660 `02dbb78a`), so the pre-push "before" captures (S4, S6, S8, S-AS) are taken on
+v661. The slice branch is cut from `02dbb78a`; v661's two commits touch only `app/models/listing.rb` and
+its request spec, share no file with the slice, and merge cleanly (`git merge-tree`). The suite runs on
+the merge into `master` before the push, with an expected count of 2,040. Before the push the
 engineer runs a production-config probe from the branch (`RAILS_ENV=production
 HONEYBADGER_REPORT_DATA=false bin/rails runner …`, in `docs/runbooks/deploy-rails-upgrade-1.md`): its
 load-bearing line maps every registered deprecator to its behaviour by name, and anything but
 `[:notify]` for any of them is a finding, not a pass; `report_deprecations` must not be `false`;
 `received?` shows the wiring. S-DEP adds `Honeybadger.flush`. The slice 0 baseline SH compares
-against spans v659 and v660 (v660 landed about 1 h 50 min into its window).
+against spans v659, v660 and v661 (they landed about 1 h 50 min and 6 h 50 min into its window).
 
-**Rollback.** `heroku rollback` (code only), to v660. Nothing else to undo.
+**Rollback.** `heroku rollback` (code only), to v661. Nothing else to undo.
 
 **Gates.** After plan; after verification. **Effort (estimate):** 4 h plus the deploy morning.
 
@@ -955,7 +958,7 @@ exception class in Honeybadger that was not present in the slice 0 baseline.**
 **v4, R3 step one (slice 1), as verified in development:** no `.to_time` in `app/` or `lib/`
 (`grep -rn '\.to_time\b' app lib` → empty); the one indirect caller found in review is
 `orders_helper.rb:93`, through `time_ago_in_words`, an elapsed time that the offset does not change; the four
-boundary specs pass (39 examples). Production reads: S4, S6 and S8 against v660 captures.
+boundary specs pass (39 examples). Production reads: S4, S6 and S8 against v661 captures.
 
 Watched, lower: `Regexp.timeout = 1` (slice 5a) raising `Regexp::TimeoutError` in the MLS imports —
 Honeybadger error class `Regexp::TimeoutError` from the `import_listings` rake task or a worker,
@@ -1087,4 +1090,4 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 | 1 | 2026-10-23 | Initial document from the Phase 0 survey (insgt-api `master` eda99450; Rails 8.1.4 is the newest release, 8.2 unreleased). Path 7.2.3 → 7.2.4 → 8.0.5.1 → 8.1.4; four slices; no blocking gem; `to_time` handling pinned per slice from the 7-2/8-0/8-1 branch sources; nine open decisions. |
 | 2 | 2026-10-23 | The nine decisions settled (§7). Slice 0 (Honeybadger) added: §4.1, §2.2 "quiet", §2.6, §4.0 S0/SH/S9, §5. Slice 1 gains the Active Storage routes-off commit with its log-history check and production deprecation reporting to Honeybadger (§4.2). Slice 4 is now the `belongs_to` nullability slice (§4.5, rule D′, runner facts: 49 `NOT NULL`/39 nullable/1 columnless/1 shared column); the framework-defaults slice becomes slice 5 with deploys 5a/5b and no `belongs_to` work (§4.6). OD7's dump method (clean test database), OD8's callable fallback, OD6's scoping and the Active Storage stay, OD9's branch verification and §2.7, the revised calendar and slippage rule (§6). P3 strengthened to "a job runs". Two new open questions OD10, OD11. Notes file extended with the `belongs_to`, scheduler, Honeybadger and branch facts. |
 | 3 | 2026-10-26 | Slice 0 implemented and verified in development (insgt-api `chore/rails-upgrade-slice-0`: `d4dd6d9e`, `a641c52b`). §4.1: the 6.10.0 `filter_keys` default includes `HTTP_AUTHORIZATION` and a YAML list replaces it (left unset); ENV-over-YAML precedence answered, with `HONEYBADGER_ENV` selecting the YAML section; log breadcrumbs off after the adversarial review; `HTTP_REFERER` kept unfiltered by decision; the spec plan as built (a config spec with a serialized-notice example; `api_key` not nil in test because `.env` holds it); the dev job on its own queue; the start-up log check corrected to "no line at boot"; the uptime check created. OD11 settled; the `import_listings` cadence is hourly (§4.1, §4.6, §6). §4.0 P3: `Sidekiq::Status` returns `nil` in development, for slice 1's plan to pin. Runbook `docs/runbooks/deploy-rails-upgrade-0.md`; notes extended. |
-| 4 | 2026-10-26 | Slice 1 implemented and verified in development (insgt-api `chore/rails-upgrade-slice-1`, eight commits `5c9446da`…`a5d9b001`, two review rounds); slice 0 deployed as v659; production now v660. §4.0: P3's id-0 assumption falsified (the worker re-raises) — P3 runs an already-fetched property on its own queue and asserts the log lines; P4 is 4 examples (`:110–148`), not 3. §4.2 item 1: `Gemfile:29`; the lock diff's two `activesupport` constraint lines and minitest's `prism` line named. Item 4: the log-history reach (Heroku 1,500 lines; Papertrail `fixa`, about fourteen days, 0 hits) and the code/database URL audit. Item 5 as built: scope stated (every registered deprecator; not unregistered gem deprecators or `Kernel#warn`); `to_prepare` wiring (a bare initializer reference fails the boot); dedupe key and fingerprint `"<gem_name>: <message>"` (Honeybadger groups on the fingerprint alone; the message carries the call site but not the deprecator); raw `backtrace:`; the subscriber never raises (log line and failure notice, rescued separately; key claimed before notify); `received?` for the deploy probe; the boot window it cannot cover. Spec plan as built (the behavioural gate example; `have_received` for the dedupe). Verification: the pre-push production-config probe, v660 as the "before" and rollback release, the baseline spanning v659 and v660. §4.3: the 8.0 `to_time` semantics revisited there. §5 R3 step one's evidence. §8 item 19 (the gate sees only loaded classes). Runbook `docs/runbooks/deploy-rails-upgrade-1.md`. |
+| 4 | 2026-10-26 | Slice 1 implemented and verified in development (insgt-api `chore/rails-upgrade-slice-1`, eight commits `5c9446da`…`a5d9b001`, two review rounds); slice 0 deployed as v659; production now v661 (v660 and v661 are listing fixes from `master`, outside the upgrade). §4.0: P3's id-0 assumption falsified (the worker re-raises) — P3 runs an already-fetched property on its own queue and asserts the log lines; P4 is 4 examples (`:110–148`), not 3. §4.2 item 1: `Gemfile:29`; the lock diff's two `activesupport` constraint lines and minitest's `prism` line named. Item 4: the log-history reach (Heroku 1,500 lines; Papertrail `fixa`, about fourteen days, 0 hits) and the code/database URL audit. Item 5 as built: scope stated (every registered deprecator; not unregistered gem deprecators or `Kernel#warn`); `to_prepare` wiring (a bare initializer reference fails the boot); dedupe key and fingerprint `"<gem_name>: <message>"` (Honeybadger groups on the fingerprint alone; the message carries the call site but not the deprecator); raw `backtrace:`; the subscriber never raises (log line and failure notice, rescued separately; key claimed before notify); `received?` for the deploy probe; the boot window it cannot cover. Spec plan as built (the behavioural gate example; `have_received` for the dedupe). Verification: the pre-push production-config probe, v661 as the "before" and rollback release, the suite on the merge into `master` (2,040 expected), the baseline spanning v659, v660 and v661. §4.3: the 8.0 `to_time` semantics revisited there. §5 R3 step one's evidence. §8 item 19 (the gate sees only loaded classes). Runbook `docs/runbooks/deploy-rails-upgrade-1.md`. |
