@@ -20,6 +20,12 @@ for dir in /workspace/apps/insgt-*/; do
   if [ -f "$dir/Gemfile" ]; then
     echo "  → $(basename $dir)"
     cd "$dir"
+    # tmp/ is under the host bind mount, so bootsnap's load-path cache outlives the container.
+    # It records which directory holds each gem's compiled .so and never rescans gem
+    # directories, so after a rebuild that changes the Ruby build it can point at a file that
+    # no longer exists (mise's precompiled Ruby keeps extensions out of each gem's lib/) and
+    # the app dies in config/boot.rb with a LoadError. Bootsnap regenerates it on first boot.
+    rm -f "$dir/tmp/cache/bootsnap/load-path-cache"
     bundle install
   fi
 done
