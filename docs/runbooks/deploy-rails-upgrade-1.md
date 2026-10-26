@@ -67,7 +67,10 @@ Wed 2026-10-28, 09:30 Pacific.
 - [ ] Dan has merged `chore/rails-upgrade-slice-1` into `master` (`d37ae0df`, v661) and
       `bundle exec rspec` is green **on the merge**: expected 2,040 examples (the branch's 2,034 plus
       the 6 that `d37ae0df` adds to `listing_virtual_agent_spec.rb`, 4 → 10), 0 failures,
-      0 `DEPRECATION WARNING` lines. A different count is sourced before the push, not recomputed
+      0 `DEPRECATION WARNING` lines. A different count is sourced before the push, not recomputed.
+      **Verified 2026-10-26 on `7e62c6b3`** (`master` merged into the branch): 2,040 examples,
+      0 failures, 0 deprecation lines. Merging the branch into an unmoved `master` gives that tree;
+      if `master` moves again, rerun
 - [x] `b51d97ba` deployed on its own (v660, 11:41:37 -0400); `bb732fd7` and `4b840dca` deployed on their
       own (v661, 16:42:03 -0400)
 - [ ] The production-config probe (step 2) printed the expected four lines
@@ -308,3 +311,8 @@ and can be resolved by hand.
   `git merge-tree --write-tree master chore/rails-upgrade-slice-1` is clean. The suite was **not** run on
   the merge here (that would merge `master` into a working tree); it is the merge prerequisite, expected
   2,040 examples. "Before" captures and the rollback target moved to v661.
+- 2026-10-26: Dan merged `master` into the branch (`7e62c6b3`, "Merge branch 'master' into
+  chore/rails-upgrade-slice-1"); relative to `a5d9b001` it changes only v661's two files. Full suite:
+  **2,040 examples, 0 failures** (72 s), `grep -c "DEPRECATION WARNING"` → `0`, the 24
+  `:unprocessable_entity` warnings unchanged; `listing_virtual_agent_spec.rb` 10 examples, 0 failures
+  under `:raise` on 7.2.4; `zeitwerk:check` → "Otherwise, all is good!".
