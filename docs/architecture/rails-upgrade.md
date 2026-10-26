@@ -1,10 +1,10 @@
 # Rails Upgrade — insgt-api 7.2.3 → 8.1.4
 
 **Repo:** `insgt-api` · **Platform:** Heroku app `insgtapi` (Render.com cutover follows, §2)
-**Status:** v2 — the nine open decisions of v1 settled 2026-10-23; slice 0 (Honeybadger) and the
-`belongs_to` nullability slice added; no slice started
-**Version:** 2 · **Last updated:** 2026-10-23
-**Supersedes:** v1 (2026-10-23, the Phase 0 survey). See §9.
+**Status:** v3 — slice 0 (Honeybadger) implemented and verified in development, deploy pending;
+OD11 settled; OD10 open
+**Version:** 3 · **Last updated:** 2026-10-26
+**Supersedes:** v2 (2026-10-23). See §9.
 **Companion files:** `rails-upgrade-codebase-notes.md` (the `file:line` map; every repo claim below
 is sourced there), `rails-upgrade-slices/slice-{0,1,2,3,4,5}.md` (the slice prompts), and the
 contract spec `insgt-api/spec/architecture/rails_upgrade_spec.rb` (created by slice 1; later slices
@@ -212,7 +212,7 @@ any code exists.
 | :-- | :-- | :-- |
 | P1 | `bundle exec rspec 2>&1 \| tee /tmp/rspec.log; grep -c "DEPRECATION WARNING" /tmp/rspec.log` | `N examples, 0 failures` with N ≥ the previous slice's count; grep = `0` (slice 1 onward makes this structural with `:raise`) |
 | P2 | `bin/rails zeitwerk:check` | "All is good!" |
-| P3 | **A job runs end to end** (strengthened, OD5): start `bundle exec sidekiq -c 1 -e development` against the container's Redis; in a second shell `bin/rails runner 'jid = PropertyDataLookupWorker.perform_async(0); sleep 5; puts Sidekiq::Status::status(jid).inspect'` | the Sidekiq log shows `Booted Rails <version> application in development environment`, the job's start/done lines, and the runner prints `:complete`. Candidate worker (ASSUMPTION, the plan confirms by reading `PropertyFactsService.call`): with id `0` the service raises a `StandardError` that `property_data_lookup_worker.rb:34–38` rescues, logs and swallows, so the job completes with no external call. What is exercised: Sidekiq boot, the Rails executor/reloader (`sidekiq/rails.rb:20–26, 68–78`), the Redis round-trip, and the sidekiq-status middleware writing the record |
+| P3 | **A job runs end to end** (strengthened, OD5): start `bundle exec sidekiq -c 1 -e development` against the container's Redis; in a second shell `bin/rails runner 'jid = PropertyDataLookupWorker.perform_async(0); sleep 5; puts Sidekiq::Status::status(jid).inspect'` | the Sidekiq log shows `Booted Rails <version> application in development environment`, the job's start/done lines, and the runner prints `:complete`. Candidate worker (ASSUMPTION, the plan confirms by reading `PropertyFactsService.call`): with id `0` the service raises a `StandardError` that `property_data_lookup_worker.rb:34–38` rescues, logs and swallows, so the job completes with no external call. What is exercised: Sidekiq boot, the Rails executor/reloader (`sidekiq/rails.rb:20–26, 68–78`), the Redis round-trip, and the sidekiq-status middleware writing the record. **v3, from slice 0:** in development `Sidekiq::Status::status(jid)` returned `nil` and `get_all` `{}` for a job that ran and failed: the status middleware is configured only in `config/sidekiq_status.rb`, which nothing requires (§8 item 10), so the runner will not print `:complete` as written. Slice 1's plan pins what P3 asserts (the Sidekiq log lines alone, or §8 item 10 first); whether production installs the middleware is UNVERIFIED |
 | P4 | `bundle exec rspec spec/models/postal_code_spec.rb -e nearby_cities` | 3 examples, 0 failures (`:110–141`; the haversine query) |
 | P5 | `bundle exec rspec spec/lib/stripe_card_spec.rb spec/models/account_stripe_spec.rb spec/models/order_issue_refund_spec.rb spec/models/transaction_charge_failure_spec.rb` | 0 failures (Stripe paths; the last two assert `ActionMailer::Base.deliveries`) |
 | P6 | `bin/rails runner 'puts Notifier.send_error_email("rails upgrade", "render check").message.subject'` | `SystemError::rails upgrade` (both ERB templates render; nothing is delivered) |
@@ -261,6 +261,26 @@ Decided 2026-10-23 (OD3). The error-class signal every later slice's "quiet" tes
    JWT) is not sent in clear — UNVERIFIED whether the gem filters `HTTP_AUTHORIZATION` by default;
    if not, add it to `request.filter_keys`; (b) Stripe card data never reaches params (the app
    receives Stripe tokens, not card numbers — `app/controllers/accounts_controller.rb:22, 65`).
+
+   **v3, from the gem source and a real notice (2026-10-26):** the 6.10.0 default is
+   `["password", "password_confirmation", "HTTP_AUTHORIZATION"]` (`config/defaults.rb:261–264`; the
+   docs page omits the third). A `request.filter_keys` list in `config/honeybadger.yml` **replaces**
+   that default (`Config#get` returns the first source holding the key, `config.rb:121–130`), so the
+   file leaves it unset and `spec/config/honeybadger_spec.rb` pins `HTTP_AUTHORIZATION` in the
+   resolved list; no second notice was needed. The Rails filter list applies to notices with a
+   request only (`notice.rb:576–582`); Sidekiq job arguments go unfiltered (ids and order tokens
+   today). The Stripe token arrives as `transaction[token]` (`transactions_controller.rb:54`) and is
+   filtered by `token`. The real notice and its result are in `docs/runbooks/deploy-rails-upgrade-0.md`
+   (Deploy log).
+
+   **v3, from the adversarial review:** log breadcrumbs are **off** (`breadcrumbs.logging.enabled:
+   false`). They copy the app's log lines into each notice, the gem filters breadcrumb metadata but
+   never the message (`notice.rb:408–415`), and the app logs `params.require(:account).inspect`
+   (`accounts_controller.rb:163`) and Twilio verifications (`lib/auth.rb:34`). Request, render and
+   SQL breadcrumbs stay (SQL obfuscated, `breadcrumbs/active_support.rb:23`). `HTTP_REFERER` is sent
+   unfiltered, kept by decision: the client apps are another origin with no referrer policy, so
+   browsers send the origin only; filtering it would mean listing `request.filter_keys` in full,
+   replacing the gem's default.
 5. **Check-in on the recurring import.** `Honeybadger.check_in(ENV['HONEYBADGER_CHECKIN_IMPORT_LISTINGS'])`
    as the last line of `import_listings` (`lib/tasks/scheduler.rake:15–18`, after `Crmls.import`),
    guarded on the variable being present; the check-in is created in the dashboard and its id set
@@ -270,9 +290,15 @@ Decided 2026-10-23 (OD3). The error-class signal every later slice's "quiet" tes
    (`app/models/order.rb` ×4, `transaction.rb` ×2, …). `import_listings` is chosen because it is
    the regex-dense path slice 5a must watch (§4.6) and because its check-in history reveals the
    scheduler cadence the §6 slippage rule needs (OD11 records the deviation from "a Sidekiq job").
+   **v3:** OD11 settled at the slice 0 plan gate (2026-10-26) as recommended. The cadence is
+   **hourly**, read from `mls_imports` before any check-in history existed: the last 40 CRMLS
+   imports on the dev restore are exactly 1.0 h apart, finishing about :35 UTC, extraction 318–452 s.
+   The check-in is Simple, 1 hour, 30 minutes' grace. It means the task finished, not that listings
+   arrived: `Crmls.extract_listings` returns without raising when the MLS login fails
+   (`lib/crmls.rb:94–95`).
 6. **Uptime monitor** on `https://api.insightphotos.net/up`, created in the dashboard (success =
    any 20x; "every few minutes"; "Your Honeybadger account comes with uptime monitoring" — uptime
-   guide; UNVERIFIED that the trial includes it).
+   guide; UNVERIFIED that the trial includes it). **v3:** created 2026-10-26 on the trial.
 7. **Baseline.** 24 h after the deploy, the slice's runbook records the list of error classes the
    project has seen; §2.2's "quiet" is measured against it.
 
@@ -285,7 +311,12 @@ project created and its API key in the Mac's shell and in Heroku config.
 **Gaps pinned.**
 - *Precedence between `config/honeybadger.yml` and `HONEYBADGER_*` variables* for the development
   verification (`HONEYBADGER_REPORT_DATA=true` must win for one run). UNVERIFIED from the docs; the
-  plan tests it and records the answer.
+  plan tests it and records the answer. **v3, answered:** an ENV value wins over the file (source
+  order Ruby config → ENV → YAML → framework, `config.rb:37, 121–130`), shown on four development
+  boots (runbook Deploy log). `HONEYBADGER_ENV` also selects which YAML section applies
+  (`config.rb:491`), so a renamed environment such as `development-check` matches no section; the
+  file's top-level `report_data: false` is what keeps such a run quiet without
+  `HONEYBADGER_REPORT_DATA=true`.
 - *What the baseline contains if 24 h show nothing.* Rule: an empty list is a valid baseline; the
   `UpgradeMarker` class (S0) is always in it.
 
@@ -293,6 +324,19 @@ project created and its API key in the Mac's shell and in Heroku config.
 `Honeybadger.config[:report_data]` is false (the gem must never report from the suite); a spec for
 the rake task's check-in guard (no id → no call). The deliberate break: set `HONEYBADGER_REPORT_DATA`
 in the spec environment and watch the first example fail.
+
+**v3, as built:** a config spec, `spec/config/honeybadger_spec.rb`, not a request spec. The
+`api_key`-is-`nil`-in-test assertion is replaced: dotenv loads the real key from `.env` in the dev
+container, so in test it is not nil. The spec instead asserts that the file resolves to no
+`api_key` (on `nil?`, so a failure never prints a key), that the suite resolves `report_data` false
+with the Null backend, that production alone reports (development, test, `development-check`,
+`staging` do not), Insights off, log breadcrumbs off, `attempt_threshold` 0 and `HTTP_AUTHORIZATION`
+filtered; and it builds and serializes a request notice locally (nothing sent) to show the JWT, the
+Stripe token, the guest `access_token`, email, password and a logged line absent from the payload.
+`spec/lib/tasks/scheduler_rake_spec.rb` covers the guard (unset, blank), the order (after the
+import) and a raising import (no check-in). The ENV deliberate break runs with
+`HONEYBADGER_BACKEND=null` too: `.env` holds the real key and `spec/support/stripe.rb:14` allows real
+HTTP.
 
 **Commit sketch.**
 1. `build: add honeybadger for error tracking` [2: key from ENV, production-only, Insights off and why]
@@ -306,9 +350,15 @@ in the spec environment and watch the first example fail.
   — `'NoSuchClass'.constantize` raises `NameError` at `generate_coordinates_worker.rb:25` before any
   geocoding → a `NameError` from component `GenerateCoordinatesWorker` appears in the project (an
   `ActiveRecord::RecordNotFound` would not: it is in the gem's default ignore list).
+  **v3:** run on its own queue (`.set(queue: 'honeybadger_check')`, `sidekiq -q honeybadger_check`)
+  because a dev Sidekiq was already consuming `default`; `Sidekiq::Status::status(jid)` is `nil`
+  (see §4.0 P3).
 - S0 (the marker) and S1–S2 after the push; the uptime monitor green; the next `import_listings`
   check-in arrives (S9).
 - `heroku logs --ps web.1 -n 200 | grep -i honeybadger` → the gem's start-up line, no warnings.
+  **v3, corrected:** no line at boot. The start-up line is debug-level (`config.rb:57`) and
+  production logs at `info` (`production.rb:61`); `** [Honeybadger] … Success ⚡` lines appear only
+  when an error is reported. A Honeybadger warning or error line is the finding.
 
 **Rollback.** `heroku rollback`; `heroku config:unset` the two variables is optional.
 
@@ -769,7 +819,8 @@ bytes whose parsed value is identical (rows 5 and 8).
   from slice 0 shows the cadence — `scheduler.rake` names the tasks but the schedule lives in the
   Heroku Scheduler dashboard, UNVERIFIED from the repo). **The slice 5 plan reads
   `lib/tasks/scheduler.rake` and the check-in history; if the cadence is less than daily, 5b and
-  the rehearsal each slip a week** (§6).
+  the rehearsal each slip a week** (§6). **v3:** the cadence is hourly (§4.1 item 5), so no slip on
+  that account; the slice 5 plan confirms it from the check-in history.
 - **5b** — uncomment rows 4–10 in `new_framework_defaults_8_1.rb`; delete the five shim files
   (`new_framework_defaults.rb` — by now only its two inert CSRF lines remain, `:10, :13`, inert
   because `application_controller.rb:3` skips verification; `_6_0.rb`, `_7_2.rb` all comments;
@@ -854,7 +905,8 @@ Decided 2026-10-23. Effort is a solo-developer estimate; dates respect §2.4 (Mo
 
 Total ≈ 36 h of implementation plus six deploy mornings. 5a gets one day before 5b; the slice 5
 plan reads `lib/tasks/scheduler.rake` and the `import_listings` check-in history for the import
-cadence — **if it is less than daily, 5b and the rehearsal each slip a week** (§4.6).
+cadence — **if it is less than daily, 5b and the rehearsal each slip a week** (§4.6). **v3:** hourly
+(§4.1 item 5); no slip on that account.
 
 **Slippage rule (decided OD1):** a slice that misses its morning moves to the next Mon–Wed morning
 and everything after it shifts; slice 3 must still precede Sat 11-07. **A slip moves the rehearsal
@@ -865,7 +917,8 @@ to the next Monday or Tuesday; Thanksgiving week (Mon 11-23, Tue 11-24) counts a
 ## 7. Decisions and open questions
 
 Nine questions were open in v1; the engineer settled all nine on 2026-10-23. Two new ones arose
-from the facts those decisions surfaced (OD10, OD11) and are **open**.
+from the facts those decisions surfaced (OD10, OD11). OD11 was settled at the slice 0 plan gate on
+2026-10-26; OD10 is **open**.
 
 | ID | Question | Decision (2026-10-23) | Carried by |
 | :-- | :-- | :-- | :-- |
@@ -879,7 +932,7 @@ from the facts those decisions surfaced (OD10, OD11) and are **open**.
 | OD8 | Gem-originated deprecations | STOP, as written; the fallback is a callable behaviour (raise by default; log only for a listed gem path **and** message pattern, each pair recorded here with its §8 removal item); slice 1 keeps plain `:raise` and turns production deprecation reporting on through Honeybadger | §4.2 |
 | OD9 | Documents branch | `docs/rails-upgrade` stays; verified based on the platform repo's `main` (not insgt-api's `master`, which never carries these files); merges into `main` before slice 0 | §2.7 |
 | **OD10 (open)** | Rule D′ meets `TagsResource#user`/`#property` (two `belongs_to` on one `NOT NULL` column) and `Area#state` (no column) | **Recommendation:** the structural shared-column rule (both `optional: true`, spec asserts exactly-one) and deleting `Area#state`. **Against:** the structural rule is a rule the spec must encode, not a plain equality; the alternative (real polymorphism) is a data migration | §4.5 — blocks slice 4's plan |
-| **OD11 (open)** | The decided "check-in on one recurring Sidekiq job" has no such job to attach to | **Recommendation:** check in from the `import_listings` rake task (the regex-dense path 5a watches; reveals the scheduler cadence); Sidekiq liveness stays with S2 and automatic failure reporting. **Against:** a rake check-in says nothing about Sidekiq throughput; the only continuous Sidekiq signal is its error stream | §4.1 — blocks slice 0's plan |
+| OD11 | The decided "check-in on one recurring Sidekiq job" has no such job to attach to | **Settled 2026-10-26 at the slice 0 plan gate, as recommended.** Recommendation: check in from the `import_listings` rake task (the regex-dense path 5a watches; reveals the scheduler cadence); Sidekiq liveness stays with S2 and automatic failure reporting. **Against:** a rake check-in says nothing about Sidekiq throughput; the only continuous Sidekiq signal is its error stream | §4.1 (v3: implemented; the cadence is hourly) |
 
 Deprecation exemptions recorded under OD8: none.
 
@@ -943,3 +996,4 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 | :-- | :-- | :-- |
 | 1 | 2026-10-23 | Initial document from the Phase 0 survey (insgt-api `master` eda99450; Rails 8.1.4 is the newest release, 8.2 unreleased). Path 7.2.3 → 7.2.4 → 8.0.5.1 → 8.1.4; four slices; no blocking gem; `to_time` handling pinned per slice from the 7-2/8-0/8-1 branch sources; nine open decisions. |
 | 2 | 2026-10-23 | The nine decisions settled (§7). Slice 0 (Honeybadger) added: §4.1, §2.2 "quiet", §2.6, §4.0 S0/SH/S9, §5. Slice 1 gains the Active Storage routes-off commit with its log-history check and production deprecation reporting to Honeybadger (§4.2). Slice 4 is now the `belongs_to` nullability slice (§4.5, rule D′, runner facts: 49 `NOT NULL`/39 nullable/1 columnless/1 shared column); the framework-defaults slice becomes slice 5 with deploys 5a/5b and no `belongs_to` work (§4.6). OD7's dump method (clean test database), OD8's callable fallback, OD6's scoping and the Active Storage stay, OD9's branch verification and §2.7, the revised calendar and slippage rule (§6). P3 strengthened to "a job runs". Two new open questions OD10, OD11. Notes file extended with the `belongs_to`, scheduler, Honeybadger and branch facts. |
+| 3 | 2026-10-26 | Slice 0 implemented and verified in development (insgt-api `chore/rails-upgrade-slice-0`: `d4dd6d9e`, `a641c52b`). §4.1: the 6.10.0 `filter_keys` default includes `HTTP_AUTHORIZATION` and a YAML list replaces it (left unset); ENV-over-YAML precedence answered, with `HONEYBADGER_ENV` selecting the YAML section; log breadcrumbs off after the adversarial review; `HTTP_REFERER` kept unfiltered by decision; the spec plan as built (a config spec with a serialized-notice example; `api_key` not nil in test because `.env` holds it); the dev job on its own queue; the start-up log check corrected to "no line at boot"; the uptime check created. OD11 settled; the `import_listings` cadence is hourly (§4.1, §4.6, §6). §4.0 P3: `Sidekiq::Status` returns `nil` in development, for slice 1's plan to pin. Runbook `docs/runbooks/deploy-rails-upgrade-0.md`; notes extended. |
