@@ -7,15 +7,15 @@
 ## Scope
 
 1. §4.3 item 1: `rails` `'~> 8.0.5'` and the lock diff §4.3 expects.
-2. §4.3 item 2: `app:update --force` on a throwaway branch, the full diff captured as plan evidence, then the accept/reject/delete table applied file by file — including deleting the three copied Active Storage migrations.
+2. §4.3 item 2: `app:update --force` on a throwaway branch, the full diff captured as plan evidence, then the accept/reject/delete table applied file by file — including deleting the three copied Active Storage migrations. **v5, as built:** run on an rsync copy (the classifier declines a throwaway branch); no migration was copied — the three predate the slice and stay; `puma.rb` and `bin/setup` rejected too (§4.3 "as run").
 3. §4.3 items 3–6: the explicit "no action" findings for Solid Queue/Cache/Cable, Kamal/Thruster and connection handling, recorded in the plan with the evidence §4.3 cites; `load_defaults` stays `7.2`.
-4. §4.3 gap 1: `to_time_preserves_timezone = :zone` uncommented in the generated 8.0 shim — the one default flip, with the reason §4.3 gives.
+4. §4.3 gap 1: `to_time_preserves_timezone = :zone` uncommented in the generated 8.0 shim — the one default flip, with the reason §4.3 gives. **v5, as built:** the flip lives in `config/application.rb`, directly under `load_defaults 7.2` (the shim cannot do it under `:raise` — §4.3 gap 1); the shim is committed with every line commented.
 5. §4.3's spec plan (version floor `8.0.5.1`, the zone example, the named boundary specs) and post-deploy verification (S8 zone print, S10); `docs/runbooks/deploy-rails-upgrade-2.md`.
 
 ## Out of scope — do not touch
 
 1. Every other line of `new_framework_defaults_8_0.rb`; `config.load_defaults`.
-2. `config/application.rb`, `config/environment.rb`, `config/environments/*`, `cors.rb`, `filter_parameter_logging.rb` — rejected in §4.3's table.
+2. `config/application.rb`, `config/environment.rb`, `config/environments/*`, `cors.rb`, `filter_parameter_logging.rb` — rejected in §4.3's table. **v5:** the one config line `config.active_support.to_time_preserves_timezone = :zone` in `config/application.rb` is in scope (§4.3 gap 1 as built); the regenerated template stays rejected.
 3. The ~25 `Model.connection` sites (§8 item 8); `rails/all`; any gem beyond `rails`; `config/ci.rb` (an 8.1 artefact).
 
 ## Prerequisites
@@ -31,14 +31,14 @@ Slice 1 deployed: `Rails.version` → `7.2.4` in a production runner; §4.2's fi
 
 ## Traps for the review
 
-1. Any file from the reject rows of §4.3's table changed; any copied Active Storage migration surviving in `db/migrate/`.
+1. Any file from the reject rows of §4.3's table changed; any copied Active Storage migration surviving in `db/migrate/`. **v5:** the three Active Storage migrations already in `db/migrate/` predate the slice and stay — not a finding.
 2. A `to_time` value other than `:zone`; a second flag flipped in the 8.0 shim.
 3. A spec whose captured SQL changed without the change being explained (the `.or` sites, the autosave narrowing).
 4. An opportunistic refactor in an upgrade commit; a gem major bump not named in §3; a `config.load_defaults` change outside slice 5; any edit to `StrongMigrations.target_version`; a Ruby version change; a Postgres version change.
 
 ## Commit sketch
 
-§4.3's four commits: `build: upgrade rails to 8.0.5.1` · `chore: apply the rails 8.0 app:update binstubs` · `chore: add the rails 8.0 framework defaults shim` · `fix: preserve the receiver zone in to_time`.
+§4.3's four commits: `build: upgrade rails to 8.0.5.1` · `chore: apply the rails 8.0 app:update binstubs` · `chore: add the rails 8.0 framework defaults shim` · `fix: preserve the receiver zone in to_time`. **v5, as built — five, in this order:** `fix: drop the custom actions from the carts and headshots route filters` · `fix: preserve the receiver zone in to_time` · `build: upgrade rails to 8.0.5.1` · `chore: apply the rails 8.0 app:update binstubs` · `chore: add the rails 8.0 framework defaults shim`.
 
 ## Gates
 
