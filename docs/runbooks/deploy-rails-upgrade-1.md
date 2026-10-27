@@ -104,7 +104,10 @@ Audit on 2026-10-26 (the routes going off must not break a link anything holds):
 ### 2. The production-config probe (Dan, on the branch, before the push)
 
 ```bash
-RAILS_ENV=production HONEYBADGER_REPORT_DATA=false bin/rails runner '
+RAILS_ENV=production HONEYBADGER_REPORT_DATA=false bundle exec dotenv sh -c '
+  DATABASE_URL="postgresql://${DATABASE_HOST:-localhost}:${DEVELOPMENT_DATABASE_PORT:-5432}/$DEVELOPMENT_DATABASE" \
+  PGUSER="$DEVELOPMENT_DATABASE_USERNAME" PGPASSWORD="$DEVELOPMENT_DATABASE_PASS" \
+  exec bin/rails runner "$1"' _ '
   p ActiveSupport::Notifications.notifier.listening?("deprecation.rails")
   p Rails.application.config.active_support.report_deprecations
   p Rails.application.deprecators.each.map { |deprecator| [deprecator.gem_name, deprecator.behavior.map { |behavior| ActiveSupport::Deprecation::DEFAULT_BEHAVIORS.key(behavior) }] }.uniq
@@ -113,17 +116,27 @@ RAILS_ENV=production HONEYBADGER_REPORT_DATA=false bin/rails runner '
 '
 ```
 
+The wrapper is what lets a production boot run in the dev container. `dotenv-rails` is in the
+`:development, :test` group, so a production boot never reads `.env`, and the production section of
+`database.yml` reads only `DATABASE_URL`. `bundle exec dotenv` loads `.env` before Rails starts, and
+the dev restore is reached through `DATABASE_URL` plus `PGUSER`/`PGPASSWORD`, which libpq reads, so the
+password stays out of the URL. Run as plain `bin/rails runner`, the boot fails with
+`AdapterNotSpecified`; the `[Honeybadger] ... API key is missing` line above it is only the gem's
+at-exit report of that crash (2026-10-27).
+
 Expected, in order:
 
 | Line | Expected | What it proves |
 | :-- | :-- | :-- |
 | 1 | `true` | something listens for `deprecation.rails`. The weakest line: no `ServerTiming` in production to fake it (that subscriber is development-only, `development.rb:19`), but line 4 is the proof that the listener is the reporter |
 | 2 | `true` (`nil` would also report; **`false` is a STOP** — it silences every deprecator, `railtie.rb:66–70`) | `production.rb:84` survived any merge |
-| 3 | `[["Rails", [:notify]], ["GlobalID", [:notify]], ["Lograge", [:notify]]]` | **The load-bearing line.** Every registered deprecator (16; the 13 Rails frameworks and dotenv's report as `Rails`) is on `:notify` and so emits a `deprecation.<gem>` event. Any other pair — a behaviour other than `[:notify]` for any gem, `[]`, or `:notify` alongside something else — **is a finding, not a pass** |
+| 3 | `[["Rails", [:notify]], ["GlobalID", [:notify]], ["Lograge", [:notify]]]` | **The load-bearing line.** Every registered deprecator (15; the 13 Rails frameworks report as `Rails`, and dotenv's is absent because production never loads `dotenv-rails`) is on `:notify` and so emits a `deprecation.<gem>` event. Any other pair — a behaviour other than `[:notify]` for any gem, `[]`, or `:notify` alongside something else — **is a finding, not a pass** |
 | 4 | `true` | one deprecation went through the event and the subscriber and reached the reporter: the wiring end to end, for `Rails.deprecator`. It does not prove delivery: the reporter claims a message before calling Honeybadger, and this probe runs with reporting off. S-DEP proves delivery |
 
 `HONEYBADGER_REPORT_DATA=false` overrides `honeybadger.yml` (checked in development: `report_data`
-reads `false` with it), so the probe sends nothing. Verified in development 2026-10-26: verbatim it
+reads `false` with it), so the probe sends nothing. Line 4's deprecation logs `[Honeybadger] Reporting
+error` just before it prints; with `report_data` false the gem's backend is `Backend::Null`, which
+drops the notice. Verified in development 2026-10-26: verbatim it
 prints `true`, `nil`, `[:log]` ×3, `false` (development logs deprecations and the subscription is
 production-only; line 1 is `true` there because of `ServerTiming`); with the guard on and the
 deprecators set to `:notify` it prints `true`, `nil`, `[:notify]` ×3, `true`.
@@ -137,10 +150,15 @@ mapped back to their names through `DEFAULT_BEHAVIORS`; there is no `:rails` key
 
 ```bash
 heroku config --app insgtapi | grep -o '^HONEYBADGER_[A-Z_]*'
-heroku run --no-tty --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).pluck(:name).inspect'
+heroku run --no-tty --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).map(&:name).inspect'
 heroku run --no-tty --app insgtapi rails runner 'puts ActiveSupport::TimeZone["Pacific Time (US & Canada)"].parse("2026-10-28 10:00").to_time'
 curl -sS -o /dev/null -w "%{http_code}\n" -X POST https://api.insightphotos.net/rails/active_storage/direct_uploads
 ```
+
+S4 uses `map`, not `pluck`: `nearby_cities` defines `distance_in_miles` in its `select` and orders by
+it (`postal_code.rb:131–132`), and `pluck` replaces the select, so the `ORDER BY` raises
+`PG::UndefinedColumn`. It did on v661 (2026-10-27), and that run's Honeybadger notice
+(`aaa55945-42a2-40ac-a792-d7e9a97b220e`) is the probe, not the upgrade. Every app caller uses `map`.
 
 Expected: both `HONEYBADGER_` names; S4's three names (record them — S4 after the push must match);
 S8 before: `2026-10-28 17:00:00 UTC`; S-AS before: `400`. Also send S6 on v661 (step 5's command with
@@ -174,7 +192,7 @@ heroku run --no-tty --app insgtapi rails runner 'puts Rails.version; puts Active
 heroku run --no-tty --app insgtapi rails runner 'puts ActiveSupport::TimeZone["Pacific Time (US & Canada)"].parse("2026-10-28 10:00").to_time'
 curl -sS -o /dev/null -w "%{http_code}\n" -X POST https://api.insightphotos.net/rails/active_storage/direct_uploads
 heroku run --no-tty --app insgtapi rails runner 'ActiveSupport.deprecator.warn("rails upgrade reporter check"); Honeybadger.flush'
-heroku run --no-tty --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).pluck(:name).inspect'
+heroku run --no-tty --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).map(&:name).inspect'
 heroku run --no-tty --app insgtapi rails runner 'puts Stripe::Balance.retrieve.livemode'
 heroku run --no-tty --app insgtapi rails runner "Notifier.send_error_email('rails upgrade slice 1', 'release <vNNN>').deliver_now"
 ```
