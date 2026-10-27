@@ -122,6 +122,8 @@ the emergency second-agent and owner-row fixes `bb732fd7` and `4b840dca`) landed
 11:41 or after 16:42 may come from that release's change rather than from errors Honeybadger was simply
 seeing for the first time.
 
+Recorded 2026-10-27: **Baseline** in the Deploy log.
+
 ### 6. Development verification (done before the deploy)
 
 Run from the dev container on 2026-10-26 against the same Honeybadger project; results in the Deploy
@@ -244,4 +246,20 @@ I, [2026-10-26T13:53:32.058626 #4]  INFO -- honeybadger: ** [Honeybadger] Succes
 - Confirmed the error appeared in the honeybadger admin
 - insgt-api git:(master) heroku logs --ps web.1 -n 200 --app insgtapi | grep -i honeybadger
  ›   Warning: heroku update available from 11.8.1 to 11.10.0.
- 
+
+- **Baseline** (Dan, from the Honeybadger dashboard, environment production, 2026-10-27). The window
+  ran from v659's push (2026-10-26 09:51:38 -0400) to slice 1's push (v662, 2026-10-27 08:15:19 -0400),
+  22 h 24 min: slice 1 went out before the 24 h were up, and from its push on, errors belong to its SH
+  window. Two classes; one row per Honeybadger error:
+
+  | Class | First seen | Occurrences in the window | Release | Note |
+  | :-- | :-- | :-- | :-- | :-- |
+  | `UpgradeMarker` | 2026-10-26 09:53 -0400 | 1, "rails upgrade slice 0 marker" | v659 | Always in the baseline (§4.1). Slice 1's marker (2026-10-27 08:17 -0400) is the same error's second occurrence: one fingerprint, `rails-upgrade-marker` |
+  | `NoMethodError` | 2026-10-26 11:07 -0400 | 5, 11:07–11:13 -0400 | v659 | `undefined method '[]=' for nil` at `agent['name'] = …`: the public tour of a listing whose override agent no longer resolves. v659 has the line twice, `listing.rb:399` (first agent) and `:424` (second agent); the backtrace names which. Older than Honeybadger, which made it visible. v660's `b51d97ba` (11:41) guards the first-agent copy |
+  | `NoMethodError` | 2026-10-26 14:49 -0400 | 2, 14:49 and 16:02 -0400 | v660 | The same message from the second-agent copy (`listing.rb:438` on v660, where the first-agent copy is guarded). `find_second_agent_team` is identical on v659 and v660, so this is not v660's change. Removed by v661's `bb732fd7` at 16:42 |
+  | `NoMethodError` | 2026-10-26 16:03 -0400 | 2, 16:03 and 16:07 -0400 | v660 | `undefined method 'mls_number' for nil` at `agent_record.owner.mls_number`: the public tour of an account whose owner row is deleted. The line dates from 2020 (`8dbe74e5`), but v660's fallback changed which accounts reach it. Fixed by v661's `4b840dca` (`owner&.mls_number`) at 16:42; no `NoMethodError` after it as of 2026-10-27 07:58 |
+
+  Left out on purpose: the `PG::UndefinedColumn` from slice 1's pre-push S4 probe on v661 (the
+  operator's `pluck`, not the app; slice 1 runbook, step 3). A `PG::UndefinedColumn` from the app is a
+  finding.
+
