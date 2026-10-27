@@ -1,7 +1,7 @@
 # Listings: virtual tour agent and account fixes
 
 **Repo:** `insgt-api`, plus `insgt-virtual-tour` only if step 3 takes option B. No migration.
-**Status:** step 1 built 2026-10-26, uncommitted on branch `fix/missing-listing-agent`. Steps 2 to 6 not started.
+**Status:** step 1 deployed 2026-10-26 in v660 (insgt-api `b51d97ba`, 11:41 -0400). Steps 4 and 5 deployed 2026-10-26 in v661 (`bb732fd7` and `4b840dca`, merge `d37ae0df`, 16:42 -0400); Honeybadger shows no `NoMethodError` after v661 as of 2026-10-27 07:58. Steps 2, 3 and 6 not started.
 **Counts:** every count comes from the dev database, which is a production restore, on 2026-10-26. The shared filter and the sweep are under [Queries](#queries).
 
 ## Background
@@ -23,7 +23,7 @@ app/models/listing.rb:399:in 'Listing.find_agent_team'
 | Team | The main account, or the order's account when no main account is set. |
 | Resolves | `Account.select_virtual` returns a row. That needs the account, an `accounts_users` row and that row's user all active (`account.rb:444`). An active account with no active members does not resolve. |
 
-## Step 1: fall back instead of raising (built, uncommitted)
+## Step 1: fall back instead of raising (deployed in v660, `b51d97ba`)
 
 | Change | Where |
 |---|---|
@@ -44,9 +44,9 @@ app/models/listing.rb:399:in 'Listing.find_agent_team'
 
 The 14 leftover listings fail the same way on the old code. Steps 4 and 5 are code that step 1 didn't touch. Step 3 is a listing where the old code had no fallback at all.
 
-**Before committing:** reword the comment at `listing.rb:385–388`. It says the order account is the fallback "because find_virtual only serves a listing whose order account is active". Active does not mean it resolves, as step 3 shows, so the comment must not read as a guarantee.
+**Still open after the merge:** the comment at `listing.rb:385–388` was not reworded. It says the order account is the fallback "because find_virtual only serves a listing whose order account is active". Active does not mean it resolves, as step 3 shows, so the comment must not read as a guarantee. Fix it alongside step 3, which is the step that makes the distinction matter.
 
-To ship: commit using `git-commit-messages`, run `predeploy-review-rails`, then deploy the API. No other repo changes.
+**Confirmed in production:** the 2026-10-26 Honeybadger report for `gqX9b42B` (step 4's shape) points at `listing.rb:438`, a line that exists only after this fix. Step 1 is live.
 
 ## Step 2: make the override lookup deterministic
 
@@ -91,23 +91,54 @@ Four servable listings still raise at `listing.rb:395`, one URL each: 7700, 7740
 | B. Render without an agent block. | Both | The tour reads `@listing[:account][:mls]` and `@listing[:account][:name]` with no guard (`_property_table.html.erb:59`, `_map.html.erb:17`). The tour must ship its guards before the API change. |
 | C. Data fix: give account 1467 an active owner, or deactivate it. | None | Deactivating also makes `find_virtual` skip all five listings, which is option A by data. Goes through Dan. |
 
-## Step 4: the second-agent lookup
+## Step 4: the second-agent lookup (deployed in v661, `bb732fd7`)
 
 `find_second_agent_team` (`listing.rb:422`) still has both crashes that step 1 removed from the first agent. It sets a name on a nil override at `listing.rb:438`, and reads `team['id']` on a nil team at `listing.rb:441`.
 
-88 servable listings have a second account. Nine fail, on 21 URLs: 4505, 7064, 7637, 8310, 20047, 22193, 25704, 25893 and 25924. All nine fail at `:438`, and all nine have the same shape. The second user is deleted, their owner membership is on the second account itself, and the second account doesn't resolve either. No listing has a dead second override with a live second account, or the reverse.
+88 servable listings have a second account. Nine fail, on 21 URLs: 4505, 7064, 7637, 8310, 20047, 22193, 25704, 25893 and 25924. All nine fail at `:438`, and all nine have the same shape. The second user's owner membership is on the second account itself, and both the membership and the second account are deleted. The user is deleted too on six of them; on 25704, 25893 and 25924 the user is still active, which changes nothing, because the membership and the account are what `select_virtual` needs. No listing has a dead second override with a live second account, or the reverse.
+
+Production hit this on 2026-10-26: `GET /listings/gqX9b42B/virtual.json` (order 73364, listing 25893) 500ed at `:438`, reported as Honeybadger request `634e7b25-7320-84e6-40cd-8e7aa449b7b0`.
 
 So reusing `find_override_agent` for the second user only moves these crashes to `:441`. They are fixed only by skipping the second agent when the second account doesn't resolve.
 
 **Proposal:** reuse `find_override_agent` for the second user. When the second account doesn't resolve, return nil and have `inject_agent_team_info` (`listing.rb:655`) skip the block. insgt-virtual-tour needs no change. The key is already absent on every listing without a second account, and both views and the payload parser guard on it (`_header.html.erb:14`, `show.html.erb:41`, `insight_photo.rb:128`).
 
-## Step 5: unguarded owner read
+**Built 2026-10-26** on branch `fix/missing-second-agent`, as proposed. Line numbers below are on that branch.
+
+| Change | Where |
+|---|---|
+| The second user goes through `find_override_agent`, so a dead second override falls back to the second account. | `find_second_agent_team`, `listing.rb:434` |
+| A second account that doesn't resolve returns nil, and `inject_agent_team_info` leaves the `second_account` key out. The first agent's fallback chain is untouched. | `listing.rb:432`, `listing.rb:656` |
+| Five request examples: live second account, live second override, dead second override, dead second account with no override (the `:441` shape), and the production shape above. The last three fail on the old code at `:438` and `:441`. | `spec/requests/listing_virtual_agent_spec.rb` |
+
+| Verification | Result |
+|---|---|
+| The nine listings, 21 URLs | All render through `Listing.select_virtual`; none carries a `second_account` key. |
+| Full rspec suite | 2,018 examples, 0 failures |
+| Sweep of every servable URL | 12,393 URLs across 8,615 listings, 881s. 6 URLs on 5 listings still fail, down from 27 on 14: 7700, 7740, 7777 and 8585 at step 3's line, and 1095 at step 5's. The 21 second-agent URLs are gone. |
+
+## Step 5: unguarded owner read (deployed in v661, `4b840dca`)
 
 `inject_account_info` reads `agent_record.owner.mls_number` (`listing.rb:610`). `Account#owner` returns nil when the account has no active owner row (`account.rb:479`). Commit c6fc2052 on 2026-08-31 guarded the other owner references in this file, but missed this one.
 
 One listing fails here, on 2 URLs: 1095. Its team is account 986, which is active with four active members, but its owner row, user 1041, is deleted. Account 986's last order was 2017-05-30.
 
 **Proposal:** `agent_record.owner&.mls_number`. Check how `components/_agent_detail` in insgt-virtual-tour renders a null `mlsNumber` first.
+
+Production hit this on 2026-10-26: `GET /listings/Z2v6bE2z/virtual.json` (order 4031, listing 1095) 500ed at `:610`, reported as Honeybadger request `8df5d8f7-1a85-0912-bf75-1d321dcebb91`.
+
+**Built 2026-10-26** on the step 4 branch as its second commit, `4b840dca`, as proposed. The tour check passed: `components/_agent_detail.html.erb:21` renders the MLS number only when present, and the pano author line (`application_helper.rb:114`) skips blanks, so no tour change.
+
+| Change | Where |
+|---|---|
+| `agent_record.owner&.mls_number`, with a comment on why `owner` goes nil while the account still resolves. | `inject_account_info`, `listing.rb:607` |
+| Request example: team account active with another active member, owner row deleted. Fails on the old code at `:605`. | `spec/requests/listing_virtual_agent_spec.rb` |
+
+| Verification | Result |
+|---|---|
+| Order `Z2v6bE2z` through `Listing.select_virtual` | Renders; `mlsNumber` is null. |
+| Full rspec suite | 2,019 examples, 0 failures |
+| Sweep of every servable URL | 12,393 URLs across 8,615 listings, 838s. 4 URLs on 4 listings still fail: 7700, 7740, 7777 and 8585, all at step 3's line. Nothing else in the sweep raises. |
 
 **Trap:** do not remove user 497's ownership of account 58 as a data fix for step 2. User 497 is account 58's only owner. Six servable listings were ordered by account 58 without an override, and they would start raising on this line.
 
@@ -155,3 +186,5 @@ failures.each { |signature, listing_ids| puts "#{listing_ids.uniq.size} listings
 | Version | Date | Change |
 |---|---|---|
 | 1 | 2026-10-26 | Findings from the `D2GbvGq5` investigation and the full sweep. Step 1 built. |
+| 2 | 2026-10-26 | Step 1 merged and confirmed live. Steps 4 and 5 built after the `gqX9b42B` and `Z2v6bE2z` reports. Corrected the second user's status on three of step 4's listings. |
+| 3 | 2026-10-27 | Steps 4 and 5 deployed in v661. No `NoMethodError` after it in Honeybadger as of 2026-10-27 07:58. |
