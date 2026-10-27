@@ -336,12 +336,40 @@ Confirmed in Honeybadger (Dan, 2026-10-27):
 ### 6. One hour after the push (S7) and the first import (S9)
 
 ```bash
-heroku logs -n 1500 --app insgtapi | grep -c "status=5"
-heroku logs -n 1500 --app insgtapi | grep -ciE "error|exception"
+heroku logs -n 1500 --app insgtapi > /tmp/s7.log
+head -1 /tmp/s7.log | cut -c1-32; tail -1 /tmp/s7.log | cut -c1-32
+grep -c "status=5" /tmp/s7.log
+grep -oE '\] [A-Z][A-Za-z0-9]*(::[A-Z][A-Za-z0-9]*)* \(' /tmp/s7.log | sort | uniq -c | sort -rn
 ```
 
-Expected: `0`; the second not above the same window on v661. S9: the first `import_listings` check-in
-after the push arrives on time (about :36–:45 UTC).
+Then Papertrail: `status=5` from the push to one hour after it.
+
+Expected: no `status=5` line in the hour (Papertrail), and no exception class in the buffer other than
+`ActionController::RoutingError`; any other class is a finding, triaged before S7 passes. S9: the first
+`import_listings` check-in after the push arrives on time (about :36–:45 UTC).
+
+Amended 2026-10-27, after the run. As first written, S7 was `grep -c "status=5"` and
+`grep -ciE "error|exception"` on the live buffer, the second "not above the same window on v661".
+Three things broke it. The buffer is 1,500 lines, not an hour (24 min on the morning), so the hour
+comes from Papertrail. No v661 count was captured to compare against. And the error count is set by
+scanner traffic, two lines per `RoutingError`, so it says nothing about the release; the exception
+classes do. Saving the buffer once makes the window, the count and the classes describe the same lines.
+
+Recorded 2026-10-27. **S7 and S9 pass.**
+
+- First run, with the commands as first written: `status=5` → `0`; `error|exception` → `530`.
+- A second snapshot, saved to a file and broken down: 1,500 lines span 12:34:53–12:58:42 UTC, 24 min,
+  from 19 to 43 min after the push. All of it is v662, and it covers neither the first 19 min nor the
+  full hour. 484 lines match `error|exception`:
+  - 480 from `web.1` (246) and `web.2` (234): 240 rescued exceptions, two lines each. With
+    `log_tags = [:request_id]`, Rails logs a bare `ERROR -- : [request-id]` line, then
+    `[request-id] Class (message):` (actionpack 7.2.4 `debug_exceptions.rb:146–147`). The class grep
+    returns one row, `240 ] ActionController::RoutingError (`: a scanner probing for `.env` and
+    `phpinfo.php` paths, answered `404`.
+  - 4 from `scheduler.5568`: `Rets::Client: Failed with message: Got error code N (No Records Found)`,
+    a `WARN` logged during the scheduled import run.
+- Papertrail, `status=5`, 08:15–09:15 -0400 (12:15–13:15 UTC): 0 results.
+- S9: `import_listings` checked in at 2026-10-27 08:36 -0400 (12:36 UTC), state `reporting`.
 
 ### 7. 24 hours after the push (SH)
 
@@ -401,6 +429,7 @@ and can be resolved by hand.
 
 - This runbook: Status `Deployed <date>`, the release, steps 3–7's results.
 - `rails-upgrade.md` v4: §4.2 marked deployed; the amendments listed in the slice 1 plan's write-back.
+- `rails-upgrade.md` §4.0 S7: step 6's amended criterion, which every later slice reuses.
 
 ## Deploy log
 
