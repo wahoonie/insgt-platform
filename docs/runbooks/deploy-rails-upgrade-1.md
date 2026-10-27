@@ -62,9 +62,9 @@ Wed 2026-10-28, 09:30 Pacific.
 
 ## Prerequisites
 
-- [ ] **The slice 0 baseline is written** into `deploy-rails-upgrade-0.md` (its step 5, due about
+- [x] **The slice 0 baseline is written** into `deploy-rails-upgrade-0.md` (its step 5, due about
       2026-10-27 10:00 ET). SH below compares against it; without it SH has nothing to compare.
-- [ ] Dan has merged `chore/rails-upgrade-slice-1` into `master` (`d37ae0df`, v661) and
+- [x] Dan has merged `chore/rails-upgrade-slice-1` into `master` (`d37ae0df`, v661) and
       `bundle exec rspec` is green **on the merge**: expected 2,040 examples (the branch's 2,034 plus
       the 6 that `d37ae0df` adds to `listing_virtual_agent_spec.rb`, 4 → 10), 0 failures,
       0 `DEPRECATION WARNING` lines. A different count is sourced before the push, not recomputed.
@@ -73,8 +73,8 @@ Wed 2026-10-28, 09:30 Pacific.
       if `master` moves again, rerun
 - [x] `b51d97ba` deployed on its own (v660, 11:41:37 -0400); `bb732fd7` and `4b840dca` deployed on their
       own (v661, 16:42:03 -0400)
-- [ ] The production-config probe (step 2) printed the expected four lines
-- [ ] Pre-push captures (step 3) recorded below
+- [x] The production-config probe (step 2) printed the expected four lines
+- [x] Pre-push captures (step 3) recorded below
 
 ## Pre-deploy
 
@@ -146,6 +146,15 @@ Differences from the probe as first written, all checked against 7.2.4: `Depreca
 mapped back to their names through `DEFAULT_BEHAVIORS`; there is no `:rails` key — `:railties` is
 `Rails.deprecator`; the accessor is `received?`, named for what it proves (review round 1).
 
+RESULTS:
+```
+true
+true
+[["Rails", [:notify]], ["GlobalID", [:notify]], ["Lograge", [:notify]]]
+I, [2026-10-27T12:06:58.002986 #6486]  INFO -- honeybadger: ** [Honeybadger] Reporting error id=9ccc74d8-4bd7-4e19-9caa-78579049d1c5 level=1 pid=6486
+true
+```
+
 ### 3. Pre-push captures (on the host, on v661)
 
 ```bash
@@ -167,6 +176,19 @@ these captures move to it.
 
 RECORDED (before):
 
+```
+heroku config --app insgtapi | grep -o '^HONEYBADGER_[A-Z_]*'
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+HONEYBADGER_API_KEY
+HONEYBADGER_CHECKIN_IMPORT_LISTINGS
+
+["Carlsbad", "Oceanside", "Leucadia"]
+
+2026-10-28 17:00:00 +0000
+
+400
+```
+
 ## Deploy
 
 ### 4. Deploy code
@@ -177,6 +199,9 @@ heroku releases -n 1 -a insgtapi          # record the release (vNNN) and its ti
 ```
 
 RECORDED:
+ v      description       user                    created_at
+ ────────────────────────────────────────────────────────────────────────────────────────
+  v662   Deploy 473e2747   ops@insightphotos.net   2026/10/27 08:15:19 -0400 (~ 24s ago)
 
 ### 5. Within 30 minutes
 
@@ -214,6 +239,99 @@ Expected, reasoned before the push:
 
 A missing `RailsDeprecation` from S-DEP means the subscription or `:notify` did not take in production:
 stop and look (step 2's probe narrows it). A boot failure on any dyno is a rollback.
+
+Recorded:
+```
+insgt-api git:(master) heroku ps --app insgtapi
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+=== backgroundworker (Standard-2X): bundle exec sidekiq -c 4 (1)
+
+backgroundworker.1: up 2026/10/27 08:15:25 -0400 (~ 1m ago)
+
+=== web (Standard-2X): bundle exec puma -C config/puma.rb (2)
+
+web.1: up 2026/10/27 08:15:26 -0400 (~ 1m ago)
+web.2: up 2026/10/27 08:15:24 -0400 (~ 1m ago)
+
+➜  insgt-api git:(master) heroku logs --ps backgroundworker.1 -n 300 --app insgtapi | grep Booted
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+2026-10-27T12:15:32.326288+00:00 app[backgroundworker.1]: pid=2 tid=1eq INFO: Booted Rails 7.2.4 application in production environment
+➜  insgt-api git:(master) heroku ps --app insgtapi
+heroku logs --ps backgroundworker.1 -n 300 --app insgtapi | grep Booted
+curl -sS -o /dev/null -w "%{http_code}\n" https://api.insightphotos.net/up
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+=== backgroundworker (Standard-2X): bundle exec sidekiq -c 4 (1)
+
+backgroundworker.1: up 2026/10/27 08:15:25 -0400 (~ 2m ago)
+
+=== web (Standard-2X): bundle exec puma -C config/puma.rb (2)
+
+web.1: up 2026/10/27 08:15:26 -0400 (~ 2m ago)
+web.2: up 2026/10/27 08:15:24 -0400 (~ 2m ago)
+
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+2026-10-27T12:15:32.326288+00:00 app[backgroundworker.1]: pid=2 tid=1eq INFO: Booted Rails 7.2.4 application in production environment
+200
+➜  insgt-api git:(master) heroku run --no-tty --exit-code --app insgtapi rails runner '
+  puts Honeybadger.notify("rails upgrade slice 1 marker", error_class: "UpgradeMarker",
+    fingerprint: "rails-upgrade-marker", tags: "upgrade",
+    context: { rails: Rails.version, release: "<vNNN>" }, sync: true).inspect'
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+Running rails runner "
+  puts Honeybadger.notify(\"rails upgrade slice 1 marker\", error_class: \"UpgradeMarker\",
+    fingerprint: \"rails-upgrade-marker\", tags: \"upgrade\",
+    context: { rails: Rails.version, release: \"<vNNN>\" }, sync: true).inspect" on ⬢ insgtapi... up, run.2551
+I, [2026-10-27T12:17:57.635039 #4]  INFO -- honeybadger: ** [Honeybadger] Reporting error id=470ed91b-d622-40d3-a2fb-bc5adb644454 level=1 pid=4
+I, [2026-10-27T12:17:57.694719 #4]  INFO -- honeybadger: ** [Honeybadger] Success ⚡ https://app.honeybadger.io/notice/470ed91b-d622-40d3-a2fb-bc5adb644454 id=470ed91b-d622-40d3-a2fb-bc5adb644454 code=201 level=1 pid=4
+"470ed91b-d622-40d3-a2fb-bc5adb644454"
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'puts Rails.version; puts ActiveSupport.to_time_preserves_timezone.inspect'
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+Running rails runner "puts Rails.version; puts ActiveSupport.to_time_preserves_timezone.inspect" on ⬢ insgtapi... up, run.7804
+7.2.4
+true
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'puts ActiveSupport::TimeZone["Pacific Time (US & Canada)"].parse("2026-10-28 10:00").to_time'
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+Running rails runner "puts ActiveSupport::TimeZone[\"Pacific Time (US & Canada)\"].parse(\"2026-10-28 10:00\").to_time" on ⬢ insgtapi... up, run.2157
+2026-10-28 10:00:00 -0700
+➜  insgt-api git:(master) curl -sS -o /dev/null -w "%{http_code}\n" -X POST https://api.insightphotos.net/rails/active_storage/direct_uploads
+404
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'ActiveSupport.deprecator.warn("rails upgrade reporter check"); Honeybadger.flush'
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+Running rails runner "ActiveSupport.deprecator.warn(\"rails upgrade reporter check\"); Honeybadger.flush" on ⬢ insgtapi... up, run.3615
+I, [2026-10-27T12:19:29.580669 #2]  INFO -- honeybadger: ** [Honeybadger] Reporting error id=55c54cf0-415c-4bdd-9c07-ba1f2b934ac6 level=1 pid=2
+I, [2026-10-27T12:19:29.665672 #2]  INFO -- honeybadger: ** [Honeybadger] Success ⚡ https://app.honeybadger.io/notice/55c54cf0-415c-4bdd-9c07-ba1f2b934ac6 id=55c54cf0-415c-4bdd-9c07-ba1f2b934ac6 code=201 level=1 pid=2
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).map(&:name).inspect'
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+Running rails runner "puts PostalCode.find_by(zip: \"92008\").nearby_cities.limit(3).map(&:name).inspect" on ⬢ insgtapi... up, run.9285
+["Carlsbad", "Oceanside", "Leucadia"]
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'puts Stripe::Balance.retrieve.livemode'
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+Running rails runner "puts Stripe::Balance.retrieve.livemode" on ⬢ insgtapi... up, run.1932
+true
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner "Notifier.send_error_email('rails upgrade slice 1', 'release <vNNN>').deliver_now"
+ ›   Warning: heroku update available from 11.8.1 to 11.10.0.
+Running rails runner "Notifier.send_error_email('rails upgrade slice 1', 'release <vNNN>').deliver_now" on ⬢ insgtapi... up, run.3297
+```
+
+Confirmed in Honeybadger (Dan, 2026-10-27):
+
+- **S0**: `UpgradeMarker` has a second occurrence, "rails upgrade slice 1 marker", 2026-10-27 08:17
+  -0400, in the same error as slice 0's (one fingerprint). Its `release` context reads `<vNNN>`: the
+  placeholder went out unreplaced, in S6 too.
+- **S-DEP**: notice `55c54cf0-415c-4bdd-9c07-ba1f2b934ac6` reads `DEPRECATION WARNING: rails upgrade
+  reporter check (called from <main> at /app/bin/rails:4)` and carries a backtrace: the app frame
+  `bin/rails:4`, the first frame railties-7.2.4 `runner_command.rb:49` in `Kernel#eval`. Its context
+  is as expected: `gem_name` `"Rails"`, `deprecation_horizon` `"8.0"`, and `callstack`
+  `/app/vendor/bundle/ruby/3.4.0/gems/railties-7.2.4/lib/rails/commands/runner/runner_command.rb:49:in
+  'Kernel#eval'` (a runner has no app frame, so the first frame). The search `class:"RailsDeprecation"
+  tag:"deprecation" context.gem_name:"Rails" environment:"production"` (unresolved, unignored) returns
+  exactly this error: class `RailsDeprecation`, tag `deprecation`, count 1, about 34 min after it was
+  sent. Rerun in a new one-off dyno: the same search still returns one error, now count 2, so the
+  fingerprint groups across dynos.
+- **S6**: the first send (run.3297) was blocked at SendGrid, not in Rails (Dan). With the block
+  removed, a resend, `SystemError::rails upgrade slice 1 -test`, reached ops@insightphotos.net at
+  2026-10-27 12:43:27 UTC (08:43 -0400) through SendGrid, with DKIM, SPF and DMARC passing; body
+  `release <vNNN>`.
 
 ### 6. One hour after the push (S7) and the first import (S9)
 
@@ -334,3 +452,5 @@ and can be resolved by hand.
   **2,040 examples, 0 failures** (72 s), `grep -c "DEPRECATION WARNING"` → `0`, the 24
   `:unprocessable_entity` warnings unchanged; `listing_virtual_agent_spec.rb` 10 examples, 0 failures
   under `:raise` on 7.2.4; `zeitwerk:check` → "Otherwise, all is good!".
+- Heroku Deploy:
+  v662   Deploy 473e2747   ops@insightphotos.net   2026/10/27 08:15:19 -0400 (~ 24s ago)
