@@ -373,13 +373,38 @@ Recorded 2026-10-27. **S7 and S9 pass.**
 
 ### 7. 24 hours after the push (SH)
 
-Honeybadger → Errors, environment **production**, since the push, against the slice 0 baseline.
-Expected: no class absent from the baseline except `RailsDeprecation` from S-DEP. **Any other
-`RailsDeprecation` is a finding**: a deprecation on a path the suite does not reach. Record its message
-and call site here; under OD8 one that `:raise` would trip in the suite is a STOP for slice 2. A
-`DeprecationReporter` failure notice (a `StandardError` with `deprecation_message` in its context) is
-also a finding: the reporter is broken, and the log line `[DeprecationReporter] Failed to report …` has
-the detail.
+Honeybadger → Errors, compared with the slice 0 baseline by **error**, not by class (amended
+2026-10-27, below). Two searches:
+
+```
+environment:"production" created.after:"2026-10-27 8:15 UTC-4"
+environment:"production" class:"NoMethodError" occurred.after:"2026-10-27 8:15 UTC-4"
+```
+
+Expected: the first returns one error, `RailsDeprecation` from S-DEP, with 2 occurrences. The second
+returns nothing: v661 fixed all three baseline `NoMethodError`s (`deploy-rails-upgrade-0.md`,
+Baseline), so one occurring again is a finding even though the error is old.
+
+Triage every other error the first search returns: does its backtrace touch what this slice changed?
+That is the 13 Rails gems and minitest the lock moved, `config/`, the routes, `DeprecationReporter`,
+or a behaviour under "What moves for a human" above. Yes is a finding. No is an old bug seen for the
+first time, or an old error regrouped because its line moved: record it here and fix it on its own
+branch; it does not block the slice.
+
+**Any other `RailsDeprecation` is a finding**: a deprecation on a path the suite does not reach. Record
+its message and call site here; under OD8 one that `:raise` would trip in the suite is a STOP for
+slice 2. A `DeprecationReporter` failure notice (a `StandardError` with `deprecation_message` in its
+context) is also a finding: the reporter is broken, and the log line
+`[DeprecationReporter] Failed to report …` has the detail.
+
+Amended 2026-10-27, before the run. As first written, SH compared by class: "no class absent from the
+baseline". The baseline holds `NoMethodError`, so a class comparison could never flag one, and a
+removed or renamed API in the 8.0 and 8.1 slices surfaces as exactly that, or as `ArgumentError` or
+`NameError`. Honeybadger groups an error by its file, method and line number, its class, and its
+component (docs, "Customizing error grouping"), so comparing errors catches a new error of a baselined
+class. The cost is that a moved line can show an old bug as a new error, which the triage absorbs;
+production is quiet enough that this takes minutes. `UpgradeMarker` and `RailsDeprecation` set their
+own fingerprints, so they never regroup.
 
 ## Rollback
 
@@ -430,6 +455,9 @@ and can be resolved by hand.
 - This runbook: Status `Deployed <date>`, the release, steps 3–7's results.
 - `rails-upgrade.md` v4: §4.2 marked deployed; the amendments listed in the slice 1 plan's write-back.
 - `rails-upgrade.md` §4.0 S7: step 6's amended criterion, which every later slice reuses.
+- `rails-upgrade.md` §2.2 item 2 ("quiet") and the §4.0 SH row: compare by Honeybadger error, not by
+  class, with step 7's triage rule and its two searches. Two passages restate the class rule and change
+  with them: §4.1 item 7 ("the list of error classes") and §5's intro.
 
 ## Deploy log
 
