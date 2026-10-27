@@ -321,7 +321,13 @@ behaviour with the old slug.
 
 ## After the deploy — write-back (platform repo)
 
-- This runbook: Status `Deployed <date>`, the release, steps 3–7's results, slice 1's SH line.
+**Done before the push (2026-10-27, branch `docs/rails-upgrade-slice-2`):** `rails-upgrade.md` v5 (slice
+1's deploy and its S7/SH/S4/S0 amendments, §4.3 as built, §4.4 reworded, §6–§9), the codebase notes'
+slice 2 rows and section, the slice 2 and 3 prompts annotated, slice 1's runbook marked `Deployed`.
+**Left for after the deploy:**
+
+- This runbook: Status `Deployed <date>`, the release, steps 3–7's results, slice 1's SH line (also
+  into `deploy-rails-upgrade-1.md` and §4.2's slot).
 - `rails-upgrade.md` v5: slice 1 recorded as deployed (v662) with its S7 and SH criteria (§4.0 S7, §2.2
   and the SH row by Honeybadger error, §4.1 item 7, §5's intro, §4.0 S4 `map`); §4.3 as built — the
   `:zone` placement (gap 1 and item 2's table), the routes change in the breaking-change list, the
