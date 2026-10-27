@@ -4,7 +4,7 @@
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~30 min on the morning; S7 one hour after the push; S9 at the first hourly
 import; SH 24 h later
-**Status:** Draft — implemented and verified in development; review rounds pending; waiting on the
+**Status:** Ready — implemented and verified in development; reviewed (two rounds); waiting on the
 Prerequisites
 
 ## Summary
@@ -386,8 +386,9 @@ behaviour with the old slug.
     scope; two nits on the contract spec [codex]: the route examples did not cover the carts
     `format: 'json'` default or the URL helpers — **fixed**, folded into commit 1 (red shown again with
     the member route commented out: `RoutingError`); the inherited Active Storage absence example could
-    pass on an empty route set — **declined**, the member-route examples and the request spec already
-    fail there (noted for slice 3's contract-spec touch). Two factual corrections Codex prompted,
+    pass on an empty route set — **declined**: the member-route examples already fail on an empty route
+    set (the request spec's 404 would not — round 2's correction); noted for slice 3's contract-spec
+    touch. Two factual corrections Codex prompted,
     both verified against the installed gems [claude+codex]: `racc (1.8.1)` stays in the lock (commit
     3's body reworded); the autosave and `#merge`/`#or` fixes are in 7.2.3, not new here (this runbook
     and the plan corrected; v5 corrects §4.3). Already-intentional: the `OrderProcessingNote` comment.
@@ -395,5 +396,9 @@ behaviour with the old slug.
     After the rebuild, on `4b464230`: contract spec 11 examples, 0 failures; P1 plain `2045 examples,
     0 failures` (65.6 s), `CI=1` `2045 examples, 0 failures` (68.0 s), 0 deprecation lines in both,
     24 rack warnings; route table identical to `master`.
-  - **Review round 2**: pending at the 2026-10-27 pause (a Codex run was in flight; rerun it on resume
-    if it did not finish). The runbook stays `Draft` until it is recorded.
+  - **Review round 2** (same setup, fresh copy of `4b464230`; copy identical to the tree afterwards).
+    Codex: **no blocker or should-fix**; the one nit is round 1's inherited route-absence example
+    again, declined for the same reason; it confirms round 1's dispositions — the `:zone` placement,
+    the 7.2.3 backports, the `racc` correction, the untouched migrations — and corrects one sentence of
+    round 1's record (the request spec's 404 does not detect an empty route set; the member-route
+    examples do). Claude: nothing new. Status → `Ready`.
