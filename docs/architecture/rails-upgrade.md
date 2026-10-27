@@ -1,10 +1,10 @@
 # Rails Upgrade — insgt-api 7.2.3 → 8.1.4
 
 **Repo:** `insgt-api` · **Platform:** Heroku app `insgtapi` (Render.com cutover follows, §2)
-**Status:** v3 — slice 0 (Honeybadger) implemented and verified in development, deploy pending;
-OD11 settled; OD10 open
-**Version:** 3 · **Last updated:** 2026-10-26
-**Supersedes:** v2 (2026-10-23). See §9.
+**Status:** v4 — slice 0 (Honeybadger) deployed (v659, 2026-10-26); slice 1 implemented and verified in
+development, deploy planned Wed 2026-10-28 (production is v661); OD11 settled; OD10 open
+**Version:** 4 · **Last updated:** 2026-10-26
+**Supersedes:** v3 (2026-10-26). See §9.
 **Companion files:** `rails-upgrade-codebase-notes.md` (the `file:line` map; every repo claim below
 is sourced there), `rails-upgrade-slices/slice-{0,1,2,3,4,5}.md` (the slice prompts), and the
 contract spec `insgt-api/spec/architecture/rails_upgrade_spec.rb` (created by slice 1; later slices
@@ -212,8 +212,8 @@ any code exists.
 | :-- | :-- | :-- |
 | P1 | `bundle exec rspec 2>&1 \| tee /tmp/rspec.log; grep -c "DEPRECATION WARNING" /tmp/rspec.log` | `N examples, 0 failures` with N ≥ the previous slice's count; grep = `0` (slice 1 onward makes this structural with `:raise`) |
 | P2 | `bin/rails zeitwerk:check` | "All is good!" |
-| P3 | **A job runs end to end** (strengthened, OD5): start `bundle exec sidekiq -c 1 -e development` against the container's Redis; in a second shell `bin/rails runner 'jid = PropertyDataLookupWorker.perform_async(0); sleep 5; puts Sidekiq::Status::status(jid).inspect'` | the Sidekiq log shows `Booted Rails <version> application in development environment`, the job's start/done lines, and the runner prints `:complete`. Candidate worker (ASSUMPTION, the plan confirms by reading `PropertyFactsService.call`): with id `0` the service raises a `StandardError` that `property_data_lookup_worker.rb:34–38` rescues, logs and swallows, so the job completes with no external call. What is exercised: Sidekiq boot, the Rails executor/reloader (`sidekiq/rails.rb:20–26, 68–78`), the Redis round-trip, and the sidekiq-status middleware writing the record. **v3, from slice 0:** in development `Sidekiq::Status::status(jid)` returned `nil` and `get_all` `{}` for a job that ran and failed: the status middleware is configured only in `config/sidekiq_status.rb`, which nothing requires (§8 item 10), so the runner will not print `:complete` as written. Slice 1's plan pins what P3 asserts (the Sidekiq log lines alone, or §8 item 10 first); whether production installs the middleware is UNVERIFIED |
-| P4 | `bundle exec rspec spec/models/postal_code_spec.rb -e nearby_cities` | 3 examples, 0 failures (`:110–141`; the haversine query) |
+| P3 | **A job runs end to end** (strengthened, OD5): start `bundle exec sidekiq -c 1 -e development` against the container's Redis; in a second shell `bin/rails runner 'jid = PropertyDataLookupWorker.perform_async(0); sleep 5; puts Sidekiq::Status::status(jid).inspect'` | the Sidekiq log shows `Booted Rails <version> application in development environment`, the job's start/done lines, and the runner prints `:complete`. Candidate worker (ASSUMPTION, the plan confirms by reading `PropertyFactsService.call`): with id `0` the service raises a `StandardError` that `property_data_lookup_worker.rb:34–38` rescues, logs and swallows, so the job completes with no external call. What is exercised: Sidekiq boot, the Rails executor/reloader (`sidekiq/rails.rb:20–26, 68–78`), the Redis round-trip, and the sidekiq-status middleware writing the record. **v3, from slice 0:** in development `Sidekiq::Status::status(jid)` returned `nil` and `get_all` `{}` for a job that ran and failed: the status middleware is configured only in `config/sidekiq_status.rb`, which nothing requires (§8 item 10), so the runner will not print `:complete` as written. Slice 1's plan pins what P3 asserts (the Sidekiq log lines alone, or §8 item 10 first); whether production installs the middleware is UNVERIFIED. **v4, from slice 1:** the ASSUMPTION above is false — `property_data_lookup_worker.rb:34–39` rescues `StandardError`, logs and **re-raises**, so id `0` ends in `fail`. P3 now enqueues an already-fetched property on its own queue (`Property.unscoped.where(property_data_status: 2).order(:id).first`, `PropertyDataLookupWorker.set(queue: …)`, `sidekiq -q <that queue>`), which the worker's `PropertyDataAlreadyFetchedError` rescue (`:32–33`) completes with no external call, and asserts the Sidekiq log lines: `Booted Rails <version>`, `start`, `…already has property data, skipping`, `done`. `Sidekiq::Status::status(jid)` is recorded (`nil`), not asserted |
+| P4 | `bundle exec rspec spec/models/postal_code_spec.rb -e nearby_cities` | 4 examples, 0 failures (`:110–148`; the haversine query). v4: v1–v3 said 3 examples over `:110–141`, a miscount — the fourth example starts at `:142`, and the file last changed 2026-05-17 |
 | P5 | `bundle exec rspec spec/lib/stripe_card_spec.rb spec/models/account_stripe_spec.rb spec/models/order_issue_refund_spec.rb spec/models/transaction_charge_failure_spec.rb` | 0 failures (Stripe paths; the last two assert `ActionMailer::Base.deliveries`) |
 | P6 | `bin/rails runner 'puts Notifier.send_error_email("rails upgrade", "render check").message.subject'` | `SystemError::rails upgrade` (both ERB templates render; nothing is delivered) |
 | P7 | `bundle exec rspec spec/requests/users_directory_spec.rb spec/requests/orders_processing_parent_pays_spec.rb spec/workers` | 0 failures (JWT request path; raw `select_all` through `OrderSql`; Sidekiq fake queue) |
@@ -371,7 +371,13 @@ same morning as the deploy.
 1. `Gemfile:28` → `gem 'rails', '~> 7.2.4'`; `bundle update rails --conservative` (if the resolver
    refuses because of minitest, `bundle update rails minitest --conservative`). Expected lock diff:
    the thirteen `7.2.3` → `7.2.4` lines, `minitest (6.0.1)` → a 5.x, nothing else. Anything else
-   that moves is explained in the plan or reverted.
+   that moves is explained in the plan or reverted. **v4, as built:** the line is `Gemfile:29` (slice 0
+   inserted `honeybadger` at `:15`). The resolver needed no `minitest` argument. The lock diff is the
+   thirteen gems and their `(= 7.2.x)` pins, `minitest (6.0.1)` → `(5.27.0)` with its `prism (~> 1.5)`
+   sub-dependency line (prism stays through other dependents), `DEPENDENCIES` `~> 7.2.0` → `~> 7.2.4`,
+   the checksums, and two constraint lines under `activesupport` that 7.2.4's gemspec changed:
+   `connection_pool (>= 2.2.5, < 3)` and `minitest (>= 5.1, < 6)` (the lock holds `connection_pool`
+   2.5.5). Byte-identical to the survey's scratch resolution.
 2. Delete `config/initializers/new_framework_defaults.rb:15–17` (the comment and
    `ActiveSupport.to_time_preserves_timezone = false`). On 7.2 the `load_defaults "5.0"` chain sets
    the value to `true` directly (`7-2-stable railties/.../configuration.rb:117`) and nothing resets it,
@@ -386,7 +392,15 @@ same morning as the deploy.
    `heroku addons --app insgtapi` for the Papertrail drain the README created
    (`README.md:141`, `papertrail:choklad`) and, if attached, a Papertrail search for
    `rails/active_storage` with the oldest searchable timestamp written into the plan (UNVERIFIED:
-   that the add-on is still attached and the plan's retention).
+   that the add-on is still attached and the plan's retention). **v4, as found:** Heroku buffer 1,500
+   lines back to 2026-10-26 13:32:53 UTC, 0 hits; Papertrail **is** attached (`fixa`, not the README's
+   `choklad`) and found no matching events back to 2026-10-12 08:00 PM (UI time), about fourteen days.
+   A pre-deploy audit added at the plan review: no route helper, `/rails/active_storage` literal,
+   `DirectUpload` client or attachment API in any repo under `apps/`, `lib/`, `functions/` (insgt-galleries
+   and insgt-virtual-tour do not load the engine); no `active_storage_*` table and 0 of 229
+   text/varchar/json columns containing `rails/active_storage` on the dev restore; stored media URLs are
+   S3 buckets and third-party video/tour hosts, and photos are built at read time through CloudFront or
+   S3, never through Rails routes.
 5. **Production deprecation reporting on** (decided OD8): `config/environments/production.rb:83`
    `report_deprecations = false` → `true` (today it silences every deprecator: `7-2-stable
    activesupport/lib/active_support/railtie.rb:66–70`), plus `config.active_support.deprecation = :notify`,
@@ -400,6 +414,44 @@ same morning as the deploy.
    groups repeats across processes into one error. This closes the untested-path gap (MLS imports,
    rare admin endpoints, thin-coverage jobs): a deprecation the suite never reaches shows up in
    Honeybadger within a day of real traffic, not at the next major.
+
+   **v4, as built** (`app/services/deprecation_reporter.rb`, `config/initializers/deprecation_reporting.rb`):
+   - *Scope.* Every deprecator registered with `Rails.application.deprecators` is reported: it inherits
+     the `:notify` behaviour and emits `deprecation.<gem_name>` (`deprecation.rails`,
+     `deprecation.global_id`, `deprecation.lograge` on 7.2.4; dotenv's registered deprecator reports as
+     `Rails`), and the subscription is `/\Adeprecation\./`. Gem deprecations are wanted: they are the
+     early warning ahead of slice 2. **Not seen:** a gem that creates its own `ActiveSupport::Deprecation`
+     instance without registering it with the app (it keeps its own default behaviour and emits no
+     event), and plain Ruby `warn` / `Kernel#warn` calls (rack's `:unprocessable_entity`, §8 item 1).
+   - *Wiring.* `Rails.application.config.to_prepare { DeprecationReporter.subscribe } if
+     Rails.env.production?`. A bare `DeprecationReporter.subscribe` in an initializer fails the boot
+     with `NameError`: the main autoloader is set up in the Finisher, after `config/initializers`
+     (`railties application/finisher.rb:18`). `to_prepare` runs before eager loading (`:73` vs `:77`),
+     so a deprecation in a class body that no spec loads is still reported; `after_initialize` (`:93`)
+     would be too late for those. With reloading off, `reloader.check` is `false` (`:201`), so neither
+     Sidekiq's job wrapper nor the executor re-runs it. Not covered: a deprecation warned after the
+     railtie applies `:notify` and before this block (config and engine initializers) — the same
+     initializers boot under `:raise` in test, and none branches on production.
+   - *Key and grouping.* The dedupe key and the fingerprint's source are both `"<gem_name>: <message>"`.
+     The message ends with `(called from <label> at <file:line>)` but does not name the deprecator, and
+     Honeybadger groups on a supplied fingerprint alone (its "Customizing error grouping" page), so
+     context never separates groups. So: once per deprecator and call site per process, one error per
+     deprecator and call site across processes. A deprecation whose text embeds a runtime value adds a key
+     per value. `Concurrent::Map#put_if_absent` claims the key atomically — two Puma threads cannot both
+     report it.
+   - *What the notice carries.* `error_class: 'RailsDeprecation'`, `tags: 'deprecation'`, context
+     `gem_name`, `deprecation_horizon` and `callstack` (the first app frame by `Rails.backtrace_cleaner`,
+     root-relative, else the first frame), and `backtrace:` the **raw** callstack — Honeybadger marks
+     application frames by the absolute project root (`backtrace.rb:79–81`), so a cleaned list would
+     show none.
+   - *Failure.* The subscriber never raises for a Notifications payload. A subscriber's error would
+     otherwise surface in the code that emitted the deprecation (`notifications/fanout.rb`,
+     `iterate_guarding_exceptions`), failing that request or job. A failure is logged
+     (`[DeprecationReporter] Failed to report …`) and sent as its own Honeybadger notice with
+     `deprecation_message` in the context, each rescued separately. The key is claimed before
+     `notify`, so a failing reporter tries once per key per process, not on every call.
+   - *Deploy probe.* `DeprecationReporter.received?(text)` — whether this process's reporter claimed a
+     message containing `text`. It proves the wiring, not delivery.
 6. Create `spec/architecture/rails_upgrade_spec.rb` with the slice 1 invariants (spec plan below).
 
 **Out of scope.** Any other gem; any initializer other than the one line; the 24 spec
@@ -416,7 +468,8 @@ somewhere to send. Proof of the starting point: `Rails.version` → `7.2.3` in a
   a `Time` carrying the receiver's UTC offset (`true`, which 8.0 renames `:offset`). Alternative
   rejected: keep `false` until 8.0 forces the change. Why: 8.0's writer warns on `false`, 8.1
   removes it; moving it now isolates the first behaviour step in a one-line, bisectable commit on
-  the version the app already runs. Blast radius: no `.to_time` in `app/` or `lib/`; dynos and the
+  the version the app already runs. (v4: `true` is correct for 7.2 only — 8.0 changes the semantics
+  again, `:offset` vs `:zone`; §4.3 revisits it, not this slice.) Blast radius: no `.to_time` in `app/` or `lib/`; dynos and the
   container run UTC, so the only observable difference is the offset carried by `Time` objects that
   gems derive from zoned values (`Time#zone`, `strftime('%z')`, `hour`/`day` of a Pacific receiver).
 - *`:raise` versus third-party deprecations.* Rule (decided OD8): a deprecation raised from inside
@@ -427,7 +480,8 @@ somewhere to send. Proof of the starting point: `Rails.version` → `7.2.3` in a
   keeps plain `:raise`.
 - *Dedupe scope of the deprecation reporter.* Rule: once per message per process (a `Concurrent::Map`
   keyed by message); Honeybadger's fingerprint groups across processes. Alternative rejected:
-  rate-limiting by time — adds state with no benefit.
+  rate-limiting by time — adds state with no benefit. **v4:** keyed by `"<gem_name>: <message>"`, and
+  the message carries the call site, so in practice once per deprecator and call site (item 5, as built).
 
 **Spec plan** (`spec/architecture/rails_upgrade_spec.rb`, new, plus `spec/services/deprecation_reporter_spec.rb`):
 - "the framework runs the version the document names": `Rails.gem_version >= Gem::Version.new('7.2.4')`
@@ -449,6 +503,18 @@ somewhere to send. Proof of the starting point: `Rails.version` → `7.2.3` in a
   `spec/requests/accounts_most_recent_shoot_spec.rb` (the `search_time_params` consumers),
   `spec/lib/tasks/marketing_events_rake_spec.rb`, `spec/services/account_csv_export_service_spec.rb`.
 
+**v4, spec plan as built.** The contract spec also asserts the gate's *behaviour*: every registered
+deprecator raises `ActiveSupport::DeprecationException` (the config value alone stays `:raise` while
+`report_deprecations = false` silences every deprecator — that is the example's deliberate break).
+`spec/services/deprecation_reporter_spec.rb` asserts the dedupe with `have_received(:notify).once`,
+not `expect(...).to receive(...).once`: with the `before` block's `allow`, a used-up expectation hands
+the second call to the stub and passes. It also pins the first-app-frame rule and its fallback, the raw
+backtrace, `.subscribe` through a standalone `:notify` deprecator, `received?` (true even when
+Honeybadger refuses the notice), the same message from two gems as two fingerprints, and the failure
+path through a real deprecator: the caller's return value is unaffected, a failed report is not
+retried, the failure notice survives a raising logger. Each was seen red under its own deliberate
+break. The four boundary specs: 39 examples, 0 failures.
+
 **Commit sketch** (one concern each; `git-commit-messages` tiers in brackets):
 1. `build: upgrade rails to 7.2.4` [1]
 2. `fix: stop forcing the pre-Ruby 2.4 to_time behavior` [2: the line was the suite's only
@@ -468,7 +534,19 @@ to the dyno's UTC, `2026-10-28 17:00:00 UTC`);
 `RailsDeprecation` error in Honeybadger with that message, then no further `RailsDeprecation` within
 24 h of real traffic (SH).
 
-**Rollback.** `heroku rollback` (code only). Nothing else to undo.
+**v4, verification as run.** Production is **v661** (`d37ae0df`, 2026-10-26 16:42:03 -0400, an emergency
+fix on `master` after v660 `02dbb78a`), so the pre-push "before" captures (S4, S6, S8, S-AS) are taken on
+v661. The slice branch is cut from `02dbb78a`; v661's two commits touch only `app/models/listing.rb` and
+its request spec, share no file with the slice, and merge cleanly (`git merge-tree`). The suite runs on
+the merge into `master` before the push, with an expected count of 2,040. Before the push the
+engineer runs a production-config probe from the branch (`RAILS_ENV=production
+HONEYBADGER_REPORT_DATA=false bin/rails runner …`, in `docs/runbooks/deploy-rails-upgrade-1.md`): its
+load-bearing line maps every registered deprecator to its behaviour by name, and anything but
+`[:notify]` for any of them is a finding, not a pass; `report_deprecations` must not be `false`;
+`received?` shows the wiring. S-DEP adds `Honeybadger.flush`. The slice 0 baseline SH compares
+against spans v659, v660 and v661 (they landed about 1 h 50 min and 6 h 50 min into its window).
+
+**Rollback.** `heroku rollback` (code only), to v661. Nothing else to undo.
 
 **Gates.** After plan; after verification. **Effort (estimate):** 4 h plus the deploy morning.
 
@@ -552,7 +630,12 @@ to the dyno's UTC, `2026-10-28 17:00:00 UTC`);
   "no default flips before slice 5", recorded here: the two alternatives (`false`, `:offset`) both
   warn at boot on 8.0 and are removed on 8.1, so `:zone` is the only value under which the suite
   runs with `:raise`. Behaviour step two: `to_time` returns a `Time` carrying the receiver's zone
-  object (`Time#zone` → `"PDT"`/`"PST"`, DST-aware arithmetic) instead of a fixed offset.
+  object (`Time#zone` → `"PDT"`/`"PST"`, DST-aware arithmetic) instead of a fixed offset. **v4, from
+  slice 1:** slice 1 leaves the value at `true` from `load_defaults`, which is correct for 7.2 only.
+  8.0 reads `true` as `:offset` and changes the semantics again, so this slice's plan re-derives
+  `:offset` versus `:zone` from the installed 8.0.5.1 source rather than from this text. The slice 1
+  contract example pins `utc_offset == -25_200` and stays valid under `:zone`; add the zone example as
+  planned. Under `:raise`, a stray `true` or `:offset` fails the suite at boot.
 - *The `app:update` diff shape.* Rule: the table above is the contract; a generated file not in the
   table is a STOP with the diff pasted.
 
@@ -872,6 +955,11 @@ exception class in Honeybadger that was not present in the slice 0 baseline.**
 | R2 | Slice 4's presence validation on 47 associations changes a save's outcome: a path that raised `PG::NotNullViolation` now returns 422, or a row with a dangling `NOT NULL` key becomes unsaveable | slice 4 | Honeybadger: new `ActiveRecord::RecordInvalid` occurrences with "must exist" from `save!` paths, or `ActiveRecord::NotNullViolation` disappearing from a path that used to raise it; lograge 422 counts on create endpoints; the pre-deploy dangling-key report (STOP on non-zero) |
 | R3 | The two `to_time` steps (offset in slice 1, zone in slice 2) move a date boundary for a Pacific user — `search_time_params` (`lib/app_param.rb:28–34`) consumers, report dates, `strftime` on derived `Time`s | slices 1–2 | pre-deploy: the time-zone request specs by name (§4.2); post-deploy: S8's offset print, and a date-filtered orders count for a Pacific day compared before/after the push; symptom in the wild: an order "missing" from or "extra" on a day's list in insgt-ops (no exception — the one risk Honeybadger cannot see) |
 
+**v4, R3 step one (slice 1), as verified in development:** no `.to_time` in `app/` or `lib/`
+(`grep -rn '\.to_time\b' app lib` → empty); the one indirect caller found in review is
+`orders_helper.rb:93`, through `time_ago_in_words`, an elapsed time that the offset does not change; the four
+boundary specs pass (39 examples). Production reads: S4, S6 and S8 against v661 captures.
+
 Watched, lower: `Regexp.timeout = 1` (slice 5a) raising `Regexp::TimeoutError` in the MLS imports —
 Honeybadger error class `Regexp::TimeoutError` from the `import_listings` rake task or a worker,
 ops@ `SystemError::` emails from the CRMLS/Sandicor rescues (`lib/crmls.rb:115,343,446`,
@@ -987,6 +1075,11 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 17. Honeybadger Insights (off in slice 0) and the uptime/check-in set — decide after the trial
     whether to keep the subscription and what else to check in (the other three scheduler tasks).
 18. OD8 deprecation exemptions — none recorded; this item is the placeholder their removal cites.
+19. **The `:raise` gate sees only the classes a spec loads.** `config/environments/test.rb:18` eager
+    loads only when `CI` is set, so a deprecation in the class body of a class no spec touches never
+    fires locally; it surfaces first in production's eager load (slice 1's reporter catches it there).
+    Candidate: run the slice gate's P1 with `CI=1` (eager load on) from slice 2, or eager load in test
+    always. Found in slice 1; UNVERIFIED whether any CI sets `CI` today.
 
 ---
 
@@ -997,3 +1090,4 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 | 1 | 2026-10-23 | Initial document from the Phase 0 survey (insgt-api `master` eda99450; Rails 8.1.4 is the newest release, 8.2 unreleased). Path 7.2.3 → 7.2.4 → 8.0.5.1 → 8.1.4; four slices; no blocking gem; `to_time` handling pinned per slice from the 7-2/8-0/8-1 branch sources; nine open decisions. |
 | 2 | 2026-10-23 | The nine decisions settled (§7). Slice 0 (Honeybadger) added: §4.1, §2.2 "quiet", §2.6, §4.0 S0/SH/S9, §5. Slice 1 gains the Active Storage routes-off commit with its log-history check and production deprecation reporting to Honeybadger (§4.2). Slice 4 is now the `belongs_to` nullability slice (§4.5, rule D′, runner facts: 49 `NOT NULL`/39 nullable/1 columnless/1 shared column); the framework-defaults slice becomes slice 5 with deploys 5a/5b and no `belongs_to` work (§4.6). OD7's dump method (clean test database), OD8's callable fallback, OD6's scoping and the Active Storage stay, OD9's branch verification and §2.7, the revised calendar and slippage rule (§6). P3 strengthened to "a job runs". Two new open questions OD10, OD11. Notes file extended with the `belongs_to`, scheduler, Honeybadger and branch facts. |
 | 3 | 2026-10-26 | Slice 0 implemented and verified in development (insgt-api `chore/rails-upgrade-slice-0`: `d4dd6d9e`, `a641c52b`). §4.1: the 6.10.0 `filter_keys` default includes `HTTP_AUTHORIZATION` and a YAML list replaces it (left unset); ENV-over-YAML precedence answered, with `HONEYBADGER_ENV` selecting the YAML section; log breadcrumbs off after the adversarial review; `HTTP_REFERER` kept unfiltered by decision; the spec plan as built (a config spec with a serialized-notice example; `api_key` not nil in test because `.env` holds it); the dev job on its own queue; the start-up log check corrected to "no line at boot"; the uptime check created. OD11 settled; the `import_listings` cadence is hourly (§4.1, §4.6, §6). §4.0 P3: `Sidekiq::Status` returns `nil` in development, for slice 1's plan to pin. Runbook `docs/runbooks/deploy-rails-upgrade-0.md`; notes extended. |
+| 4 | 2026-10-26 | Slice 1 implemented and verified in development (insgt-api `chore/rails-upgrade-slice-1`, eight commits `5c9446da`…`a5d9b001`, two review rounds); slice 0 deployed as v659; production now v661 (v660 and v661 are listing fixes from `master`, outside the upgrade). §4.0: P3's id-0 assumption falsified (the worker re-raises) — P3 runs an already-fetched property on its own queue and asserts the log lines; P4 is 4 examples (`:110–148`), not 3. §4.2 item 1: `Gemfile:29`; the lock diff's two `activesupport` constraint lines and minitest's `prism` line named. Item 4: the log-history reach (Heroku 1,500 lines; Papertrail `fixa`, about fourteen days, 0 hits) and the code/database URL audit. Item 5 as built: scope stated (every registered deprecator; not unregistered gem deprecators or `Kernel#warn`); `to_prepare` wiring (a bare initializer reference fails the boot); dedupe key and fingerprint `"<gem_name>: <message>"` (Honeybadger groups on the fingerprint alone; the message carries the call site but not the deprecator); raw `backtrace:`; the subscriber never raises (log line and failure notice, rescued separately; key claimed before notify); `received?` for the deploy probe; the boot window it cannot cover. Spec plan as built (the behavioural gate example; `have_received` for the dedupe). Verification: the pre-push production-config probe, v661 as the "before" and rollback release, the suite on the merge into `master` (2,040 expected), the baseline spanning v659, v660 and v661. §4.3: the 8.0 `to_time` semantics revisited there. §5 R3 step one's evidence. §8 item 19 (the gate sees only loaded classes). Runbook `docs/runbooks/deploy-rails-upgrade-1.md`. |
