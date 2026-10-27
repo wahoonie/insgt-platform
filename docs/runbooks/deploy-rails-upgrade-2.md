@@ -13,19 +13,24 @@ Ships `docs/architecture/rails-upgrade.md` §4.3 (v4; v5 amends it after verific
 `docs/plans/rails-upgrade-slice-2.md` for every deviation and why). Branch
 `chore/rails-upgrade-slice-2`, five commits off `master` 473e2747 (production v662):
 
-1. `84543d51` fix: drop the custom actions from the carts and headshots route filters —
+1. `671c3c6b` fix: drop the custom actions from the carts and headshots route filters —
    `config/routes.rb:6, :19` lose `request_shoot` and `upload_url` from their `only:` lists. Rails 8.0
    raises `ArgumentError` at route load for them; the actions are declared in the member blocks, so
-   the route table is unchanged (583 routes, byte-identical to `master`).
-2. `4de79202` fix: preserve the receiver zone in to_time —
+   the route table is unchanged (583 routes, byte-identical to `master`). The contract examples pin
+   recognition, the carts `format: 'json'` default and the two URL helpers (review round 1).
+2. `df0e12ec` fix: preserve the receiver zone in to_time —
    `config.active_support.to_time_preserves_timezone = :zone` in `config/application.rb`, directly
    under `load_defaults 7.2`. Inert on 7.2.4 (reads as `true`); the behaviour arrives with commit 3.
-3. `57381ef4` build: upgrade rails to 8.0.5.1 — the 13 Rails gems 7.2.4 → 8.0.5.1; `cgi` and `racc`
-   leave the lock; actionpack's `rack < 3.3` cap and activesupport's `connection_pool`/`minitest` caps
-   lifted; a `uri (>= 0.13.1)` constraint added; nothing else moves (`minitest` stays 5.27.0).
-4. `38aa3531` chore: apply the rails 8.0 app:update binstubs — `bin/rails`, `bin/rake` (quotes only).
-5. `df6759e3` chore: add the rails 8.0 framework defaults shim —
+3. `df7826c5` build: upgrade rails to 8.0.5.1 — the 13 Rails gems 7.2.4 → 8.0.5.1; `cgi (0.5.1)`
+   leaves the lock and actionpack's `racc` edge goes (`racc (1.8.1)` stays through other gems);
+   actionpack's `rack < 3.3` cap and activesupport's `connection_pool`/`minitest` caps lifted; a
+   `uri (>= 0.13.1)` constraint added; nothing else moves (`minitest` stays 5.27.0).
+4. `f1b2af6e` chore: apply the rails 8.0 app:update binstubs — `bin/rails`, `bin/rake` (quotes only).
+5. `4b464230` chore: add the rails 8.0 framework defaults shim —
    `config/initializers/new_framework_defaults_8_0.rb`, all three lines commented.
+
+(The branch was rebuilt once after review round 1 to fold a spec strengthening into commit 1 and
+correct commit 3's body; the pre-review hashes `84543d51`…`df6759e3` are gone. The tree is identical.)
 
 **No migration, no ENV change, no client release.** `config.load_defaults` stays `7.2`. The three
 Active Storage migrations in `db/migrate/` predate this slice (tracked since 2026-01-29, run in
@@ -42,9 +47,11 @@ move the "before" captures and the rollback target to the new release.
   `2026-11-02 10:00 -0800`; before the change `-0700`). No `.to_time` in `app/` or `lib/`; the four
   boundary specs pass. Symptom if a gem path disagrees: an order on the wrong day in insgt-ops, with no
   exception. S4, S6 and S8 are the reads.
-- Autosave no longer validates an unchanged associated record (Active Record 8.0.2): a save that used
-  to fail with `RecordInvalid` because an *untouched* associated record was invalid now succeeds.
-  Fewer 422s, never more. The suite (2,045 examples) found no case; SH is the detector in production.
+- **Not** a change of this slice, although §4.3 lists them: the autosave narrowing ("no longer
+  validated unmodified associated records") and the `#merge` with `#or` SQL fix were backported to
+  **7.2.3** (activerecord 7.2.4 `CHANGELOG.md`, the 7.2.3 section, lines 275 and 124), so production
+  has run both since the app moved to 7.2.3. Review round 1 (Codex) caught the plan's claim; v5
+  corrects §4.3's breaking-change list.
 - Nothing else client-visible: the route table is identical; the camelCase-to-snake_case parameter
   paths do not use the method 8.0.3 changed (`HashWithIndifferentAccess#transform_keys!`); the 24
   rspec-rails `:unprocessable_entity` warnings are the matcher's own and unchanged.
@@ -260,8 +267,7 @@ site here; one that `:raise` would trip in the suite is a STOP for slice 3 (OD8)
 
 Triage every other error the first search returns: does its backtrace touch what this slice changed?
 That is the 13 Rails gems, `config/application.rb`, `config/routes.rb`, the two binstubs, or a
-behaviour under "What moves for a human" above — in particular a `RecordInvalid` that *stopped*
-appearing is the autosave change, not a regression. Yes is a finding. No is an old bug seen for the
+behaviour under "What moves for a human" above. Yes is a finding. No is an old bug seen for the
 first time or an old error regrouped because a line moved: record it here and fix it on its own
 branch; it does not block the slice.
 
@@ -300,7 +306,18 @@ behaviour with the old slug.
 - **`Sidekiq::Status::status(jid)` is `nil`** in development (§8 item 10); P3 asserts the Sidekiq log
   lines instead.
 - **The two one-second flakes** (`account_classification_rake_spec.rb:156`,
-  `calculator_spec.rb:965`) did not fire in any of the four full runs today.
+  `calculator_spec.rb:965`) did not fire in any of the six full runs today.
+- **`config/sidekiq_status.rb` is never loaded** (review round 1, Codex, should-fix): nothing requires
+  it, so the sidekiq-status middleware is not installed and `Sidekiq::Status::status` reads `nil`.
+  Pre-existing and unchanged by the upgrade — §8 item 10 already carries it; not fixed in an upgrade
+  commit.
+- **`StringUtils.urlify` behaves identically on 7.2.4 and 8.0.5.1** (review round 1 asked for a smoke
+  check of the 2012 gem): UTF-8 input converts, a BINARY-tagged string raises
+  `Encoding::CompatibilityError` on both versions, and the address strings it receives from the
+  database are UTF-8. The gem also strips capital letters; that is how it has always behaved.
+- **The `OrderProcessingNote` named in `config/application.rb`'s Active Storage comment is a decided
+  design** (`docs/plans/order-processing-note.md`), not a model; Codex read the comment as stale. It is
+  slice 1's comment and is correct.
 
 ## After the deploy — write-back (platform repo)
 
@@ -320,9 +337,10 @@ behaviour with the old slug.
 
 ## Deploy log
 
-- 2026-10-27: **implemented and verified in development** (dev restore; branch head `df6759e3`, five
-  commits off `master` 473e2747). Each commit red → green → deliberate break → area suite; the
-  evidence is in the plan's Approach section as run:
+- 2026-10-27: **implemented and verified in development** (dev restore; branch head `df6759e3` before
+  review round 1, `4b464230` after the rebuild — the same tree plus two spec assertions; five commits
+  off `master` 473e2747). Each commit red → green → deliberate break → area suite; the evidence is in
+  the plan's Approach section as run:
   - Commit 1: the two member-route examples green on 7.2.4 before the change (they guard the routes,
     not the symbols); route table identical (583); break (member route commented out) →
     `ActionController::RoutingError: No route matches "/carts/1/request_shoot"`; area suite
@@ -360,4 +378,22 @@ behaviour with the old slug.
   - **P-PROD**: step 2's RESULTS above (15:39:42–43 UTC; `report_data` `false`; 0 `DEPRECATION`).
   - Development runner on the branch: `8.0.5.1`, `:zone`, `7.2`, `2026-11-02 10:00:00 -0800`, `PST`,
     `ActiveSupport::TimeZone`.
-  - Review rounds: (pending — recorded here when done)
+  - **Review round 1** (`predeploy-review-rails`; Codex 0.163.0 on an rsync copy without `.git` or
+    `.env`, the diff supplied as a file, read-only orders; the copy stayed identical to the tree).
+    Claude: no blocker, no should-fix (no app code, migration, Sidekiq signature, serializer or ENV
+    changes; the four slice traps clear). Codex: **no blocker introduced by this slice**; one
+    should-fix, `config/sidekiq_status.rb` never loaded [codex] — pre-existing, §8 item 10, out of
+    scope; two nits on the contract spec [codex]: the route examples did not cover the carts
+    `format: 'json'` default or the URL helpers — **fixed**, folded into commit 1 (red shown again with
+    the member route commented out: `RoutingError`); the inherited Active Storage absence example could
+    pass on an empty route set — **declined**, the member-route examples and the request spec already
+    fail there (noted for slice 3's contract-spec touch). Two factual corrections Codex prompted,
+    both verified against the installed gems [claude+codex]: `racc (1.8.1)` stays in the lock (commit
+    3's body reworded); the autosave and `#merge`/`#or` fixes are in 7.2.3, not new here (this runbook
+    and the plan corrected; v5 corrects §4.3). Already-intentional: the `OrderProcessingNote` comment.
+    Codex also asked for a `StringUtils.urlify` smoke — run on both versions, identical (Known).
+    After the rebuild, on `4b464230`: contract spec 11 examples, 0 failures; P1 plain `2045 examples,
+    0 failures` (65.6 s), `CI=1` `2045 examples, 0 failures` (68.0 s), 0 deprecation lines in both,
+    24 rack warnings; route table identical to `master`.
+  - **Review round 2**: pending at the 2026-10-27 pause (a Codex run was in flight; rerun it on resume
+    if it did not finish). The runbook stays `Draft` until it is recorded.
