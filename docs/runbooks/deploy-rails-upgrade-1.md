@@ -1,10 +1,10 @@
 # Runbook: Rails Upgrade Slice 1 — 7.2.4, the deprecation gate, routes off, deprecation reporting
 
-**Last updated:** 2026-10-26
+**Last updated:** 2026-10-27
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~30 min on the morning; S7 one hour after the push; S9 at the first hourly
 import; SH 24 h later
-**Status:** Draft — reviewed (two rounds); waiting on the Prerequisites
+**Status:** Deployed 2026-10-27 by Dan — v662 `473e2747`, 08:15:19 -0400; steps 3–6 recorded, S7 and S9 pass; SH (step 7) closes 2026-10-28 05:15 PT: ______
 
 ## Summary
 
