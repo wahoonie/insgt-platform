@@ -1,10 +1,10 @@
 # Runbook: Rails Upgrade Slice 1 — 7.2.4, the deprecation gate, routes off, deprecation reporting
 
-**Last updated:** 2026-10-26
+**Last updated:** 2026-10-28
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~30 min on the morning; S7 one hour after the push; S9 at the first hourly
 import; SH 24 h later
-**Status:** Draft — reviewed (two rounds); waiting on the Prerequisites
+**Status:** Deployed 2026-10-27 by Dan — v662 `473e2747`, 08:15:19 -0400; steps 3–7 recorded; S7, S9 and SH pass
 
 ## Summary
 
@@ -405,6 +405,24 @@ component (docs, "Customizing error grouping"), so comparing errors catches a ne
 class. The cost is that a moved line can show an old bug as a new error, which the triage absorbs;
 production is quiet enough that this takes minutes. `UpgradeMarker` and `RailsDeprecation` set their
 own fingerprints, so they never regroup.
+
+Recorded 2026-10-28 (Dan, Honeybadger dashboard). **SH passes.**
+
+The dashboard's default filter is `-is:resolved -is:ignored`, and S-DEP's error had been resolved by
+hand (no deploy hook, so nothing resolves on deploy), so the default hides it. Each search was run in
+both states, both `-is:ignored`:
+
+| Search | `-is:resolved` | `is:resolved` |
+| :-- | :-- | :-- |
+| `created.after:"2026-10-27 8:15 UTC-4"` | no results | one error: `RailsDeprecation`, `DEPRECATION WARNING: rails upgrade reporter check (called from <main> …`, tag `deprecation`, count 2, last seen 23 h ago, 0 in the last hour — S-DEP's |
+| `class:"NoMethodError" occurred.after:"2026-10-27 8:15 UTC-4"` | no results | no results |
+
+- No new error in the window, so nothing to triage.
+- S-DEP's error has not occurred since the rerun: a resolved error is marked unresolved by its next
+  occurrence (Honeybadger docs, "Error Monitoring"), and it is still resolved at count 2.
+- No other `RailsDeprecation` and no `DeprecationReporter` failure notice: either would be a new
+  error, and the unresolved search returns none. Nothing under OD8 stops slice 2.
+- None of the baseline's three `NoMethodError`s recurred: v661's fixes hold.
 
 ## Rollback
 

@@ -2,29 +2,29 @@
 
 The `file:line` map for `docs/architecture/rails-upgrade.md`. Read at Phase 0 of every slice; verify the entries the slice depends on before surveying fresh. Flat and factual: file, line, what it is, which slice or survey put it there. Paths are `apps/insgt-api` unless prefixed.
 
-Established by the Phase 0 survey of 2026-10-23 against insgt-api `master` at eda99450 (clean tree) and the platform repo `main`; extended the same day for document v2 (the `belongs_to` classification, the recurring tasks, the Honeybadger and branch facts — sections marked "v2"); extended on 2026-10-26 by slice 0 (insgt-api `chore/rails-upgrade-slice-0`, `d4dd6d9e`, `a641c52b` — rows marked "slice 0" and the Honeybadger gem-source section); extended the same day by slice 1 (insgt-api `chore/rails-upgrade-slice-1`, `5c9446da`…`a5d9b001` — rows marked "slice 1" and the "Slice 1" section; every row a slice 1 commit moved was re-verified at `a5d9b001`). Line numbers are as of the latest marked commit; a moved line is a reason to update this file, not to distrust it. Rails-source citations name the branch (`7-2-stable`, `8-0-stable`, `8-1-stable`) and the file; they were read on 2026-10-23 and are stable for released versions.
+Established by the Phase 0 survey of 2026-10-23 against insgt-api `master` at eda99450 (clean tree) and the platform repo `main`; extended the same day for document v2 (the `belongs_to` classification, the recurring tasks, the Honeybadger and branch facts — sections marked "v2"); extended on 2026-10-26 by slice 0 (insgt-api `chore/rails-upgrade-slice-0`, `d4dd6d9e`, `a641c52b` — rows marked "slice 0" and the Honeybadger gem-source section); extended the same day by slice 1 (insgt-api `chore/rails-upgrade-slice-1`, `5c9446da`…`a5d9b001` — rows marked "slice 1" and the "Slice 1" section; every row a slice 1 commit moved was re-verified at `a5d9b001`); extended on 2026-10-27 by slice 2 (insgt-api `chore/rails-upgrade-slice-2`, `671c3c6b`…`4b464230` — rows marked "slice 2" and the "Slice 2" section; rows the slice 2 survey found wrong are marked "corrected slice 2"). Line numbers are as of the latest marked commit; a moved line is a reason to update this file, not to distrust it. Rails-source citations name the branch (`7-2-stable`, `8-0-stable`, `8-1-stable`) and the file; they were read on 2026-10-23 and are stable for released versions.
 
 ## Gemfile and lockfile
 
 | File | Line | What it is | Slice / commit |
 | :-- | :-- | :-- | :-- |
 | `Gemfile` | 4 | `ruby '3.4.10'` — unchanged by every slice (§2) | survey |
-| `Gemfile` | 29 | `gem 'rails', '~> 7.2.4'` (was `~> 7.2.0` at 28 before slice 0 inserted line 15) — the only line the three version slices edit (`~> 7.2.4` done; `~> 8.0.5`, `~> 8.1.4` next) | survey; slice 1 `5c9446da` |
+| `Gemfile` | 29 | `gem 'rails', '~> 8.0.5'` (was `~> 7.2.0` at 28 before slice 0 inserted line 15; `~> 7.2.4` by slice 1) — the only line the three version slices edit (`~> 8.1.4` next) | survey; slice 1 `5c9446da`; slice 2 `df7826c5` |
 | `Gemfile` | 34 | `gem 'sidekiq', '~> 7.0'` — stays on 7.3.x (§3, OD5) | survey; +1 since slice 0 |
 | `Gemfile` | 36 | `gem 'string_utils'` — 2012 gem, `urlify` only (see "Gems with Rails coupling") | survey; +1 since slice 0 |
 | `Gemfile` | 38 | `gem 'strong_migrations'` | survey; +1 since slice 0 |
 | `Gemfile` | 40, 42 | the `zip_tricks` TODO and `gem 'zipline'` — zipline caps actionpack `< 8.2` (§3) | survey; +1 since slice 0 |
-| `Gemfile.lock` | 380 | `rails (7.2.4)`; the thirteen components at `7.2.4` with their `(= 7.2.4)` pins; `DEPENDENCIES` `rails (~> 7.2.4)` at 618 | slice 1 `5c9446da` |
-| `Gemfile.lock` | 298 | `minitest (5.27.0)` — downgraded from 6.0.1 because 7.2.4's activesupport pins `minitest < 6`; its `prism (~> 1.5)` sub-dependency line went with it (`prism (1.9.0)` stays at 357) | slice 1 `5c9446da` |
-| `Gemfile.lock` | 70, 74 | under `activesupport`: `connection_pool (>= 2.2.5, < 3)` and `minitest (>= 5.1, < 6)` — 7.2.4's gemspec constraints; `connection_pool (2.5.5)` at 126 is inside the cap | slice 1 `5c9446da` |
-| `Gemfile.lock` | 369 | `rack (3.2.4)`; 7.2.x keeps the `rack < 3.3` cap, 8.x drops it | survey; re-verified slice 1 |
-| `Gemfile.lock` | 461 | `rspec-rails (8.0.4)` (`actionpack >= 7.2`) | survey; re-verified slice 1 |
-| `Gemfile.lock` | 510 | `shoulda-matchers (7.0.1)` (`activesupport >= 7.1`; 7.0.0 added Rails 8.1 support) | survey; re-verified slice 1 |
-| `Gemfile.lock` | 512, 518 | `sidekiq (7.3.10)` (`rack >= 2.2.4, < 3.3`), `sidekiq-status (4.0.0)` (`sidekiq >= 7, < 9`) | survey; re-verified slice 1 |
-| `Gemfile.lock` | 530 | `string_utils (1.0.8)` (`activesupport >= 2.3.5`) | survey; re-verified slice 1 |
-| `Gemfile.lock` | 535 | `strong_migrations (2.8.0)` (`activerecord >= 7.2`) | survey; re-verified slice 1 |
-| `Gemfile.lock` | 570 | `zipline (2.2.0)` (`actionpack >= 6.0, < 8.2`) | survey; re-verified slice 1 |
-| `Gemfile.lock` | 868, 871 | `RUBY VERSION ruby 3.4.10`, `BUNDLED WITH 4.0.4` | survey; re-verified slice 1 |
+| `Gemfile.lock` | 377 | `rails (8.0.5.1)`; the thirteen components at `8.0.5.1` with their `(= 8.0.5.1)` pins; `DEPENDENCIES` `rails (~> 8.0.5)` at 614 | slice 2 `df7826c5` |
+| `Gemfile.lock` | 295 | `minitest (5.27.0)` — downgraded from 6.0.1 by slice 1 (7.2.4's `minitest < 6`); unchanged by slice 2 although the cap is gone (`--conservative`) | slice 1 `5c9446da`; re-verified slice 2 |
+| `Gemfile.lock` | 67, 71, 74 | under `activesupport`: `connection_pool (>= 2.2.5)` and `minitest (>= 5.1)` (the 7.2.4 caps lifted) and `uri (>= 0.13.1)` (added; `uri (1.1.1)` at 550 was already locked). `cgi (0.5.1)` left the lock entirely; `racc (1.8.1)` at 365 stays through other dependents — only actionpack's edge dropped | slice 2 `df7826c5` |
+| `Gemfile.lock` | 28, 366 | actionpack `rack (>= 2.2.4)` — the `< 3.3` cap lifted; `rack (3.2.4)` unchanged (sidekiq still caps `< 3.3`) | survey; slice 2 |
+| `Gemfile.lock` | 457 | `rspec-rails (8.0.4)` (`actionpack >= 7.2`) | survey; re-verified slice 2 |
+| `Gemfile.lock` | 506 | `shoulda-matchers (7.0.1)` (`activesupport >= 7.1`; 7.0.0 added Rails 8.1 support) | survey; re-verified slice 2 |
+| `Gemfile.lock` | 508, 514 | `sidekiq (7.3.10)` (`rack >= 2.2.4, < 3.3`), `sidekiq-status (4.0.0)` (`sidekiq >= 7, < 9`) | survey; re-verified slice 2 |
+| `Gemfile.lock` | 526 | `string_utils (1.0.8)` (`activesupport >= 2.3.5`) | survey; re-verified slice 2 |
+| `Gemfile.lock` | 531 | `strong_migrations (2.8.0)` (`activerecord >= 7.2`) | survey; re-verified slice 2 |
+| `Gemfile.lock` | 566 | `zipline (2.2.0)` (`actionpack >= 6.0, < 8.2`) | survey; re-verified slice 2 |
+| `Gemfile.lock` | 863–864, 866–867 | `RUBY VERSION ruby 3.4.10`, `BUNDLED WITH 4.0.4` | survey; re-verified slice 2 |
 | `Gemfile` | 15 | `gem 'honeybadger', '~> 6.10'` (locked 6.10.0; runtime deps `logger`, `ostruct`, both already locked; Ruby `>= 3.0.0`; docs: Rails `>= 5.2`, Sidekiq "any") — the one gem added outside `rails` (§2.6); `~> 6.10` blocks a major bump | v2; slice 0 `d4dd6d9e` |
 
 Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-adapter`, `rgeo`, `sentry`, `rollbar`, `newrelic`, `image_processing`, `ruby-vips`, `mini_magick`, `bootsnap`, `brakeman`, `thruster`, `kamal`, `solid_queue`, `solid_cache`, `solid_cable`.
@@ -35,10 +35,11 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | :-- | :-- | :-- | :-- |
 | `config/application.rb` | 3 | `require 'rails/all'` — loads Active Storage, Action Cable, Action Text, Action Mailbox and the test-unit railtie even though none is used; drives `app:update`'s `skip_*` derivation (§4.2) | survey |
 | `config/application.rb` | 12 | `config.load_defaults 7.2` — bumped to `8.1` only in slice 5b | survey; slice 5 |
-| `config/application.rb` | 38–41 | the why-comment and `config.active_storage.draw_routes = false` (OD2) — the line OrderProcessingNote's design revisits (§8 item 7) | slice 1 `3a6b8e2e` |
-| `config/application.rb` | 17, 20–21 | `config.autoload_lib(ignore: %w[assets tasks])` plus the older `autoload_paths += Dir["lib/**/"]` / `eager_load_paths << lib` (redundant; §8) | survey |
-| `config/application.rb` | 24–25 | `config.hosts << 'api.insightphotos.net'`, `'insgtapi.herokuapp.com'` | fb2e1924 |
-| `config/application.rb` | 36 | `config.api_only = true` | survey |
+| `config/application.rb` | 14–20 | the why-comment and `config.active_support.to_time_preserves_timezone = :zone` (20), directly under `load_defaults` — the Rails 8.0 `to_time` flip (§4.3 gap 1 as built). Not in the 8.0 shim because Active Support's `set_configs` forwards the key before `config/initializers` run (see "Slice 2"); inert on 7.2.4 (read as `true`). Slice 3's survey decides its fate on 8.1 | slice 2 `df0e12ec` |
+| `config/application.rb` | 46–49 | the why-comment and `config.active_storage.draw_routes = false` (OD2) — the line OrderProcessingNote's design revisits (§8 item 7) | slice 1 `3a6b8e2e`; +8 since slice 2 |
+| `config/application.rb` | 25, 28–29 | `config.autoload_lib(ignore: %w[assets tasks])` plus the older `autoload_paths += Dir["lib/**/"]` / `eager_load_paths << lib` (redundant; §8) | survey; +8 since slice 2 |
+| `config/application.rb` | 32–33 | `config.hosts << 'api.insightphotos.net'`, `'insgtapi.herokuapp.com'` | fb2e1924; +8 since slice 2 |
+| `config/application.rb` | 44 | `config.api_only = true` | survey; +8 since slice 2 |
 | `config/environments/development.rb` | 33 | `config.active_storage.service = :local` | survey |
 | `config/environments/development.rb` | 45, 48 | `deprecation = :log`, `disallowed_deprecation = :raise` | survey |
 | `config/environments/production.rb` | 33 | `config.active_storage.service = :local` | survey |
@@ -61,16 +62,16 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `README.md` | 162–170 | the migrating-deploy recipe (`pg:backups:capture`, `maintenance:on`, `git push heroku master`, `db:migrate`, `restart`, `maintenance:off`) — the upgrade slices need only the push and `heroku rollback` (§2.5) | v2 |
 | `config/environments/test.rb` | 61, 64 | `disallowed_deprecation = :raise`, `disallowed_deprecation_warnings = []` | survey |
 | `config/environment.rb` | 7, 9 | `Jbuilder.key_format camelize: :lower`; `Phoner::Phone.default_country_code = '1'` — why `app:update`'s `environment.rb` is rejected | survey |
-| `config/boot.rb`, `config.ru` | — | stock; `app:update` does not regenerate either (`app_generator.rb` update tasks touch only `bin/` and `config/`) | survey |
-| `config/puma.rb` | 23–24, 27, 30, 34 | threads from `RAILS_MAX_THREADS` (3), port, `plugin :tmp_restart`, pidfile — identical to the 8.x template minus comments | survey |
+| `config/boot.rb`, `config.ru` | — | stock. `app:update` regenerates `boot.rb` (`configs` → `create_boot_file`) and found it identical in slice 2 (no bootsnap); `config.ru` is not touched; `public/` is skipped for an API app (`app_generator.rb:220–221`) | survey; corrected slice 2 |
+| `config/puma.rb` | 23–24, 27, 30, 34 | threads from `RAILS_MAX_THREADS` (3), port, `plugin :tmp_restart`, pidfile. **Not** identical to the 8.0 template minus comments: the template adds `plugin :solid_queue if ENV["SOLID_QUEUE_IN_PUMA"]` and double quotes, so slice 2 rejected it under §4.3's "comment-only" rule | survey; corrected slice 2 |
 | `config/database.yml` | 4, 24 | `pool:` — still read by 8.1 (`8-1-stable activerecord/.../database_configurations/hash_config.rb:73–85`, `fetch(:pool, 5)`); only the Ruby method `pool` is deprecated | survey |
 | `config/storage.yml` | 1–7 | `test` and `local` Disk services only | survey |
 | `config/cable.yml` | 7–10 | production `redis` adapter on `REDIS_URL` — unused (no Action Cable code) | survey |
 | `config/secrets.yml`, `config/secrets.yml.rb` | 13, 16, 21 | tracked, dead since 7.2 removed `Rails.application.secrets`; carry literal dev/test `secret_key_base` values (§8) | survey |
-| `config/newrelic.yml`, `config/elasticsearch.yml`, `config/spring.rb`, `bin/spring`, `bin/update` | — | orphaned (no matching gem); `bin/dev` does not exist in this repo — the platform's `bin/dev` drives `Procfile.dev` (§8) | survey |
+| `config/newrelic.yml`, `config/elasticsearch.yml`, `config/spring.rb`, `bin/spring`, `bin/update` | — | orphaned (no matching gem); `bin/dev` does not exist in this repo — the platform's `bin/dev` drives `Procfile.dev` (§8). The 8.0 `app:update` offers a two-line `bin/dev` and a `bin/setup` whose tail execs it; slice 2 rejected both and took only `bin/rails` and `bin/rake` (double quotes) | survey; slice 2 `f1b2af6e` |
 | `config/sidekiq_status.rb` | 1–15 | configures the sidekiq-status middleware; nothing requires this file (grep empty) and `config/sidekiq.yml` is absent — UNVERIFIED whether it loads in production (§8). Slice 0 observed `Sidekiq::Status::status(jid) => nil` and `get_all => {}` in development for a job that ran — the middleware is not installed there (§4.0 P3, v3) | survey; slice 0 |
 | `Procfile` | 1–2 | `web: bundle exec puma -C config/puma.rb`; `backgroundworker: bundle exec sidekiq -c 4`; no release phase | survey |
-| `.env` | — | sets `SECRET_KEY_BASE` (8.0.2+/8.1 use it in dev/test instead of `tmp/local_secret.txt`; no cookies or verifiers in app code, so inert) | survey |
+| `.env` | — | the survey said it sets `SECRET_KEY_BASE` (8.0.2+/8.1 use it in dev/test instead of `tmp/local_secret.txt`); slice 2's anchored grep (`^SECRET_KEY_BASE=`) found 0 lines and the file was not re-read (UNVERIFIED which form, if any). Inert either way: no `secret_key_base`, `message_verifier` or cookie use in `app/`, `lib/`, `config/` | survey; slice 2 |
 
 ## Initializers — the five framework-defaults shims and the rest
 
@@ -82,7 +83,7 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `config/initializers/new_framework_defaults.rb` | 15–16 | the comment and `active_record.belongs_to_required_by_default = false` (was 19–20) — **removed, not relocated, in slice 4** (rule D′, §4.5, OD4); see "`belongs_to` and column nullability" below for what depends on it | Rails 5.0 shim; slice 4 |
 | `config/initializers/new_framework_defaults_6_0.rb` | 1–45 | entirely commented out — dead; deleted in slice 5b | survey |
 | `config/initializers/new_framework_defaults_7_2.rb` | 1–70 | entirely commented out — dead (`load_defaults 7.2` already applies all of it); deleted in slice 5b | survey |
-| `config/initializers/new_framework_defaults_8_0.rb` | — | does not exist; generated by slice 2's `app:update`, with only `to_time_preserves_timezone = :zone` uncommented (§4.3); that line is deleted in slice 3; rows 2–3 of §4.6 flipped in 5a; the file deleted in 5b | slices 2, 3, 5 |
+| `config/initializers/new_framework_defaults_8_0.rb` | 1–30 | the 8.0.5.1 template verbatim, **all three lines commented** (`:18` `to_time_preserves_timezone = :zone`, `:25` `strict_freshness = true`, `:30` `Regexp.timeout = 1`); the `to_time` flip is in `application.rb:20` instead (see "Slice 2"); rows 2–3 of §4.6 flipped in 5a; the file deleted in 5b. The contract spec pins `strict_freshness` false and `Regexp.timeout` nil until then | slice 2 `4b464230` |
 | `config/initializers/new_framework_defaults_8_1.rb` | — | does not exist; generated by slice 3's `app:update`, all commented; flipped and deleted in slice 5b | slices 3, 5 |
 | `config/initializers/deprecation_reporting.rb` | 17 | `Rails.application.config.to_prepare { DeprecationReporter.subscribe } if Rails.env.production?` — see the "Slice 1" section for why `to_prepare` | slice 1 `e54247cb` |
 | `config/initializers/strong_migrations.rb` | 7 | `start_after = 20260806120000` | pre-survey |
@@ -122,16 +123,19 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `lib/app_param.rb` | 28–34 | `search_time_params` swaps `Time.zone` to `current_user.time_zone` around parsing | survey |
 | `app/`, `lib/` | — | `.to_time` appears nowhere (grep empty); `in_time_zone` 25 sites, `Time.zone` 14, `Time.now` 135, `.to_date` 26, `strftime` 54 | survey |
 | `app/helpers/orders_helper.rb` | 93 | `time_ago_in_words(timestamp)` — the one indirect `to_time` caller found (slice 1 review); an elapsed time, unchanged by the offset step | slice 1 |
-| `spec/architecture/rails_upgrade_spec.rb` | — | pins `ActiveSupport.to_time_preserves_timezone == true` and the Pacific `to_time.utc_offset == -25_200` (2026-10-23 10:00); restoring the old line gives `false` and `0` in the container (`date +%z` → `+0000`) | slice 1 `a59df0b0` |
+| `spec/architecture/rails_upgrade_spec.rb` | 19–55 | pins `ActiveSupport.to_time_preserves_timezone == :zone` (slice 1 pinned `true`), the Pacific `to_time.utc_offset == -25_200` (2026-10-23 10:00), the zone object / `%Z` `PST` / `-28_800` / not DST for 2026-11-02 10:00, and `+ 2.days` across DST end → `-28_800`. Deliberate break without touching boot: `DateAndTime::Compatibility.preserve_timezone = :offset` in an `around` (silent on 8.0.5.1) | slice 1 `a59df0b0`; slice 2 `df0e12ec`, `df7826c5` |
 | `7-2-stable railties/lib/rails/application/configuration.rb` | 117 | `load_defaults "5.0"` sets `ActiveSupport.to_time_preserves_timezone = true` directly | source |
 | `7-2-stable activesupport/lib/active_support.rb` | 117–125 | writer warns `unless value` ("pre-Ruby 2.4 behavior … removed in Rails 8.0") | source |
 | `8-0-stable railties/.../configuration.rb` | 119, 337–348 | `5.0` sets the config key to `:offset`; `8.0` sets `:zone`, `strict_freshness = true`, `Regexp.timeout ||= 1` | source |
 | `8-0-stable activesupport/lib/active_support.rb` | 118–132 | writer warns for `false` and for any value other than `:zone` | source |
-| `8-0-stable activesupport/lib/active_support/railtie.rb` | 99–103, 125–130 | after_initialize and `set_configs` both forward the config key to the writer | source |
+| `8-0-stable activesupport/lib/active_support/railtie.rb` | 99–103, 125–130 | after_initialize and `set_configs` both forward the config key to the writer — **and `set_configs` runs before `config/initializers`** (railtie initializers precede the application's `load_config_initializers`: `railties application.rb:609` puts the app last in `ordered_railties`, `engine.rb:644`), so a shim value arrives after the `load_defaults` value (`:offset`) has already warned; under `:raise` the boot fails at `railtie.rb:128` (slice 2, verified on 8.0.5.1) | source; slice 2 |
 | `8-1-stable railties/.../configuration.rb` | 335–342, 343–367 | `8.0` block has no `to_time` line; `8.1` block = yjit, `escape_json_responses`, `action_on_path_relative_redirect`, `raise_on_missing_required_finder_order_columns`, `escape_js_separators_in_json`, `render_tracker`, `remove_hidden_field_autocomplete` | source |
 | `8-1-stable activesupport/lib/active_support.rb` | 131–137 | writer always warns ("deprecated and will be removed in Rails 8.2") | source |
 | `8-1-stable activesupport/lib/active_support/railtie.rb` | 142–147 | `set_configs` still forwards any set key to the writer — a `:zone` line present on 8.1 warns at boot | source |
 | `8-1-stable activesupport/lib/active_support/core_ext/date_and_time/compatibility.rb` | — | no `preserve_timezone`; `to_time` always keeps the receiver's zone | source |
+| 8.0.5.1 `activesupport/lib/active_support/time_with_zone.rb` | 493–501 | `to_time`: `:zone` → `getlocal(time_zone)` (a Ruby `Time` carrying the `ActiveSupport::TimeZone` object — `Time#zone` returns the object, `strftime('%Z')` the abbreviation); truthy → `getlocal(utc_offset)`; else `getlocal` | slice 2 |
+| 7.2.4 `activesupport/lib/active_support/time_with_zone.rb`, `core_ext/date_time/compatibility.rb`, `core_ext/time/compatibility.rb` | 485–491; 16; 14 | every `to_time` branches on truthiness and the 7.2.4 writer warns only `unless value` (`active_support.rb:117–125`) — a `:zone` value set on 7.2.4 is inert (reads as `true`) | slice 2 |
+| `bin/rails runner`, 7.2.4 vs 8.0.5.1 | — | `TimeZone['Pacific Time (US & Canada)'].parse('2026-11-02 10:00').to_time`: both `2026-11-02 10:00:00 -0800`; 7.2.4 `zone` `nil`, `%Z` `""`; 8.0.5.1 `zone` the TimeZone object, `%Z` `"PST"`; `parse('2026-10-31 10:00').to_time + 2.days` → 7.2.4 `-0700`, 8.0.5.1 `-0800` | slice 2 |
 
 ## Raw SQL and connection handling
 
@@ -154,7 +158,8 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `lib/listing_export.rb`, `lib/order_url_export.rb` | 114, 140; 97 | `Listing.connection.exec_query`, `Photo.connection.exec_query`, `OrderUrl.connection.exec_query` | survey |
 | `spec/support/crud_attribution.rb`, `spec/support/explicit_account_ids.rb` | 18; 13 | `ActiveRecord::Base.connection.execute` | survey |
 | `app/`, `lib/`, `spec/` | — | no `lease_connection`, `with_connection`, `permanent_connection_checkout`, `raw_connection` (grep empty); runner: `permanent_connection_checkout=true` | survey |
-| `app/models/concerns/{account_query,property_query}.rb`, `app/models/phone_number.rb` | 378; 61, 70, 79; 209 | the `.or(` sites (9 in concerns) that 8.0.3/8.1.0's "`#merge` with `#or` … mixture of attributes and SQL strings" fix can change | survey |
+| 8.0.5.1 `activerecord/lib/active_record/connection_handling.rb` | 275–282 | `connection` "Soft deprecated"; the deprecation fires only when `ActiveRecord.permanent_connection_checkout` is `:deprecated` — it is `true` here, so the ~25 sites are silent on 8.0.5.1 (runner) | slice 2 |
+| `app/models/concerns/{account_query,property_query,user_query,notification_query}.rb`, `app/models/phone_number.rb` | 378; 61, 70, 79–81; 314; 29, 35; 209 | the 10 `.or(` sites. The "`#merge` with `#or` … mixture of attributes and SQL strings" fix is in **7.2.3** (activerecord 7.2.4 `CHANGELOG.md`, 7.2.3 section, line 124), not new at 8.0 or 8.1 | survey; corrected slice 2 |
 
 ## Controllers, rendering, params
 
@@ -172,6 +177,7 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `app/controllers/transactions_controller.rb` | 55 | `request.remote_ip` → Stripe `client_ip` (8.1 `remote_ip` change) | survey |
 | `app/views/**/*.jbuilder` | — | 140 templates; `JbuilderTemplate#target!` is `@attributes.to_json` (jbuilder-2.14.1 `lib/jbuilder.rb:271–273`), so 8.1's `escape_json_responses` (renderer-level, `8-1-stable actionpack/lib/action_controller/metal/renderers.rb:169–172`) does not touch JBuilder output; `escape_js_separators_in_json` (AS-level, `8-1-stable activesupport/lib/active_support/json/encoding.rb:92–98`) does | survey |
 | `config/routes.rb` | 4 | `get 'up' => 'rails/health#show'`; 360 lines, 592 routes, no `mount`, no multi-path routes, no Sidekiq web | 7fe510d1 |
+| `config/routes.rb` | 6, 19; 11, 21 | `resources :carts … only: %i[show update destroy create]` and `resources :headshots, only: %i[create update destroy]` — slice 2 removed `request_shoot` and `upload_url` from the lists (8.0.0.rc1 raises `ArgumentError` for a non-default action in `only:`/`except:`, `actionpack mapper.rb:1182–1186`); the actions are declared in the member blocks at 11 and 21, so the route table is unchanged (583; helpers `request_shoot_cart`, `upload_url_headshot`) | slice 2 `671c3c6b` |
 
 ## Models, mailers, workers
 
@@ -188,7 +194,8 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `app/mailers/notifier.rb` | 8 | the documented one-liner `Notifier.send_error_email('TESTING', "This is a test").deliver_now` | survey |
 | `app/workers/property_data_lookup_worker.rb` | 26–28 | `include Sidekiq::Worker`, `include Sidekiq::Status::Worker`, `sidekiq_options retry: false` — the worker shape; 14 workers `require 'sidekiq-status'` at line 1 | survey |
 | `lib/crmls.rb`, `lib/sandicor.rb`, `app/models/listing.rb` | 560, 473, 1083 lines | the regex-dense MLS import code `Regexp.timeout = 1` (slice 4a) can affect | survey |
-| `lib/tasks/marketing_source.rake` | 41 | the one production `upsert_all` | survey |
+| `lib/tasks/marketing_source.rake` | 41 | the one production `upsert_all` — no spec covers it (`spec/lib/tasks/marketing_source*` does not exist; grep, slice 2) | survey; slice 2 |
+| `lib/crud_attribution.rb` | 4–12 | the `CrudAttribution` module (in `lib/`, not `app/models/concerns`): `validates :created_by_id, presence: true, on: :create`, `:updated_by_id` on update; included by 52 models — the exposure of the autosave validation narrowing, which is 7.2.3's, not 8.0's | slice 2 |
 
 ## Schema facts
 
@@ -198,7 +205,7 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `db/schema.rb` | 15–16 | `enable_extension "pg_stat_statements"`, `"plpgsql"` — no PostGIS | survey |
 | `db/schema.rb` | 903, 970, 972 | the three `t.float` columns (UNVERIFIED whether any is PG `real`, which would add `limit:` on an 8.x dump) | survey |
 | `db/schema.rb` | — | no `id: false` table (grep empty) — 8.1's `MissingRequiredOrderError` default is inert | survey |
-| `db/migrate/` | — | newest `20261007120001`; no Active Storage migration has ever been added or deleted (`git log --diff-filter=D`) | survey |
+| `db/migrate/` | — | newest `20261007120001`. **Three Active Storage migrations are tracked**: `20260122184539_add_service_name_to_active_storage_blobs.active_storage.rb`, `…40_create_active_storage_variant_records…`, `…41_remove_not_null_on_active_storage_blobs_checksum…` (added by `e66411cf`, 2026-01-29; `Migration[6.0]`, each `return unless table_exists?(:active_storage_blobs)`); their versions are in `schema_migrations` on the dev restore (so in production); no `active_storage_*` table. `active_storage:update` skips them by name, so no slice copies or deletes them. (The survey's "never added" claim was wrong — `--diff-filter=D` saw only deletions.) | survey; corrected slice 2 |
 
 ## Specs and support files
 
@@ -218,10 +225,11 @@ Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-a
 | `spec/requests/orders_processing_release_on_spec.rb`, `spec/requests/accounts_most_recent_shoot_spec.rb` | — | the `search_time_params` / time-zone request specs | survey |
 | `spec/workers/property_data_lookup_worker_spec.rb` | 3 | worker `#perform` example | survey |
 | `spec/architecture/account_classification_spec.rb` | — | the existing contract spec and the shape to copy | survey |
-| `spec/architecture/rails_upgrade_spec.rb` | 1–65 | the contract spec, one `describe` per document section; slice 1's 6 examples: the version floor (`>= 7.2.4`, bumped per slice), the `to_time` pair, the gate's config value and its behaviour (every registered deprecator raises), no Active Storage route. Extended by every later slice (§4.2–§4.6) | slice 1 |
+| `spec/architecture/rails_upgrade_spec.rb` | 1–120 | the contract spec, one `describe` per document section; 11 examples after slice 2: the version floor (`>= 8.0.5.1`), the `to_time` setting (`:zone`) and three behaviour examples, the gate's value and behaviour (every registered deprecator raises), no Active Storage route, the two member routes (recognition, the carts json default, the helpers), the other 8.0 defaults off (`strict_freshness`, `Regexp.timeout`, `loaded_config_version`). Extended by every later slice (§4.2–§4.6) | slice 1; slice 2 |
 | `spec/requests/active_storage_routes_spec.rb` | 1–14 | `POST /rails/active_storage/direct_uploads` → 404 | slice 1 `3a6b8e2e` |
 | `spec/services/deprecation_reporter_spec.rb` | 1–188 | 14 examples: the notify call, dedupe (`have_received(...).once`), a different message, the same message from another gem, first app frame and fallback, `.subscribe`, `.received?` ×3, the failure path through a real `:notify` deprecator ×4 | slice 1 |
 | slice 1 runs | — | 2026-10-26 on `chore/rails-upgrade-slice-1`: 2,013 at `master` 02dbb78a → **2,034 examples, 0 failures, 0 `DEPRECATION WARNING`** at `a5d9b001`; the 24 rspec-rails `:unprocessable_entity` warnings unchanged (they do not trip `:raise`). Two pre-existing one-second flakes, `spec/lib/tasks/account_classification_rake_spec.rb:156` and `spec/services/account_metrics/calculator_spec.rb:965`, independent of `to_time`; fixed on their own branch after the push | slice 1 |
+| slice 2 runs | — | 2026-10-27 on `chore/rails-upgrade-slice-2`: 2,040 at `master` 473e2747 → **2,045 examples, 0 failures, 0 `DEPRECATION WARNING`** at `4b464230`, plain and with `CI=1` (eager load); the 24 rack warnings unchanged; the two one-second flakes did not fire in six full runs | slice 2 |
 | `spec/support/sql_helpers.rb` | 11–21 | `sql_for` — slice 4 measures the extra association loads on an `Order` save with it (§4.5) | survey; slice 4 |
 
 ## Recurring work and workers (v2 — slices 0, 1 and 5)
@@ -355,6 +363,29 @@ Honeybadger 6.10.0 (installed gem, read-only):
 | jbuilder 2.14.1 | `lib/jbuilder.rb` | 271–273 | `target!` → `@attributes.to_json` |
 | geocoder 1.8.6 | `lib/generators/geocoder/migration_version.rb` | 5–10 | the only `Rails::VERSION` reference |
 
+## Slice 2 — the 8.0 boot order, the route validation and what they rest on (2026-10-27, at `4b464230`)
+
+Rails 8.0.5.1 (installed gems, read-only); the 7.2.4 rows are the "before".
+
+| File | Line | What it is |
+| :-- | :-- | :-- |
+| `railties/lib/rails/application/configuration.rb` | 119, 341 | `load_defaults "5.0"` sets `active_support.to_time_preserves_timezone = :offset`; `"8.0"` sets `:zone` |
+| `activesupport/lib/active_support/railtie.rb` | 99–103, 125–130 | the late forward (`after_initialize`) and the early one (`set_configs`, every `config.active_support` key); the early one is what the shim cannot pre-empt |
+| `activesupport/lib/active_support.rb` | 118–132 | the writer warns for a falsy value ("preserve the receiver timezone rather than system local time") and for anything but `:zone` ("the full timezone rather than offset of the receiver"); both say "in Rails 8.1" |
+| `activesupport/lib/active_support/core_ext/date_and_time/compatibility.rb` | 15–37 | `preserve_timezone` is a plain `mattr_accessor` (the writer does not warn); the reader warns once only when nil — why the contract spec's deliberate break assigns it directly |
+| `railties/lib/rails/application.rb`; `railties/lib/rails/engine.rb` | 609; 565, 644 | `ordered_railties` puts the application last; `load_environment_config` runs `before: :load_environment_hook` (Bootstrap); `load_config_initializers` is an application initializer — the ordering behind the `:zone` placement |
+| `actionpack/lib/action_dispatch/routing/mapper.rb` | 1177–1186 | `Resource#initialize` validates `:only`/`:except` against `default_actions(false)` and raises "Route `resources :carts` - :only and :except must include only […], but also included [:request_shoot]" — absent on 7.2.4 (CHANGELOG 8.0.0.rc1; 8.0.2 added the resource name) |
+| `railties/lib/rails/commands/app/update_command.rb` | 11, 16, 63–83 | `add_runtime_options!` (`--force` accepted), `deprecators.silenced = true` for the run, the `skip_*` derivation merged with the command's options; identical on 8.0.2 and 8.0.5.1 |
+| `railties/lib/rails/generators/rails/app/app_generator.rb` | 111–116, 123–137, 220–221, 376–384 | `bin` (excludes `thrust`/`rubocop`/`brakeman` by Gemfile), `config` (`puma.rb` is templated on update; `routes.rb`, `cable.yml`, `storage.yml`, `locales` are not), `public_directory` returns for `update && api`, `update_active_storage` runs `active_storage:update` |
+| `activesupport/lib/active_support/hash_with_indifferent_access.rb` | 350–362 | `transform_keys!` = `replace(copy_defaults(transform_keys(&block)))` on 8.0.5.1 and (`:354–364`) on 7.2.4 — a later key wins on both; not on the app's path |
+| `activesupport/lib/active_support/core_ext/hash/keys.rb` | — | identical on 7.2.4 and 8.0.5.1 (`diff`); `_deep_transform_keys_in_object!` deletes and reinserts, so on a collision the camelCase value wins in either order |
+| `activerecord-7.2.4/CHANGELOG.md` | 124, 275 (the 7.2.3 section, lines 45–356) | "Fix `#merge` with `#or` or `#and` …" and "Fix autosave associations to no longer validated unmodified associated records." — both 7.2.3's, in production since; `autosave_association.rb:320` guards identically on 7.2.3 and 7.2.4 |
+| `activestorage-8.0.5.1/CHANGELOG.md` | 1–44 | CVE-2026-66066: libvips's unfuzzed loaders disabled; raises at boot only when `ruby-vips` is installed (it is not) |
+| `bin/rails runner` (development, 8.0.5.1) | — | `Rails.application.deprecators` still `Rails`, `GlobalID`, `Lograge`; `cache_store` `:null_store`; `permanent_connection_checkout` `true`; `strict_freshness` `false`; `Regexp.timeout` `nil`; `loaded_config_version` `7.2`; the internal route set gains only `GET /rails/info/notes` (development-only) — `bin/rails routes` is byte-identical to `master` (583) |
+| `bundle exec sidekiq` (development, 8.0.5.1) | — | `Booted Rails 8.0.5.1 application in development environment`; property 1964 → `start` → `…already has property data, skipping` → `done` (0.23 s); `Sidekiq::Status::status(jid)` `nil` (§8 item 10 — Codex confirmed `config/sidekiq_status.rb` is never loaded) |
+| `RAILS_ENV=production` boot (dev container, `HONEYBADGER_REPORT_DATA=false`) | — | every deprecator `[:notify]`, `report_deprecations` `true`, `received?` `true`, `:zone`, `7.2`, 583 routes, `report_data` `false`, 0 `DEPRECATION` lines (slice 2 runbook step 2) |
+| `string_utils-1.0.8/lib/string_utils.rb` | 59 | `urlify` raises `Encoding::CompatibilityError` on a BINARY-tagged string on 7.2.4 and 8.0.5.1 alike (UTF-8 input converts; database strings are UTF-8); the gem strips capital letters — pre-existing |
+
 ## Platform repo and documentation
 
 Branch facts (OD9, verified 2026-10-23): the platform repo's `origin/HEAD` is `main`; `docs/rails-upgrade` is based on `main` (merge-base dff7500 = `main`'s tip). insgt-api's `origin/HEAD` and `heroku/HEAD` are both `master`; `apps/insgt-api/docs/` holds only `ops/` and `plans/` — every design document lives here, in `insgt-platform/docs/architecture/` (`insgt-platform/CLAUDE.md:11`). §2.7 is the merge step.
@@ -366,7 +397,9 @@ Branch facts (OD9, verified 2026-10-23): the platform repo's `origin/HEAD` is `m
 | `insgt-platform/docs/runbooks/README.md` | runbook conventions (`Status:` header, `## Deploy log`); each slice writes `deploy-rails-upgrade-N.md` in that shape |
 | `insgt-platform/docs/runbooks/deploy-rails-upgrade-0.md` | slice 0's runbook: deploy steps, S0–S2/S9, the dev verification log (notice ids), and — after 24 h — the Honeybadger baseline every later slice's SH check compares against (its window spans v659, v660 and v661) |
 | `insgt-platform/docs/runbooks/deploy-rails-upgrade-1.md` | slice 1's runbook: the eight commits, the Active Storage audit, the pre-push production-config probe, the merge into `master` (`d37ae0df`, v661; 2,040 examples expected), the v661 "before" captures, S-DEP, and the development verification and review log |
-| `insgt-platform/docs/plans/rails-upgrade-slice-1.md` | slice 1's Phase 0–1 plan (untracked) |
+| `insgt-platform/docs/plans/rails-upgrade-slice-1.md` | slice 1's Phase 0–1 plan (committed as `e257052`) |
+| `insgt-platform/docs/runbooks/deploy-rails-upgrade-2.md` | slice 2's runbook: the five commits, the production-config probe (reporting off, `DEPRECATION` grep), the v662 "before" captures including both S-RT routes, S8/S10, the slippage rule, the development verification and the two review rounds; `Ready` before the push |
+| `insgt-platform/docs/plans/rails-upgrade-slice-2.md` | slice 2's Phase 0–1 plan: the `app:update` table as run, the `:zone` boot evidence, the routes finding, the key-collision probes, the approval decisions and modifications A–G, the review corrections |
 | `insgt-platform/docs/runbooks/deploy-headshot-event-date.md` | the newest runbook, the shape to copy (`deploy-rails-upgrade-<N>.md`, one per slice; slice 0's also records the Honeybadger baseline, §4.1) |
 | `insgt-platform/docs/plans/order-processing-note.md` | the decided OrderProcessingNote design (D2 at line 19 keeps Active Storage) |
 | `insgt-platform/docs/architecture/account-classification-codebase-notes.md` | `db/schema.rb` line ranges cited there are unaffected unless slice 3's re-dump changes more than the header (OD7) |
