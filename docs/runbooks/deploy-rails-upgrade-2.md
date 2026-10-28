@@ -4,8 +4,8 @@
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~30 min on the morning; S7 one hour after the push; S9 at the first hourly
 import; SH 24 h later
-**Status:** Deployed 2026-10-28 by Dan — v663 `03e270c6`, 08:53:30 -0400; steps 3–5 recorded (the
-30-minute `RailsDeprecation` read owed); S7, S9 and SH to come
+**Status:** Deployed 2026-10-28 by Dan — v663 `03e270c6`, 08:53:30 -0400; steps 3–6 recorded; S7 and S9
+pass; SH closes 2026-10-29 05:53 PT
 
 ## Summary
 
@@ -307,8 +307,10 @@ S6   run.1954     sent
 - S6: `SystemError::rails upgrade slice 2` reached ops@insightphotos.net at 12:57:26 UTC (08:57
   -0400) through SendGrid, with DKIM, SPF and DMARC passing; body `release v663`, so `$RELEASE`
   went through this time.
-- Owed: no `RailsDeprecation` mentioning `to_time` by the end of the 30 minutes (13:23 UTC, 09:23
-  -0400) ______. (S7) and the first import (S9)
+- The 30 minutes: Honeybadger (`-is:resolved -is:ignored`, about 13:38 UTC, 45 min after the push)
+  lists only `UpgradeMarker` (count 3, last seen 43 min ago), the project's one notice in the past
+  hour. No `RailsDeprecation` of any kind: a new one would be unresolved, and S-DEP's resolved one
+  would have reopened on a recurrence. No rollback trigger. (S7) and the first import (S9)
 
 ```bash
 heroku logs -n 1500 --app insgtapi > /tmp/s7.log
@@ -324,11 +326,32 @@ Expected: no `status=5` line in the hour; no exception class in the buffer other
 `ActionController::RoutingError` (scanner traffic); any other class is a finding, triaged before S7
 passes. S9: the first `import_listings` check-in after the push arrives on time (about :36–:45 UTC).
 
-Recorded:
+Recorded 2026-10-28, 13:36 UTC (Dan) — 43 min after the push, so before the hour closes at
+13:53:30 UTC:
 
 ```
-(paste)
+head/tail    2026-10-28T12:35:52.058967+00:00  …  2026-10-28T13:36:05.752662+00:00
+status=5     0
+classes      2 ] ActionController::RoutingError (
 ```
+
+- The 1,500 lines span 60 min: 18 min of v662 before the push (including the 12:39 worker restart)
+  and the first 42.5 min of v663. Traffic at 05:35–06:36 PT is light enough that the buffer reaches
+  far further than slice 1's 24 min, and the scanners are quieter too (2 `RoutingError`s against
+  slice 1's 240).
+- The buffer half of S7 passes: no `status=5`, and the only exception class is the expected one.
+- **S9 passes.** Honeybadger → Check-ins, about 13:40 UTC: `import_listings` is reporting, last seen
+  4 min ago (about 13:36 UTC, 09:36 -0400 — the first check-in after the push, on time), next
+  expected in an hour; report period 1 hour, grace 30 min.
+- **S7 passes.** Papertrail `status=5` (Dan, about 14:15 UTC, after the hour closed): nothing since
+  the push. The three most recent hits all predate it:
+  - 2026-10-26 16:07 -0400, `500` on `GET /listings/Z2v6bE2z/virtual.json` (v660): the slice 0
+    baseline's third `NoMethodError` (`mls_number` for nil, 16:03 and 16:07), fixed by v661.
+  - 2026-10-27 17:04 -0400, `H12` (30 s router timeout, `503`) on `PUT /orders/RkVKWlrm/imports`
+    from an AWS us-west-1 address (v662). `ImportsController#update` runs
+    `OrderImageHandlerImport.import` inside the request, so a large photo batch can outrun the
+    router; the import Lambda was also redeployed that day (`lambda-node-advisory-2026-10-27.md`
+    §8). Outside this window, and invisible to Honeybadger; not triaged here.
 
 ### 7. 24 hours after the push (SH)
 
