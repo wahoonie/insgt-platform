@@ -79,11 +79,14 @@ the deploy moves to **Mon 2026-11-02** and slice 3 loses that slot (it then take
       `DeprecationReporter` failure notice, no `NoMethodError`; nothing to triage, no STOP under OD8
 - [x] Review rounds complete (two rounds of `predeploy-review-rails`, Codex second opinion included);
       this runbook's Status is `Ready`
-- [ ] Dan has merged `chore/rails-upgrade-slice-2` into `master` and `bundle exec rspec` is green
+- [x] Dan has merged `chore/rails-upgrade-slice-2` into `master` and `bundle exec rspec` is green
       **on the merge**: expected 2,045 examples, 0 failures, 0 `DEPRECATION WARNING` lines if `master`
-      is still 473e2747; a different count is sourced before the push, not recomputed
-- [ ] The production-config probe (step 2) printed the expected lines on the merge
-- [ ] Pre-push captures (step 3) recorded below, on the release that is live at that moment
+      is still 473e2747; a different count is sourced before the push, not recomputed.
+      **Verified 2026-10-28 on `03e270c6`** (merged 08:33:42 -0400; parents `473e2747` and
+      `4b464230`, tree identical to the reviewed `4b464230`): **2,045 examples, 0 failures** (69.6 s),
+      0 `DEPRECATION WARNING` lines, the 24 `:unprocessable_entity` warnings unchanged
+- [x] The production-config probe (step 2) printed the expected lines on the merge
+- [x] Pre-push captures (step 3) recorded below, on the release that is live at that moment (v662)
 
 ## Pre-deploy
 
@@ -140,14 +143,30 @@ false
 --- DEPRECATION lines in the whole output: 0 ---
 ```
 
+Results (2026-10-28, on master, dev container):
+```
+true
+true
+[["Rails", [:notify]], ["GlobalID", [:notify]], ["Lograge", [:notify]]]
+I, [2026-10-28T12:37:01.538684 #10937]  INFO -- honeybadger: ** [Honeybadger] Reporting error id=f53920e7-ba59-4fe8-96f7-4a125ed051b9 level=1 pid=10937
+true
+:zone
+7.2
+583
+false
+0
+```
+
 ### 3. Pre-push captures (on the host, on v662)
 
 ```bash
 heroku run --no-tty --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).map(&:name).inspect'
 heroku run --no-tty --app insgtapi rails runner 't = ActiveSupport::TimeZone["Pacific Time (US & Canada)"].parse("2026-11-02 10:00").to_time; puts t; puts t.strftime("%Z"); puts t.zone.class'
 heroku run --no-tty --app insgtapi rails runner 'puts Rails.application.config.loaded_config_version'
-curl -sS -o /tmp/s-rt-carts.txt -w "%{http_code}\n" -X POST https://api.insightphotos.net/carts/0/request_shoot; head -1 /tmp/s-rt-carts.txt
-curl -sS -o /tmp/s-rt-headshots.txt -w "%{http_code}\n" https://api.insightphotos.net/headshots/0/upload_url; head -1 /tmp/s-rt-headshots.txt
+curl -sS -o /tmp/s-rt-carts.txt -w "%{http_code}\n" -X POST https://api.insightphotos.net/carts/0/request_shoot
+head -1 /tmp/s-rt-carts.txt
+curl -sS -o /tmp/s-rt-headshots.txt -w "%{http_code}\n" https://api.insightphotos.net/headshots/0/upload_url
+head -1 /tmp/s-rt-headshots.txt
 heroku run --no-tty --app insgtapi rails runner "Notifier.send_error_email('rails upgrade slice 2', 'release v662').deliver_now"
 ```
 
@@ -159,11 +178,33 @@ the "before"); S6 the email arrives. The two S-RT captures are the proof that th
 upgrade: after the push a `404` means the route is gone, and the body line separates the auth layer
 from a generic rescue.
 
-RECORDED (before):
+Amended 2026-10-28, after the first run: each `head` is on its own line, here and in step 5. Written
+as `…/request_shoot; head -1 …`, the paste arrived as `request_shoot\; head` (zsh's url-quote-magic
+escapes a `;` that touches a URL), so curl requested `/carts/0/request_shoot;` and
+`/headshots/0/upload_url;` — other paths, both `404` — then took `head`, `-1` and the file as more
+arguments (`000` twice each). Neither `404` is the route's "before".
+
+RECORDED (before), 2026-10-28 on v662:
 
 ```
-(fill in before the push)
+S4    ["Carlsbad", "Oceanside", "Leucadia"]          run.1821
+S8    2026-11-02 10:00:00 -0800                      run.2135
+      (empty line)
+      NilClass
+S10   7.2                                            run.4321
+S-RT  POST /carts/0/request_shoot       200  {}
+      GET  /headshots/0/upload_url      401  {"errors":"Not authenticated"}
+S6    sent                                           run.3692
 ```
+
+- S4, S8 and S10 read as expected; S4 matches slice 1's capture.
+- S-RT, rerun with the amended commands. Headshots is the assumed `401` from the auth layer. Carts is
+  not: `request_shoot` is unauthenticated by design (`find_current_user`, not
+  `authenticate_with_jwt`, `carts_controller.rb:2–4`), and `set_cart` answers an unknown uuid with
+  `render_ok` (`render json: {}`, `application_controller.rb:307–309`) before the action runs — so
+  `200 {}` proves the request reached `CartsController`, and the probe creates no order and sends no
+  email. After the push, the same `200 {}` passes; a `404` is the route gone.
+- S6: delivered to ops@insightphotos.net, SendGrid 2026-10-28 12:40:27 (`250 2.0.0 OK`).
 
 ## Deploy
 
@@ -197,8 +238,10 @@ heroku run --no-tty --exit-code --app insgtapi rails runner "puts Honeybadger.no
 heroku run --no-tty --app insgtapi rails runner 'puts Rails.version; puts ActiveSupport.to_time_preserves_timezone.inspect'
 heroku run --no-tty --app insgtapi rails runner 't = ActiveSupport::TimeZone["Pacific Time (US & Canada)"].parse("2026-11-02 10:00").to_time; puts t; puts t.strftime("%Z"); puts t.zone.class'
 heroku run --no-tty --app insgtapi rails runner 'puts Rails.application.config.loaded_config_version'
-curl -sS -o /tmp/s-rt-carts-after.txt -w "%{http_code}\n" -X POST https://api.insightphotos.net/carts/0/request_shoot; head -1 /tmp/s-rt-carts-after.txt
-curl -sS -o /tmp/s-rt-headshots-after.txt -w "%{http_code}\n" https://api.insightphotos.net/headshots/0/upload_url; head -1 /tmp/s-rt-headshots-after.txt
+curl -sS -o /tmp/s-rt-carts-after.txt -w "%{http_code}\n" -X POST https://api.insightphotos.net/carts/0/request_shoot
+head -1 /tmp/s-rt-carts-after.txt
+curl -sS -o /tmp/s-rt-headshots-after.txt -w "%{http_code}\n" https://api.insightphotos.net/headshots/0/upload_url
+head -1 /tmp/s-rt-headshots-after.txt
 heroku run --no-tty --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).map(&:name).inspect'
 heroku run --no-tty --app insgtapi rails runner 'puts Stripe::Balance.retrieve.livemode'
 heroku run --no-tty --app insgtapi rails runner "Notifier.send_error_email('rails upgrade slice 2', 'release $RELEASE').deliver_now"
