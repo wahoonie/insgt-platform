@@ -4,8 +4,8 @@
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~30 min on the morning; S7 one hour after the push; S9 at the first hourly
 import; SH 24 h later
-**Status:** Ready — implemented and verified in development; reviewed (two rounds); waiting on the
-Prerequisites
+**Status:** Deployed 2026-10-28 by Dan — v663 `03e270c6`, 08:53:30 -0400; steps 3–5 recorded (the
+30-minute `RailsDeprecation` read owed); S7, S9 and SH to come
 
 ## Summary
 
@@ -66,6 +66,13 @@ runs it. The Honeybadger dashboard is the web UI.
 
 Mon–Wed, 09:00–11:30 Pacific, outside the 08:00 and 12:00 delivery windows (§2.4). Planned for
 **Wed 2026-10-28, 09:00–11:30 Pacific**, after slice 1's SH closes at 05:15 PT (08:15 ET).
+
+**Pushed before the window opened**, by Dan's decision (2026-10-28; v663 at 05:53:30 PT, 08:53:30
+-0400, step 4). §2.4's firm constraints hold: a Wednesday, outside every delivery window, and S7's
+hour and S9's check-in (about 06:36–06:45 PT) both close before the 08:00 PT delivery. The 09:00
+start's reason is not written down; what pushing early gives up is an S7 hour with business-hours
+traffic, so the 08:00 PT delivery is the first heavy load on 8.0.5.1 and Dan watches it, ready to
+roll back. Slice 1 also went early (05:15 PT).
 
 **Slippage rule (§6, OD1), stated here on purpose:** if review and merge are not complete by 09:00 PT,
 the deploy moves to **Mon 2026-11-02** and slice 3 loses that slot (it then takes Tue 11-03 or Wed
@@ -222,7 +229,7 @@ build is not a release; v662 stays live.
 RECORDED:
 
 ```
-(release and time)
+v663   Deploy 03e270c6   ops@insightphotos.net   2026/10/28 08:53:30 -0400 (~ 18s ago)
 ```
 
 ### 5. Within 30 minutes
@@ -265,13 +272,43 @@ Expected, reasoned before the push:
 A boot failure on any dyno is a rollback. A `RailsDeprecation` in Honeybadger within these 30 minutes
 that mentions `to_time` means the 7.2 value reached the writer in production: rollback, then look.
 
-Recorded:
+Recorded 2026-10-28 on v663 (Dan; Heroku's update warnings dropped):
 
 ```
-(paste)
+heroku ps         backgroundworker.1: up 2026/10/28 08:53:34 -0400
+                  web.1: up 2026/10/28 08:53:34 -0400
+                  web.2: up 2026/10/28 08:53:35 -0400
+grep Booted       2026-10-28T12:39:07.212510+00:00 app[backgroundworker.1]: … Booted Rails 7.2.4 application in production environment
+                  2026-10-28T12:53:38.061952+00:00 app[backgroundworker.1]: … Booted Rails 8.0.5.1 application in production environment
+/up               200
+S0   run.8128     "92126f23-e583-4c95-9be1-782e23db2d50"   (code=201; the command went out with release: 'v663')
+S3   run.7988     8.0.5.1
+                  :zone
+S8   run.6032     2026-11-02 10:00:00 -0800
+                  PST
+                  ActiveSupport::TimeZone
+S10  run.8082     7.2
+S-RT carts        200  {}
+     headshots    401  {"errors":"Not authenticated"}
+S4   run.3295     ["Carlsbad", "Oceanside", "Leucadia"]
+S5   run.4431     true
+S6   run.1954     sent
 ```
 
-### 6. One hour after the push (S7) and the first import (S9)
+- S2, S1, S3, S8, S10, S4 and S5 as expected. S-RT is identical to step 3's captures on v662: both
+  routes survive the upgrade. S8 moved exactly as predicted (`PST` and `ActiveSupport::TimeZone`
+  where v662 printed an empty line and `NilClass`).
+- The 7.2.4 boot at 12:39:07 UTC is v662's worker, 14 min before the push and 24 h 24 min after
+  v662's release: it fits Heroku's daily dyno restart, not a crash.
+- S0 in Honeybadger (`-is:resolved -is:ignored`, about 12:58 UTC): `UpgradeMarker`, "rails upgrade
+  slice 2 marker", tag `upgrade`, production, count 3, 1 in the last hour, last 3 min ago — the same
+  error as slices 0 and 1 (one fingerprint), reopened by this occurrence. The project's only notice in
+  the past hour, so no `RailsDeprecation` 5 min in.
+- S6: `SystemError::rails upgrade slice 2` reached ops@insightphotos.net at 12:57:26 UTC (08:57
+  -0400) through SendGrid, with DKIM, SPF and DMARC passing; body `release v663`, so `$RELEASE`
+  went through this time.
+- Owed: no `RailsDeprecation` mentioning `to_time` by the end of the 30 minutes (13:23 UTC, 09:23
+  -0400) ______. (S7) and the first import (S9)
 
 ```bash
 heroku logs -n 1500 --app insgtapi > /tmp/s7.log
