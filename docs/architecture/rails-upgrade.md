@@ -2,9 +2,9 @@
 
 **Repo:** `insgt-api` · **Platform:** Heroku app `insgtapi` (Render.com cutover follows, §2)
 **Status:** v5 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
-S7 and S9 pass, SH closes 2026-10-28 05:15 PT); slice 2 implemented, verified and reviewed (two rounds)
+S7, S9 and SH pass); slice 2 implemented, verified and reviewed (two rounds)
 on 2026-10-27, deploy planned Wed 2026-10-28 09:00–11:30 PT; OD10 open
-**Version:** 5 · **Last updated:** 2026-10-27
+**Version:** 5 · **Last updated:** 2026-10-28
 **Supersedes:** v4 (2026-10-26). See §9.
 **Companion files:** `rails-upgrade-codebase-notes.md` (the `file:line` map; every repo claim below
 is sourced there), `rails-upgrade-slices/slice-{0,1,2,3,4,5}.md` (the slice prompts), and the
@@ -567,8 +567,9 @@ expected context, and a rerun in a new one-off dyno grouped into the same error;
 not `pluck` — §4.0); S5 `true`; S6 delivered once a SendGrid block was cleared (DKIM, SPF and DMARC
 pass). S7 and S9 pass: the 1,500-line buffer spans 24 min, so the hour comes from Papertrail (0
 `status=5`); the only class in the buffer is `ActionController::RoutingError` from scanners; the
-check-in arrived at 08:36 -0400. **SH closes 2026-10-28 05:15 PT:** ______ (one line, filled before
-slice 2's push). Runbook: `docs/runbooks/deploy-rails-upgrade-1.md`. **Effort (actual):** about 8 h on
+check-in arrived at 08:36 -0400. **SH passes (2026-10-28):** no new error since the push, resolved or
+unresolved; S-DEP's error still at 2 occurrences; no other `RailsDeprecation`; no `NoMethodError`
+recurrence. Runbook: `docs/runbooks/deploy-rails-upgrade-1.md`. **Effort (actual):** about 8 h on
 2026-10-26 (eight commits after two review rounds and a post-review fix) plus the deploy morning.
 
 ### 4.3 Slice 2 — 8.0.5.1, transit only

@@ -1,6 +1,6 @@
 # Runbook: Rails Upgrade Slice 2 — 8.0.5.1, transit only
 
-**Last updated:** 2026-10-27
+**Last updated:** 2026-10-28
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~30 min on the morning; S7 one hour after the push; S9 at the first hourly
 import; SH 24 h later
@@ -73,10 +73,11 @@ the deploy moves to **Mon 2026-11-02** and slice 3 loses that slot (it then take
 
 ## Prerequisites
 
-- [ ] **Slice 1's SH result** (`deploy-rails-upgrade-1.md` step 7, closes 2026-10-28 05:15 PT) is
-      recorded there and here: ______ (one line: the errors the window showed and their triage; a
-      `RailsDeprecation` other than S-DEP's is a STOP for this push under OD8)
-- [ ] Review rounds complete (two rounds of `predeploy-review-rails`, Codex second opinion included);
+- [x] **Slice 1's SH result** (`deploy-rails-upgrade-1.md` step 7, closed 2026-10-28 05:15 PT) is
+      recorded there and here: **passes** — no new error since v662's push, resolved or unresolved;
+      S-DEP's `RailsDeprecation` still resolved at count 2; no other `RailsDeprecation`, no
+      `DeprecationReporter` failure notice, no `NoMethodError`; nothing to triage, no STOP under OD8
+- [x] Review rounds complete (two rounds of `predeploy-review-rails`, Codex second opinion included);
       this runbook's Status is `Ready`
 - [ ] Dan has merged `chore/rails-upgrade-slice-2` into `master` and `bundle exec rspec` is green
       **on the merge**: expected 2,045 examples, 0 failures, 0 `DEPRECATION WARNING` lines if `master`
