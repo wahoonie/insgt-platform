@@ -11,6 +11,15 @@ Reviewing the changes about to ship. Read only — do not edit, stage, or commit
 
 ## 1. Scope
 - `<prod-ref>` is `$ARGUMENTS` (the ref live in prod). If empty or unclear, ask.
+- **The deploy target comes from the repo, not the prompt.** Before trusting any host,
+  branch or remote a prompt names, read `git remote -v`, `render.yaml` / `Procfile` /
+  `app.json`, and `docs/services/<repo>.md`. insgt-api deploys to Heroku from `master`
+  until the Render cutover; insgt-galleries and insgt-virtual-tour deploy on Render from
+  `main` and have no `heroku` remote. A prompt that says otherwise is wrong: report it at
+  the first STOP, do not guess an app name or branch.
+- **What is live is `origin/<deploy branch>`, not the local branch.** Run
+  `git log --oneline origin/<deploy branch>..<deploy branch>` and list every commit it
+  prints: they ship with the merge push whether or not they are under review.
 - Run and read in full: `git diff <prod-ref>...HEAD`,
   `git diff --stat <prod-ref>...HEAD`, `git log --oneline <prod-ref>..HEAD`.
 - Read `insgt-api/SKILL.md` first so you review against our actual conventions.
