@@ -8,7 +8,7 @@ Established by the Phase 0 survey of 2026-10-23 against insgt-api `master` at ed
 
 | File | Line | What it is | Slice / commit |
 | :-- | :-- | :-- | :-- |
-| `Gemfile` | 4 | `ruby '3.4.10'` — unchanged by every slice (§2) | survey |
+| `Gemfile` | 4 | `ruby '3.4.12'` — unchanged by every slice (§2); 3.4.10 → 3.4.12 by the patch bump `1497ad8a` (insgt-api `chore/ruby-3-4-12`, deployed 2026-10-29 as v665 `f86877f5`, outside the slices) | survey; Ruby bump |
 | `Gemfile` | 29 | `gem 'rails', '~> 8.0.5'` (was `~> 7.2.0` at 28 before slice 0 inserted line 15; `~> 7.2.4` by slice 1) — the only line the three version slices edit (`~> 8.1.4` next) | survey; slice 1 `5c9446da`; slice 2 `df7826c5` |
 | `Gemfile` | 34 | `gem 'sidekiq', '~> 7.0'` — stays on 7.3.x (§3, OD5) | survey; +1 since slice 0 |
 | `Gemfile` | 36 | `gem 'string_utils'` — 2012 gem, `urlify` only (see "Gems with Rails coupling") | survey; +1 since slice 0 |
@@ -24,7 +24,7 @@ Established by the Phase 0 survey of 2026-10-23 against insgt-api `master` at ed
 | `Gemfile.lock` | 526 | `string_utils (1.0.8)` (`activesupport >= 2.3.5`) | survey; re-verified slice 2 |
 | `Gemfile.lock` | 531 | `strong_migrations (2.8.0)` (`activerecord >= 7.2`) | survey; re-verified slice 2 |
 | `Gemfile.lock` | 566 | `zipline (2.2.0)` (`actionpack >= 6.0, < 8.2`) | survey; re-verified slice 2 |
-| `Gemfile.lock` | 863–864, 866–867 | `RUBY VERSION ruby 3.4.10`, `BUNDLED WITH 4.0.4` | survey; re-verified slice 2 |
+| `Gemfile.lock` | 863–864, 866–867 | `RUBY VERSION ruby 3.4.12`, `BUNDLED WITH 4.0.4` (unchanged by the bump) | survey; re-verified slice 2; Ruby bump `1497ad8a` |
 | `Gemfile` | 15 | `gem 'honeybadger', '~> 6.10'` (locked 6.10.0; runtime deps `logger`, `ostruct`, both already locked; Ruby `>= 3.0.0`; docs: Rails `>= 5.2`, Sidekiq "any") — the one gem added outside `rails` (§2.6); `~> 6.10` blocks a major bump | v2; slice 0 `d4dd6d9e` |
 
 Absent from `Gemfile.lock` (greps on 2026-10-23, empty): `activerecord-postgis-adapter`, `rgeo`, `sentry`, `rollbar`, `newrelic`, `image_processing`, `ruby-vips`, `mini_magick`, `bootsnap`, `brakeman`, `thruster`, `kamal`, `solid_queue`, `solid_cache`, `solid_cable`.

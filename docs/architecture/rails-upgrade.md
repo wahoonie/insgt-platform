@@ -49,7 +49,9 @@ Rails **8.2 does not exist** as a release (rubygems lists no 8.2.x; only edge gu
 8.1.4 is the landing target and 8.0 is the single intermediate minor.
 
 **Ruby requirements** (rubygems compact index): 7.2.4 `>= 3.1.0`; 8.0.5.1 and 8.1.4 `>= 3.2.0`;
-honeybadger 6.10.0 `>= 3.0.0`. 3.4.10 satisfies all. **The Ruby version does not change** (§2.6).
+honeybadger 6.10.0 `>= 3.0.0`. 3.4.12 satisfies all (3.4.10 until 2026-10-29, when the patch bump to
+3.4.12 shipped outside the slices as v665 — `f86877f5`, 08:02 -0400, merging insgt-api `1497ad8a`:
+the four pins, no gem change). **The Ruby version does not change inside a slice** (§2.6).
 
 **Dependency lines that force lockfile movement** (compact index, read 2026-10-23):
 activesupport 7.2.4 pins `minitest >= 5.1, < 6` (the lock has 6.0.1 — slice 1 downgrades it, which
@@ -116,7 +118,8 @@ These rules are settled; slice prompts cite this section.
    buildpack builds a Rails 8.x slug exactly as it builds the 7.2 one for an app with no
    `assets:precompile` task (expected: the task does not exist on either version, so the buildpack
    skips it); the slice 2 release is the proof.
-6. **Constants across every slice:** Ruby 3.4.10, PostgreSQL 15, `StrongMigrations.target_version = 15`
+6. **Constants across every slice:** Ruby 3.4.12 (3.4.10 before the 2026-10-29 patch bump, which
+   shipped outside the slices), PostgreSQL 15, `StrongMigrations.target_version = 15`
    (`config/initializers/strong_migrations.rb:18`), `config.load_defaults 7.2` until slice 5b, and
    **no gem added or major-bumped other than `rails` itself and `honeybadger`** (added once, in
    slice 0). A survey finding that genuinely breaks this ordering is recorded in §7, never silently
