@@ -2,9 +2,8 @@
 
 **Repo:** `insgt-api` · **Platform:** Heroku app `insgtapi` (Render.com cutover follows, §2)
 **Status:** v5 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
-S7, S9 and SH pass); slice 2 implemented, verified and reviewed (two rounds)
-on 2026-10-27, deploy planned Wed 2026-10-28 09:00–11:30 PT; OD10 open
-**Version:** 5 · **Last updated:** 2026-10-28
+S7, S9 and SH pass); slice 2 deployed (v663, 2026-10-28 08:53 -0400; S7, S9 and SH pass); OD10 open
+**Version:** 5 · **Last updated:** 2026-10-29
 **Supersedes:** v4 (2026-10-26). See §9.
 **Companion files:** `rails-upgrade-codebase-notes.md` (the `file:line` map; every repo claim below
 is sourced there), `rails-upgrade-slices/slice-{0,1,2,3,4,5}.md` (the slice prompts), and the
@@ -785,13 +784,22 @@ routes, `POST /carts/0/request_shoot` and `GET /headshots/0/upload_url`, status 
 line** captured on v662 and compared after the push (`404` means the route is gone; the body line
 separates the auth layer from a generic rescue); S0 and S6 take the release from a shell variable;
 P-PROD (§4.0) with reporting off before the push; P1 twice. Development results, the review record
-and the pre-push commands: `docs/runbooks/deploy-rails-upgrade-2.md` (`Ready`).
+and the pre-push commands: `docs/runbooks/deploy-rails-upgrade-2.md` (`Deployed`).
 
 **Rollback.** `heroku rollback` to the slice 1 release. No schema change.
 
 **Gates.** After plan; after verification. **Effort (estimate):** 8 h plus the deploy morning.
 **v5, actual:** survey, plan, implementation, verification and two review rounds on 2026-10-27
-(about 6 h of session time); the deploy moved up to Wed 2026-10-28 (§6).
+(about 6 h of session time); the deploy moved up to Wed 2026-10-28 (§6). **Deployed 2026-10-28** as
+v663 (`03e270c6`, 08:53:30 -0400 — pushed before the window by Dan's decision, a Wednesday outside
+every delivery window). S0–S6, S8, S10 and S-RT as expected: S8 printed `PST` and
+`ActiveSupport::TimeZone` where v662 printed an empty line and `NilClass`; both routes answered as on
+v662. S7 and S9 pass. **SH passes (read 2026-10-29 at about 21 h, Dan's call):** no unresolved error
+since the push, no `RailsDeprecation`, S-DEP's error still resolved at count 2; the one resolved error
+in the window is a pre-existing `NoMethodError in orders#show` opened without credentials — outside
+the slice's changes (slice 3's survey had reproduced it on both versions) and fixed on its own branch
+(insgt-api `55c86f1d`, merged `96f89db8`). Runbook: `docs/runbooks/deploy-rails-upgrade-2.md`. v6
+carries the full record and the §8 item for that error.
 
 ### 4.4 Slice 3 — 8.1.4, the landing target
 
@@ -1124,11 +1132,13 @@ Decided 2026-10-23. Effort is a solo-developer estimate; dates respect §2.4 (Mo
 | Wed 11-11 → Wed 11-18 | the quiet week (§2.2) | — |
 | **Wed 11-18** | earliest Render database-restore rehearsal (decided OD1) | — |
 
-**v5, as it went:** slice 1 deployed **Tue 10-27** (a day early, inside §2.4; its SH closes Wed 05:15
-PT); slice 2 implemented and reviewed the same day and deploys **Wed 10-28, 09:00–11:30 PT** (five
-days early); slice 3 may take **Mon 11-02**. The slippage rule applies to the moved slot: review and
-merge not complete by 09:00 PT → slice 2 moves to Mon 11-02 and slice 3 loses it; nobody pushes after
-11:30 to make the window.
+**v5, as it went:** slice 1 deployed **Tue 10-27** (a day early, inside §2.4; its SH passed Wed 05:15
+PT); slice 2 implemented and reviewed the same day and deployed **Wed 10-28, 05:53 PT** (five days
+early; before the 09:00 window by Dan's decision, still a Wednesday outside every delivery window; its
+SH passed Thu 10-29, read at about 21 h); slice 3 may take **Mon 11-02**. The slippage rule applied
+to slice 2's moved slot and applies to slice 3's: review and merge not complete by 09:00 PT → the
+slice moves to the next legal morning (slice 2 would have taken Mon 11-02 and cost slice 3 that
+slot); nobody pushes after 11:30 to make the window.
 
 Total ≈ 36 h of implementation plus six deploy mornings. 5a gets one day before 5b; the slice 5
 plan reads `lib/tasks/scheduler.rake` and the `import_listings` check-in history for the import
