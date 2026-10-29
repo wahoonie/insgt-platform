@@ -151,6 +151,7 @@ These apply to every phase and every report.
 
 - `file:line` for every claim about existing code. "The calculator handles this" is not a claim; `app/services/account_metrics/calculator.rb:41` is.
 - The grep command and its empty output for every "there is no X."
+- `grep` here is ugrep and `rg` is a Claude Code shell function, not a binary. Write every pattern for `grep -rn -E`: bare `|` for alternation, `[(]` and `[{]` for literal brackets, `-F` for a literal string. `\|` is a literal pipe (counts come back 0) and `\(` errors. A prompt that says `rg` means this.
 - Spec output pasted, red and green, not summarized.
 - Nothing "should work." It ran, or it is listed as unverified.
 - Facts, assumptions, and estimates labeled as such and kept apart.
