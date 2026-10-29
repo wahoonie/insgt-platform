@@ -1,11 +1,11 @@
 # Runbook: Rails Upgrade Slice 2 — 8.0.5.1, transit only
 
-**Last updated:** 2026-10-28
+**Last updated:** 2026-10-29
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~30 min on the morning; S7 one hour after the push; S9 at the first hourly
 import; SH 24 h later
-**Status:** Ready — implemented and verified in development; reviewed (two rounds); waiting on the
-Prerequisites
+**Status:** Deployed 2026-10-28 by Dan — v663 `03e270c6`, 08:53:30 -0400; steps 3–7 recorded; S7, S9 and
+SH pass (SH read 2026-10-29 at about 21 h, Dan's call); write-back done
 
 ## Summary
 
@@ -66,6 +66,13 @@ runs it. The Honeybadger dashboard is the web UI.
 
 Mon–Wed, 09:00–11:30 Pacific, outside the 08:00 and 12:00 delivery windows (§2.4). Planned for
 **Wed 2026-10-28, 09:00–11:30 Pacific**, after slice 1's SH closes at 05:15 PT (08:15 ET).
+
+**Pushed before the window opened**, by Dan's decision (2026-10-28; v663 at 05:53:30 PT, 08:53:30
+-0400, step 4). §2.4's firm constraints hold: a Wednesday, outside every delivery window, and S7's
+hour and S9's check-in (about 06:36–06:45 PT) both close before the 08:00 PT delivery. The 09:00
+start's reason is not written down; what pushing early gives up is an S7 hour with business-hours
+traffic, so the 08:00 PT delivery is the first heavy load on 8.0.5.1 and Dan watches it, ready to
+roll back. Slice 1 also went early (05:15 PT).
 
 **Slippage rule (§6, OD1), stated here on purpose:** if review and merge are not complete by 09:00 PT,
 the deploy moves to **Mon 2026-11-02** and slice 3 loses that slot (it then takes Tue 11-03 or Wed
@@ -222,7 +229,7 @@ build is not a release; v662 stays live.
 RECORDED:
 
 ```
-(release and time)
+v663   Deploy 03e270c6   ops@insightphotos.net   2026/10/28 08:53:30 -0400 (~ 18s ago)
 ```
 
 ### 5. Within 30 minutes
@@ -265,11 +272,45 @@ Expected, reasoned before the push:
 A boot failure on any dyno is a rollback. A `RailsDeprecation` in Honeybadger within these 30 minutes
 that mentions `to_time` means the 7.2 value reached the writer in production: rollback, then look.
 
-Recorded:
+Recorded 2026-10-28 on v663 (Dan; Heroku's update warnings dropped):
 
 ```
-(paste)
+heroku ps         backgroundworker.1: up 2026/10/28 08:53:34 -0400
+                  web.1: up 2026/10/28 08:53:34 -0400
+                  web.2: up 2026/10/28 08:53:35 -0400
+grep Booted       2026-10-28T12:39:07.212510+00:00 app[backgroundworker.1]: … Booted Rails 7.2.4 application in production environment
+                  2026-10-28T12:53:38.061952+00:00 app[backgroundworker.1]: … Booted Rails 8.0.5.1 application in production environment
+/up               200
+S0   run.8128     "92126f23-e583-4c95-9be1-782e23db2d50"   (code=201; the command went out with release: 'v663')
+S3   run.7988     8.0.5.1
+                  :zone
+S8   run.6032     2026-11-02 10:00:00 -0800
+                  PST
+                  ActiveSupport::TimeZone
+S10  run.8082     7.2
+S-RT carts        200  {}
+     headshots    401  {"errors":"Not authenticated"}
+S4   run.3295     ["Carlsbad", "Oceanside", "Leucadia"]
+S5   run.4431     true
+S6   run.1954     sent
 ```
+
+- S2, S1, S3, S8, S10, S4 and S5 as expected. S-RT is identical to step 3's captures on v662: both
+  routes survive the upgrade. S8 moved exactly as predicted (`PST` and `ActiveSupport::TimeZone`
+  where v662 printed an empty line and `NilClass`).
+- The 7.2.4 boot at 12:39:07 UTC is v662's worker, 14 min before the push and 24 h 24 min after
+  v662's release: it fits Heroku's daily dyno restart, not a crash.
+- S0 in Honeybadger (`-is:resolved -is:ignored`, about 12:58 UTC): `UpgradeMarker`, "rails upgrade
+  slice 2 marker", tag `upgrade`, production, count 3, 1 in the last hour, last 3 min ago — the same
+  error as slices 0 and 1 (one fingerprint), reopened by this occurrence. The project's only notice in
+  the past hour, so no `RailsDeprecation` 5 min in.
+- S6: `SystemError::rails upgrade slice 2` reached ops@insightphotos.net at 12:57:26 UTC (08:57
+  -0400) through SendGrid, with DKIM, SPF and DMARC passing; body `release v663`, so `$RELEASE`
+  went through this time.
+- The 30 minutes: Honeybadger (`-is:resolved -is:ignored`, about 13:38 UTC, 45 min after the push)
+  lists only `UpgradeMarker` (count 3, last seen 43 min ago), the project's one notice in the past
+  hour. No `RailsDeprecation` of any kind: a new one would be unresolved, and S-DEP's resolved one
+  would have reopened on a recurrence. No rollback trigger.
 
 ### 6. One hour after the push (S7) and the first import (S9)
 
@@ -287,11 +328,32 @@ Expected: no `status=5` line in the hour; no exception class in the buffer other
 `ActionController::RoutingError` (scanner traffic); any other class is a finding, triaged before S7
 passes. S9: the first `import_listings` check-in after the push arrives on time (about :36–:45 UTC).
 
-Recorded:
+Recorded 2026-10-28, 13:36 UTC (Dan) — 43 min after the push, so before the hour closes at
+13:53:30 UTC:
 
 ```
-(paste)
+head/tail    2026-10-28T12:35:52.058967+00:00  …  2026-10-28T13:36:05.752662+00:00
+status=5     0
+classes      2 ] ActionController::RoutingError (
 ```
+
+- The 1,500 lines span 60 min: 18 min of v662 before the push (including the 12:39 worker restart)
+  and the first 42.5 min of v663. Traffic at 05:35–06:36 PT is light enough that the buffer reaches
+  far further than slice 1's 24 min, and the scanners are quieter too (2 `RoutingError`s against
+  slice 1's 240).
+- The buffer half of S7 passes: no `status=5`, and the only exception class is the expected one.
+- **S9 passes.** Honeybadger → Check-ins, about 13:40 UTC: `import_listings` is reporting, last seen
+  4 min ago (about 13:36 UTC, 09:36 -0400 — the first check-in after the push, on time), next
+  expected in an hour; report period 1 hour, grace 30 min.
+- **S7 passes.** Papertrail `status=5` (Dan, about 14:15 UTC, after the hour closed): nothing since
+  the push. The three most recent hits all predate it:
+  - 2026-10-26 16:07 -0400, `500` on `GET /listings/Z2v6bE2z/virtual.json` (v660): the slice 0
+    baseline's third `NoMethodError` (`mls_number` for nil, 16:03 and 16:07), fixed by v661.
+  - 2026-10-27 17:04 -0400, `H12` (30 s router timeout, `503`) on `PUT /orders/RkVKWlrm/imports`
+    from an AWS us-west-1 address (v662). `ImportsController#update` runs
+    `OrderImageHandlerImport.import` inside the request, so a large photo batch can outrun the
+    router; the import Lambda was also redeployed that day (`lambda-node-advisory-2026-10-27.md`
+    §8). Outside this window, and invisible to Honeybadger; not triaged here.
 
 ### 7. 24 hours after the push (SH)
 
@@ -300,8 +362,8 @@ slice 1's S-DEP `RailsDeprecation`, which is expected to be there with no new oc
 (replace the time with the push):
 
 ```
-environment:"production" created.after:"2026-10-28 <push time> UTC-7"
-environment:"production" class:"RailsDeprecation" occurred.after:"2026-10-28 <push time> UTC-7"
+environment:"production" created.after:"2026-10-28 05:53 UTC-7"
+environment:"production" class:"RailsDeprecation" occurred.after:"2026-10-28 05:53 UTC-7"
 ```
 
 Expected: the first returns nothing new (the S0 marker and S-DEP's error carry their own fingerprints
@@ -314,6 +376,35 @@ That is the 13 Rails gems, `config/application.rb`, `config/routes.rb`, the two 
 behaviour under "What moves for a human" above. Yes is a finding. No is an old bug seen for the
 first time or an old error regrouped because a line moved: record it here and fix it on its own
 branch; it does not block the slice.
+
+Recorded 2026-10-29, about 02:40 PT (Dan, Honeybadger dashboard) — **about 21 h after the push, not
+24, by Dan's decision ("close enough")**. Each search was run in both states, both `-is:ignored`, with
+the push time filled in as `2026-10-28 05:53 UTC-7`. **SH passes.**
+
+| Search | `-is:resolved` | `is:resolved` |
+| :-- | :-- | :-- |
+| `created.after:"2026-10-28 05:53 UTC-7"` | no results | one error: `NoMethodError in orders#show`, `undefined method 'id' for nil` (jbuilder's `_extract_method_values`, `attributes.each{ \|key\| _set_value …`), 15 h old, count 2, last seen 14 h ago, 0 in the last hour — triaged below |
+| `class:"RailsDeprecation" occurred.after:"2026-10-28 05:53 UTC-7"` | no results | no results |
+
+- No unresolved error in the window. No `RailsDeprecation` occurring after the push, resolved or not:
+  S-DEP's error is still resolved at count 2, and nothing new appeared on 8.0.5.1, so nothing under
+  OD8 stops slice 3.
+- **The one resolved error does not touch what this slice changed** — not the 13 Rails gems,
+  `config/application.rb`, `config/routes.rb`, the binstubs or `to_time`. It is
+  `OrdersController#set_order` falling through with `@order` nil when `show` (exempt from
+  `authenticate_with_jwt`, `orders_controller.rb:6–8`) is opened with neither a JWT nor an
+  `access_token` — a shared dashboard link without a session — and `show.json.jbuilder` then
+  dereferencing nil. Pre-existing: slice 3's survey reproduced it the same day on the 8.0.5.1 and
+  8.1.4 copies (`docs/plans/rails-upgrade-slice-3.md`, the five-path probe table, `GET /orders/0`
+  with no credentials), and no slice 2 commit touches the controller or the template. An old bug seen
+  for the first time, in the terms above, and handled as the rule says — fixed on its own branch:
+  insgt-api `fix/orders-no-credential-401`, `55c86f1d` fix: answer 401 when an order request carries
+  no credential (`set_order` answers `render_unauthorized` when both credentials are absent; request
+  spec `spec/requests/orders_show_authentication_spec.rb`), merged into `master` as `96f89db8` at
+  15:33 -0400 on 2026-10-28 and pushed to Heroku (the container's `heroku/master` is `96f89db8`), so
+  production is one release past v663; the release number is not recorded here. Resolved by hand in
+  Honeybadger; a recurrence would reopen it, and the unresolved search is empty.
+- It did not block the slice and v663 stays: no rollback trigger fired in the window.
 
 ## Rollback
 
@@ -368,22 +459,20 @@ behaviour with the old slug.
 **Done before the push (2026-10-27, branch `docs/rails-upgrade-slice-2`):** `rails-upgrade.md` v5 (slice
 1's deploy and its S7/SH/S4/S0 amendments, §4.3 as built, §4.4 reworded, §6–§9), the codebase notes'
 slice 2 rows and section, the slice 2 and 3 prompts annotated, slice 1's runbook marked `Deployed`.
-**Left for after the deploy:**
+**Done after the deploy (branch `docs/rails-upgrade-slice-2-deploy`, 2026-10-28 and 2026-10-29):**
 
-- This runbook: Status `Deployed <date>`, the release, steps 3–7's results, slice 1's SH line (also
-  into `deploy-rails-upgrade-1.md` and §4.2's slot).
-- `rails-upgrade.md` v5: slice 1 recorded as deployed (v662) with its S7 and SH criteria (§4.0 S7, §2.2
-  and the SH row by Honeybadger error, §4.1 item 7, §5's intro, §4.0 S4 `map`); §4.3 as built — the
-  `:zone` placement (gap 1 and item 2's table), the routes change in the breaking-change list, the
-  Active Storage migrations row, `bin/setup` and `puma.rb` rejected, `Time#zone` as an object and the
-  S8 rewrite, the lock diff's `cgi`/`racc`/`uri` lines, the `transform_keys` correction, the
-  `application.rb` template keeping `load_defaults 7.2`, the commit order; §4.4 item 3 reworded (slice
-  3's survey decides the line's fate — modification F) and its trap 1; §6 the calendar (slice 2 on Wed
-  10-28; slice 3 free to take Mon 11-02); the slice 2 prompt's out-of-scope item 2 and trap 1.
-- `rails-upgrade-codebase-notes.md`: the rows the plan's "Codebase notes" table corrects, plus the
-  slice 2 section (`application.rb:13–20`, the shim, `routes.rb:6, :19`, `lib/crud_attribution.rb`,
-  the 8.0.5.1 `railtie.rb:99–103, 125–130` ordering, `mapper.rb:1182–1186`).
+- This runbook: Status `Deployed`, the release, steps 3–7's results; the step 6 heading restored (the
+  step 5 record overwrote it on 2026-10-28). Slice 1's SH line went into `deploy-rails-upgrade-1.md`
+  step 7 and §4.2's slot on 2026-10-28, before the push.
+- `rails-upgrade.md`, still v5: the status line, §4.3's "v5, actual" paragraph and §6's "as it went"
+  paragraph record slice 2 as deployed (v663; S7, S9 and SH pass; the `orders#show` triage) — the
+  way slice 1's SH pass went into v5, without a version bump. The full §4.3 record, including the
+  pre-existing `orders#show` error and its fix as a §8 item, rides in v6 with slice 3 (its plan's
+  write-back list names it).
 - `docs/plans/rails-upgrade-slice-2.md`: Status `Deployed`.
+- Not owed after all: the v5 amendment and the codebase notes' slice 2 rows and section were written
+  before the push (the paragraph above); the two bullets that listed them here again were stale and
+  are gone.
 
 ## Deploy log
 
