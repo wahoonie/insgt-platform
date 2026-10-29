@@ -28,7 +28,7 @@ RUN curl https://mise.run | sh \
 
 # Install runtimes via mise
 ENV PATH="/home/vscode/.local/bin:${PATH}"
-RUN mise use -g ruby@3.4.10 \
+RUN mise use -g ruby@3.4.12 \
     && mise use -g node@22
 
 # Install global tools
