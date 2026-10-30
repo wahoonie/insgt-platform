@@ -20,7 +20,7 @@
 
 ## Prerequisites
 
-Slice 3 deployed and quiet (§2.2) for two weekdays: `Rails.version` → `8.1.4`, `loaded_config_version` → `7.2` in a production runner; SH clean since slice 3. OD10 decided by the engineer (the plan proceeds on §4.5's recommendation unless told otherwise at the plan gate).
+Slice 3 deployed and quiet (§2.2) for two weekdays: `Rails.version` → `8.1.4`, `loaded_config_version` → `7.2` in a production runner; SH clean since slice 3 (v6: including no `AbstractController::DoubleRenderError`). On 8.1.4 every production runner prints Active Storage's `image_processing` WARN line first (§4.0 S3, §8 item 7) — expected, not a failure. OD10 decided by the engineer (the plan proceeds on §4.5's recommendation unless told otherwise at the plan gate).
 
 ## Gaps the plan must pin
 
@@ -35,6 +35,7 @@ Slice 3 deployed and quiet (§2.2) for two weekdays: `Rails.version` → `8.1.4`
 2. The global `belongs_to_required_by_default` reappearing in any file, or an `optional: true` on a `NOT NULL` column outside the shared-column rule.
 3. A spec fixed by swapping a hand-built record for a factory; a validation message changed to pass a spec.
 4. An opportunistic refactor; a gem major bump not named in §3; a `config.load_defaults` change outside slice 5; any edit to `StrongMigrations.target_version`; a Ruby version change; a Postgres version change.
+5. (v6) A call to `ActiveSupport.to_time_preserves_timezone` anywhere — spec, probe or runbook: the reader deprecates on 8.1 (§4.4 as built).
 
 ## Commit sketch
 
