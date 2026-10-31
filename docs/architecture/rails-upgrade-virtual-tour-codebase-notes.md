@@ -5,7 +5,8 @@ Read at Phase 0 of every slice; verify the entries the slice depends on before s
 `apps/insgt-virtual-tour` unless prefixed. Established by the Phase 0 survey of 2026-10-31 against `main` at `eee78cf`
 (clean tree, `main` == `origin/main`). Line numbers are as of that commit; a moved line is a reason to update this
 file, not to distrust it. Gem-source citations name the gem version and file; they were read from the installed gems
-on 2026-10-31.
+on 2026-10-31. Extended the same day by the Honeybadger change (v3, tour `chore/honeybadger` at `93f7d30`, off `main`
+`06ae511`) — the "Honeybadger (v3)" section and the render-pages.rb fix.
 
 ## Gemfile and lockfile
 
@@ -281,6 +282,69 @@ is in the appendix.
 
 ---
 
+## Honeybadger (v3, 2026-10-31)
+
+Tour branch `chore/honeybadger`: `7b8dd80` build: add the honeybadger gem; `93f7d30` chore: report production errors
+to honeybadger. Off `main` `06ae511` (which carries Dan's account-page fixes `9dbf6d1`, `06ae511`).
+
+| File | Line | What it is |
+| :-- | :-- | :-- |
+| `Gemfile` | 17–18 | comment, then `gem 'honeybadger', '~> 6.10'` (locked 6.10.1; brings `ostruct (0.6.3)`; `logger` was already locked) |
+| `config/honeybadger.yml` | 1–18 | header comments: no key in the file, no `env`/`root`/`report_data`, `request.filter_keys` unset, log breadcrumbs left on |
+| `config/honeybadger.yml` | 22–23 | `insights.enabled: false` |
+| `config/honeybadger.yml` | 25–28 | `production.revision: "<%= ENV['RENDER_GIT_COMMIT'] %>"` — quoted (an all-digit SHA would load as an Integer; `0123456` as octal 42798); `""` when unset |
+| `render.yaml` | 10–11 | `HONEYBADGER_API_KEY`, `sync: false` — documentation only: Render ignores new `sync: false` vars on an existing Blueprint (Blueprint spec, read 2026-10-31); the dashboard holds the value |
+| `config/puma.rb` | 34 | `plugin :tmp_restart` only — no `plugin :honeybadger`, so no Puma stats |
+| `lib/insight_photo.rb` | 54, 73, 89, 99 | `Net::HTTP` calls — would each be a `request.net_http` event with Insights on |
+| `app/controllers/*` | — | no `rescue_from` (grep `rescue\|rescue_from` → only `render 'errors/not_found'` at `listings_controller.rb:11, 56`): every raise reaches Honeybadger |
+
+Gem source, honeybadger 6.10.1 (rubygems 2026-10-30, sha256 `481a797b…` matches the fetched `.gem`; paths under
+`lib/honeybadger/`). 6.10.0 → 6.10.1 changes only the bundled CA certificates (CHANGELOG).
+
+| File | Line | What it is |
+| :-- | :-- | :-- |
+| `config/defaults.rb` | 9–33 | `IGNORE_DEFAULT`, 22 classes (`RoutingError`, `UnknownFormat`, `InvalidAuthenticityToken`, `BadRequest`, `ParameterMissing`, …). Not ignored: `ActionView::Template::Error`, `ActionView::MissingTemplate`, `UnsafeRedirectError` |
+| `config/defaults.rb` | 56, 101–104 | `development_environments` `["development", "test", "cucumber"]` |
+| `config/defaults.rb` | 261–284 | `request.filter_keys` `["password", "password_confirmation", "HTTP_AUTHORIZATION"]`; all four `request.disable_*` false |
+| `config/defaults.rb` | 451–496, 529–537 | `rails.insights.*`, `net_http.insights.*` events on, metrics off; `breadcrumbs.logging.enabled` true; `insights.enabled` true |
+| `config.rb` | 175–179, 294–296, 309–313 | `public?` (`report_data`, else not `dev?`); `insights_enabled?` = `public? && insights.enabled`; `load_plugin_insights?` |
+| `config.rb` | 68, 354–357; `util/revision.rb` 5–43 | revision: `HEROKU_SLUG_COMMIT` → `REVISION` file → `git rev-parse HEAD` if `.git` exists; nothing reads `RENDER_GIT_COMMIT` |
+| `config.rb` | 411–420 | `default_backend`: `Server` when `public?`, else `Null`; `HONEYBADGER_BACKEND=null` forces the stub |
+| `config/yaml.rb` | 22, 33 | ERB-processed (`ERB.new(path.read).result`, then `YAML.unsafe_load`); the env section is merged over the top level |
+| `init/rails.rb` | 15–28, 32–38 | middleware inserted whenever `exceptions.enabled` (any env): `ErrorNotifier` at 0, `UserInformer`/`UserFeedback` before it, `RequestId` after `ActionDispatch::RequestId`; `init!` passes `Rails.env`, `Rails.root` |
+| `agent.rb` | 168–170, 182 | no key → `Unable to send error report: API key is missing` (ERROR), notice dropped; with a key → `Reporting error id=…` (INFO) |
+| `notice.rb` | 200, 576–582 | sanitizer filters = `filter_keys` + the request's `action_dispatch.parameter_filter` (railties 8.0.2 `lib/rails/application.rb:319`, from `filter_parameter_logging.rb:6–8`) |
+| `util/request_hash.rb` | 10–25, 64–70 | `cgi_data`: every `HTTP_*` header plus the CGI whitelist (`REMOTE_ADDR` …) — client IPs and User-Agent are sent |
+| `util/request_payload.rb` | 23–38 | sanitizes params, session, `cgi_data`, the URL query string and cookies by name; URL paths are sent as is |
+| `backend/null.rb` | 20–22 | `notify` returns a `StubbedResponse`; no network |
+
+Verification on the branch (dev container, insgt-api up on 3000):
+
+- P1 **2** (unchanged); zeitwerk "All is good!"; P3 three steps exit 0, `git status` clean; routes identical (15);
+  production middleware 24 → 28 lines, the four Honeybadger entries only; P7 the four files.
+- P5 (test env, `render-pages.rb`): branded 205,673 bytes, unbranded 202,944, `/heartbeat` 13, `/404` 4,836, `/500`
+  7,918, `/` 404 1,790, `/r/colleen-crane` 200 7,892, `/s/` and `/su/` 301 to `localhost:3002` — bodies and headers
+  (less `x-request-id`, `x-runtime`) identical to `main`.
+- No key (`env -u HONEYBADGER_API_KEY`, production): `api_key=nil`, `public=true`, `backend=Server`, `insights=false`,
+  `revision=""`, heartbeat 200; `https://es.insightlistings.com/30290-red-lure-pl-canyon-lake-92587/b/1qY5VLqV` → 500,
+  body == `public/500.html`, log `** [Honeybadger] Unable to send error report: API key is missing.`
+- Dummy key (`HONEYBADGER_API_KEY=dummy-not-a-key HONEYBADGER_BACKEND=null RENDER_GIT_COMMIT=0123456`): the key
+  printed back, `backend=Null`, `revision="0123456"` (String), the same 500 → `Reporting error id=…`, delivery stubbed.
+- Development and test: `public=false`, `backend=Null`, `report_data=nil` — the gem default, not restated.
+- `git grep -nE 'api_key|HONEYBADGER_API_KEY'` → `render.yaml:10` only. With `api_key: hbp_fake123` added on an rsync
+  copy (no `.env`), the grep shows the line.
+- 8.1.4 (rsync copy, `--update rails sprockets --conservative`): honeybadger and ostruct unchanged; boots; same four
+  middleware entries. See design doc §3.1 v3 for the `action_text-trix` correction.
+
+**Bundler 2.6.9 trap.** Adding a new gem to a lock that lists `ruby` beside specific platforms drops `ruby` from
+`PLATFORMS` and the generic `nokogiri (1.18.8)` / `mini_portile2 (2.8.9)`. On a dependency change,
+`remove_invalid_platforms!` (`bundler/definition.rb:1168–1180`) skips every platform but `ruby` and checks it against
+the *old* lock, which lacks the new gem (`incomplete_specs_for_platform` → `["honeybadger-"]`). `bundle _2.6.9_ lock
+--add-platform ruby` restores both; the lock diff is then the new gem alone. `bundle exec` on a copy re-resolves and
+rewrites that copy's lock — diagnose with plain `ruby`, not `bundle exec`.
+
+---
+
 ## Appendix — verification scripts
 
 Run each with `mise exec -- bundle _2.6.9_ exec rails runner [-e test] <file>` from the repo (or a copy with
@@ -322,10 +386,10 @@ output_directory = ENV.fetch("OUTDIR")
 paths.each_with_index do |path, index|
   begin
     status, headers, body = Rails.application.call(Rack::MockRequest.env_for(path, "HTTP_HOST" => host))
-    content = +""
-    body.each { |chunk| content << chunk }
+    content = "".b
+    body.each { |chunk| content << chunk.b }
     body.close if body.respond_to?(:close)
-    File.write(File.join(output_directory, "page-#{index}.html"), content)
+    File.binwrite(File.join(output_directory, "page-#{index}.html"), content)
     File.write(File.join(output_directory, "page-#{index}.headers"), headers.sort.map { |key, value| "#{key}: #{value}" }.join("\n"))
     puts "#{path} status=#{status} bytes=#{content.bytesize} location=#{headers['location'].inspect}"
   rescue => error
