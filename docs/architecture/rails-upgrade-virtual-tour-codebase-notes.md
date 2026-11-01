@@ -5,7 +5,10 @@ Read at Phase 0 of every slice; verify the entries the slice depends on before s
 `apps/insgt-virtual-tour` unless prefixed. Established by the Phase 0 survey of 2026-10-31 against `main` at `eee78cf`
 (clean tree, `main` == `origin/main`). Line numbers are as of that commit; a moved line is a reason to update this
 file, not to distrust it. Gem-source citations name the gem version and file; they were read from the installed gems
-on 2026-10-31.
+on 2026-10-31. Extended the same day by the Honeybadger change (v3, tour `chore/honeybadger` at `93f7d30`, off `main`
+`06ae511`) — the "Honeybadger (v3)" section and the render-pages.rb fix. Extended on 2026-11-01 by the §3.4 fixes
+(v4: tour `main` `ad04756`, branch `fix/cross-host-redirects` `156b7d4`) — rows marked "v4" and the "§3.4 fixes (v4)"
+section; every `listings_controller.rb` row was re-read at `156b7d4`.
 
 ## Gemfile and lockfile
 
@@ -63,11 +66,11 @@ on 2026-10-31.
 | `app/controllers/application_controller.rb` | 1, 3 | `< ActionController::Base`; `protect_from_forgery with: :exception` |
 | `app/controllers/application_controller.rb` | 5–6, 10–21 | `before_action :set_locale` (subdomain → `I18n.locale`), `after_action :set_response_locale` (`Content-Language`) |
 | `app/controllers/listings_controller.rb` | 4–5 | `before_action :find_listing, except: [:account, :redirect]`; `:ensure_correct_language, except: [:redirect]` — `@listing` is never set for `account` |
-| `app/controllers/listings_controller.rb` | 9, 49 | `redirect_to canonical_uri, status: :moved_permanently` — the API's `propertyWebsiteUrl*`/`customDomainUrl*` (insgt-api `app/models/listing.rb:524` builds it from `PROPERTY_WEBSITE_HOST`) |
-| `app/controllers/listings_controller.rb` | 42 | `redirect_to "#{ENV['LISTING_DOMAIN']}#{request.original_fullpath}"` — cross-host from `es.`; raises under the 7.0 defaults (§3.4 item 2) |
-| `app/controllers/listings_controller.rb` | 11, 56 | `render 'errors/not_found', layout: 'application'` |
-| `app/controllers/listings_controller.rb` | 17–28 | `account`: `InsightPhoto.find_for_account`, `@brokerage`/`@team` from `organizations`, `render layout: 'account'` |
-| `app/controllers/listings_controller.rb` | 33, 37 | `params.permit(:account_slug)`, `params.permit(:page)` |
+| `app/controllers/listings_controller.rb` | 9, 50 (v4; was 49) | `redirect_to canonical_uri, status: :moved_permanently` — the API's `propertyWebsiteUrl*`/`customDomainUrl*` (insgt-api `app/models/listing.rb:524` builds it from `PROPERTY_WEBSITE_HOST`). v4 branch `156b7d4`: `, allow_other_host: true` |
+| `app/controllers/listings_controller.rb` | 43 (v4; was 42) | `redirect_to "#{ENV['LISTING_DOMAIN']}#{request.original_fullpath}"` — cross-host from `es.`; raised under the 7.0 defaults (§3.4 item 2). v4 branch `156b7d4`: `, allow_other_host: true` |
+| `app/controllers/listings_controller.rb` | 11, 57 (v4; was 56) | `render 'errors/not_found', layout: 'application'` |
+| `app/controllers/listings_controller.rb` | 18–29 (v4; was 17–28) | `account`: `InsightPhoto.find_for_account`; v4 `:22` `organizations = Array(@account[:organizations])` (`fc28ea9`), then `@brokerage`/`@team` from it; `render layout: 'account'` |
+| `app/controllers/listings_controller.rb` | 34, 38 (v4; was 33, 37) | `params.permit(:account_slug)`, `params.permit(:page)` |
 | `app/controllers/panos_controller.rb` | 2, 5, 8, 19 | `content_security_policy false, only: :show`; `before_action :find_pano, except: [:account]` (no `account` action); `redirect_to '/'`; `render action: :error` — no `panos/error` template (§3.4 item 3) |
 | `app/controllers/heartbeat_controller.rb` | 3 | `render json: { 'lub': 'dub' }, head: :ok` — the only `render json:` |
 | `app/controllers/errors_controller.rb` | 3, 7 | `render status: 404` / `500` |
@@ -82,9 +85,10 @@ on 2026-10-31.
 | `app/views/layouts/application.html.erb` | 6, 8–11 | `csrf_meta_tags`; the stylesheet tags (`"inter-font"` is in the sprockets manifest) |
 | `app/views/layouts/panos.html.erb` | 31, 105 | `pannellum` stylesheet and script |
 | `app/views/listings/_footer.html.erb` | 13, 16 | `Time.now.year` — the only time calls |
-| `app/views/components/_broker_logo.html.erb` | 1 | `account[:brokerage] && @listing[:showBrokerageLogo] && …` — `@listing` nil on the account page (§3.4 item 1) |
-| `app/views/components/_team_logo.html.erb` | 1 | same shape with `showAgentTeamLogo` |
-| `app/views/components/_agent_detail.html.erb` | 5 | `account[:headshot][:s3Key]` — nil headshot crashes (§3.4 item 1) |
+| `app/views/components/_broker_logo.html.erb` | 1 | v4 (`9dbf6d1`): `account[:brokerage] && account[:brokerage][:logo] && (@listing.blank? \|\| @listing[:showBrokerageLogo])`; before, `@listing` nil on the account page raised (§3.4 item 1) |
+| `app/views/components/_team_logo.html.erb` | 1 | `account[:agent_team] && @listing[:showAgentTeamLogo] && …` — safe: its only caller, `_agent_details.html.erb:14`, renders it only `if @listing && @listing[:showAgentTeamLogo]` (v4 correction) |
+| `app/views/components/_agent_detail.html.erb` | 5 | v4 (`79d5f11`): `account.dig(:headshot, :s3Key).present?`; before, `account[:headshot][:s3Key]` raised when the account JSON had no `headshot` (§3.4 item 1) |
+| `app/helpers/application_helper.rb` | 3–7 | `display_mls_name`: v4 (`23f1b0e`) `listing.dig(:account, :mls, :name).to_s`; before, a listing whose agent has no MLS organization raised at `_footer.html.erb:16` (§3.4 item 7) |
 | `app/views/listings/account.html.erb` | 5, 18, 68 | renders `agent_detail`; iterates `@response[:data]`; `@response[:metadata][:pageCount]` |
 | `app/views/components/_photo_grid.html.erb` | 5 | the AB 723 disclosure link (present on the `1qY5VLqV` render) |
 | `lib/insight_photo.rb` | 1 | `require 'net/http'` — the only `require` in app code |
@@ -281,6 +285,107 @@ is in the appendix.
 
 ---
 
+## Honeybadger (v3, 2026-10-31)
+
+Tour branch `chore/honeybadger`: `7b8dd80` build: add the honeybadger gem; `93f7d30` chore: report production errors
+to honeybadger. Off `main` `06ae511` (which carries Dan's account-page fixes `9dbf6d1`, `06ae511`).
+
+| File | Line | What it is |
+| :-- | :-- | :-- |
+| `Gemfile` | 17–18 | comment, then `gem 'honeybadger', '~> 6.10'` (locked 6.10.1; brings `ostruct (0.6.3)`; `logger` was already locked) |
+| `config/honeybadger.yml` | 1–18 | header comments: no key in the file, no `env`/`root`/`report_data`, `request.filter_keys` unset, log breadcrumbs left on |
+| `config/honeybadger.yml` | 22–23 | `insights.enabled: false` |
+| `config/honeybadger.yml` | 25–28 | `production.revision: "<%= ENV['RENDER_GIT_COMMIT'] %>"` — quoted (an all-digit SHA would load as an Integer; `0123456` as octal 42798); `""` when unset |
+| `render.yaml` | 10–11 | `HONEYBADGER_API_KEY`, `sync: false` — documentation only: Render ignores new `sync: false` vars on an existing Blueprint (Blueprint spec, read 2026-10-31); the dashboard holds the value |
+| `config/puma.rb` | 34 | `plugin :tmp_restart` only — no `plugin :honeybadger`, so no Puma stats |
+| `lib/insight_photo.rb` | 54, 73, 89, 99 | `Net::HTTP` calls — would each be a `request.net_http` event with Insights on |
+| `app/controllers/*` | — | no `rescue_from` (grep `rescue\|rescue_from` → only `render 'errors/not_found'` at `listings_controller.rb:11, 56`): every raise reaches Honeybadger |
+
+Gem source, honeybadger 6.10.1 (rubygems 2026-10-30, sha256 `481a797b…` matches the fetched `.gem`; paths under
+`lib/honeybadger/`). 6.10.0 → 6.10.1 changes only the bundled CA certificates (CHANGELOG).
+
+| File | Line | What it is |
+| :-- | :-- | :-- |
+| `config/defaults.rb` | 9–33 | `IGNORE_DEFAULT`, 22 classes (`RoutingError`, `UnknownFormat`, `InvalidAuthenticityToken`, `BadRequest`, `ParameterMissing`, …). Not ignored: `ActionView::Template::Error`, `ActionView::MissingTemplate`, `UnsafeRedirectError` |
+| `config/defaults.rb` | 56, 101–104 | `development_environments` `["development", "test", "cucumber"]` |
+| `config/defaults.rb` | 261–284 | `request.filter_keys` `["password", "password_confirmation", "HTTP_AUTHORIZATION"]`; all four `request.disable_*` false |
+| `config/defaults.rb` | 451–496, 529–537 | `rails.insights.*`, `net_http.insights.*` events on, metrics off; `breadcrumbs.logging.enabled` true; `insights.enabled` true |
+| `config.rb` | 175–179, 294–296, 309–313 | `public?` (`report_data`, else not `dev?`); `insights_enabled?` = `public? && insights.enabled`; `load_plugin_insights?` |
+| `config.rb` | 68, 354–357; `util/revision.rb` 5–43 | revision: `HEROKU_SLUG_COMMIT` → `REVISION` file → `git rev-parse HEAD` if `.git` exists; nothing reads `RENDER_GIT_COMMIT` |
+| `config.rb` | 411–420 | `default_backend`: `Server` when `public?`, else `Null`; `HONEYBADGER_BACKEND=null` forces the stub |
+| `config/yaml.rb` | 22, 33 | ERB-processed (`ERB.new(path.read).result`, then `YAML.unsafe_load`); the env section is merged over the top level |
+| `init/rails.rb` | 15–28, 32–38 | middleware inserted whenever `exceptions.enabled` (any env): `ErrorNotifier` at 0, `UserInformer`/`UserFeedback` before it, `RequestId` after `ActionDispatch::RequestId`; `init!` passes `Rails.env`, `Rails.root` |
+| `agent.rb` | 168–170, 182 | no key → `Unable to send error report: API key is missing` (ERROR), notice dropped; with a key → `Reporting error id=…` (INFO) |
+| `notice.rb` | 200, 576–582 | sanitizer filters = `filter_keys` + the request's `action_dispatch.parameter_filter` (railties 8.0.2 `lib/rails/application.rb:319`, from `filter_parameter_logging.rb:6–8`) |
+| `util/request_hash.rb` | 10–25, 64–70 | `cgi_data`: every `HTTP_*` header plus the CGI whitelist (`REMOTE_ADDR` …) — client IPs and User-Agent are sent |
+| `util/request_payload.rb` | 23–38 | sanitizes params, session, `cgi_data`, the URL query string and cookies by name; URL paths are sent as is |
+| `backend/null.rb` | 20–22 | `notify` returns a `StubbedResponse`; no network |
+
+Verification on the branch (dev container, insgt-api up on 3000):
+
+- P1 **2** (unchanged); zeitwerk "All is good!"; P3 three steps exit 0, `git status` clean; routes identical (15);
+  production middleware 24 → 28 lines, the four Honeybadger entries only; P7 the four files.
+- P5 (test env, `render-pages.rb`): branded 205,673 bytes, unbranded 202,944, `/heartbeat` 13, `/404` 4,836, `/500`
+  7,918, `/` 404 1,790, `/r/colleen-crane` 200 7,892, `/s/` and `/su/` 301 to `localhost:3002` — bodies and headers
+  (less `x-request-id`, `x-runtime`) identical to `main`.
+- No key (`env -u HONEYBADGER_API_KEY`, production): `api_key=nil`, `public=true`, `backend=Server`, `insights=false`,
+  `revision=""`, heartbeat 200; `https://es.insightlistings.com/30290-red-lure-pl-canyon-lake-92587/b/1qY5VLqV` → 500,
+  body == `public/500.html`, log `** [Honeybadger] Unable to send error report: API key is missing.`
+- Dummy key (`HONEYBADGER_API_KEY=dummy-not-a-key HONEYBADGER_BACKEND=null RENDER_GIT_COMMIT=0123456`): the key
+  printed back, `backend=Null`, `revision="0123456"` (String), the same 500 → `Reporting error id=…`, delivery stubbed.
+- Development and test: `public=false`, `backend=Null`, `report_data=nil` — the gem default, not restated.
+- `git grep -nE 'api_key|HONEYBADGER_API_KEY'` → `render.yaml:10` only. With `api_key: hbp_fake123` added on an rsync
+  copy (no `.env`), the grep shows the line.
+- 8.1.4 (rsync copy, `--update rails sprockets --conservative`): honeybadger and ostruct unchanged; boots; same four
+  middleware entries. See design doc §3.1 v3 for the `action_text-trix` correction.
+
+**Bundler 2.6.9 trap.** Adding a new gem to a lock that lists `ruby` beside specific platforms drops `ruby` from
+`PLATFORMS` and the generic `nokogiri (1.18.8)` / `mini_portile2 (2.8.9)`. On a dependency change,
+`remove_invalid_platforms!` (`bundler/definition.rb:1168–1180`) skips every platform but `ruby` and checks it against
+the *old* lock, which lacks the new gem (`incomplete_specs_for_platform` → `["honeybadger-"]`). `bundle _2.6.9_ lock
+--add-platform ruby` restores both; the lock diff is then the new gem alone. `bundle exec` on a copy re-resolves and
+rewrites that copy's lock — diagnose with plain `ruby`, not `bundle exec`.
+
+---
+
+## §3.4 fixes (v4, 2026-11-01)
+
+Commits: tour `main` `ad04756` carries `9dbf6d1`, `06ae511` (Dan), `79d5f11`, `fc28ea9`, `23f1b0e`; branch
+`fix/cross-host-redirects` `156b7d4` (off `ad04756`, not merged) carries the three `allow_other_host` lines.
+
+What the API sends, and why the tour broke (insgt-api, read 2026-11-01):
+
+| File | Line | What it is |
+| :-- | :-- | :-- |
+| insgt-api `app/views/listings/account.json.jbuilder` | 7 | the account page's `account` comes from `set_listing_account_without_container(json, @listings[0], 'primary')` |
+| insgt-api `app/helpers/listings_helper.rb` | 136–154 | `agent_account` = the listing's `user_id` owner account, else `listing.account`; images from it, organizations from `listing.account` |
+| insgt-api `app/helpers/accounts_helper.rb` | 33–34 | `return unless account.headshot?` — no `headshot` key at all when there is none |
+| insgt-api `app/helpers/accounts_helper.rb` | 166–167 | `return if account.nil? \|\| account.accounts_organizations.empty?` — no `organizations` key when there are none |
+| insgt-api `app/models/listing.rb` | 614–617 | `virtual.json` always sends `headshot: { s3Bucket:, s3Key:, s3Version: }` — `s3Key` nil when absent, so tour pages never raised on it |
+| insgt-api `app/models/listing.rb` | 629–633 | `inject_organizations` skips an MLS organization that is not the listing's `organizationId` |
+
+Test data on the dev restore (read-only `rails runner`): 83 accounts with visible listings and a slug, 21 without a
+headshot; no-headshot account `gregory-butler`; no-organizations accounts `deb-burton-bushell`,
+`yager-realty-of-california`; control `greg-timms` (headshot, three organizations). Listing with no MLS name on the
+tour: `/1120-hunter-san-diego-92123/b/4erZP12X` (agent Julia Biggs). A listing's tour agent is not always the
+listing's `account` — `0brmpLkJ` (account deb-burton-bushell) renders Diane Hawkes.
+
+Short URLs in development: the canonical URL is `http://localhost:3002/…`, so requesting `/s/`, `/su/`, `/qb/`, `/qu/`
+with `HOST=www.insightlistings.com` reproduces the cross-host raise (`:50`, `:9`) without a custom-domain listing;
+`HOST=localhost` gives the same-host 301 that P5 compares.
+
+Verification: before/after renders of `/r/gregory-butler`, `/r/deb-burton-bushell`, `/r/yager-realty-of-california`,
+`4erZP12X` (b, ub), the `es.` tour, `/s/`, `/su/`, `/qb/`, `/qu/` (both hosts), with `/r/greg-timms`, `/r/colleen-crane`,
+`0brmpLkJ` and `1qY5VLqV` (b, ub) byte-identical across every step. Production fetches 2026-11-01: both `/r/` pages
+render with the agent's name; `4erZP12X` shows "Compilation ©2026 .".
+
+actionpack 8.1.4 `lib/action_controller/metal/redirecting.rb`: `:154` takes `allow_other_host`; `:158`
+`_compute_redirect_to_location`, whose `:215–217` branch sends a path-relative string to
+`_handle_path_relative_redirect`; `:161` the open-redirect check, the only place `allow_other_host` is read. Slice 2's
+S-ENV gate (row 11) is unaffected by v4.
+
+---
+
 ## Appendix — verification scripts
 
 Run each with `mise exec -- bundle _2.6.9_ exec rails runner [-e test] <file>` from the repo (or a copy with
@@ -322,10 +427,10 @@ output_directory = ENV.fetch("OUTDIR")
 paths.each_with_index do |path, index|
   begin
     status, headers, body = Rails.application.call(Rack::MockRequest.env_for(path, "HTTP_HOST" => host))
-    content = +""
-    body.each { |chunk| content << chunk }
+    content = "".b
+    body.each { |chunk| content << chunk.b }
     body.close if body.respond_to?(:close)
-    File.write(File.join(output_directory, "page-#{index}.html"), content)
+    File.binwrite(File.join(output_directory, "page-#{index}.html"), content)
     File.write(File.join(output_directory, "page-#{index}.headers"), headers.sort.map { |key, value| "#{key}: #{value}" }.join("\n"))
     puts "#{path} status=#{status} bytes=#{content.bytesize} location=#{headers['location'].inspect}"
   rescue => error

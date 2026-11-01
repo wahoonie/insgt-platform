@@ -1,15 +1,18 @@
 # Rails Upgrade — insgt-virtual-tour 8.0.2 → 8.1.4
 
 **Repo:** `insgt-virtual-tour` · **Platform:** Render.com web service `insgt-virtual-tour`, auto-deploy on push to `main`
-**Status:** v2 — survey done 2026-10-31; the plan review of the same day settled the seven decisions (§7) and added
-two checks to slice 1 (§4.0 P4b, §3.1 platforms); production reads confirm three live 500s (§3.4); nothing implemented
-**Version:** 2 · **Last updated:** 2026-10-31
-**Supersedes:** v1 (2026-10-31). See §9.
+**Status:** v4 — survey done 2026-10-31; the plan review of the same day settled the seven decisions (§7) and added
+two checks to slice 1 (§4.0 P4b, §3.1 platforms); OD7 reversed the same day, Honeybadger live by 2026-11-01 (§1.1);
+the §3.4 account-page and footer failures fixed on tour `main`, the redirect failures on their own branch (§3.4); no
+slice implemented
+**Version:** 4 · **Last updated:** 2026-11-01
+**Supersedes:** v3 (2026-10-31). See §9.
 **Companion file:** `rails-upgrade-virtual-tour-codebase-notes.md` — the `file:line` map, the survey record with every
 command and its output, and the three verification scripts. Every repo claim below is sourced there.
 **Pattern:** `rails-upgrade.md` (insgt-api 7.2.3 → 8.1.4). This document reuses its vocabulary — P-checks before the
 push, S-checks after it, OD numbers for decisions, `slice-implementation` gates — and departs from it where this app
-differs: no database, no test suite, no error tracker, one minor version to cross.
+differs: no database, no test suite, one minor version to cross. (v1–v2 also said "no error tracker"; v3 adds
+Honeybadger ahead of the slices, OD7.)
 
 **How to read this document.** Facts carry their source (a `file:line`, a lockfile line, a gem source line, a dated
 page, or a command in the notes' survey record). Assumptions and estimates are labelled. `UNVERIFIED` marks a claim no
@@ -27,7 +30,7 @@ beneficiary is the business: these are the public MLS-facing pages, and an unpat
 exposure; nothing changes for an agent or a buyer when the upgrade lands.
 
 **Non-goals.** Tailwind 4 (`tailwindcss-rails` 3.3 stays), Propshaft (sprockets stays), Puma 7/8, the `webdrivers`
-removal, any gem bump beyond the two §3 names, a Ruby change, an error tracker, fixing the pre-existing failures the
+removal, any gem bump beyond the two §3 names, a Ruby change, any change to Honeybadger (OD7 — its own branch), fixing the pre-existing failures the
 survey found (§3.4 — own branches), insgt-galleries (same shape, Rails 7.1.5.2 — OD6).
 
 **Axes.** Two, and they move separately: (1) the Rails *version* (8.0.2 → 8.1.4, with the one gem it drags along),
@@ -59,7 +62,7 @@ stack against the local API on both Rails versions and compared byte for byte. *
 | Deploy | Render, `bin/render-build.sh` (`bundle lock --add-platform x86_64-linux`, `bundle install`, Tailwind 3.3.4 binary download, `tailwindcss:build`, `assets:precompile`, `assets:clean`), start `bundle exec puma -C config/puma.rb` | `render.yaml:3–6`; `bin/render-build.sh:6, 15, 21–23` (`set -o errexit`) |
 | Deploy branch | `main` == `origin/main` at `eee78cf` (2026-10-29, "Ruby 3.4.12"); nothing unpushed | `git rev-list --left-right --count origin/main...main` → `0 0` |
 | Test suite | Minitest scaffolding, **0 tests**, and the scaffolding cannot run one: `test/test_helper.rb:10` `fixtures :all` has no Active Record to come from | a one-file integration test fails to load with `NoMethodError: undefined method 'fixtures' for class ActiveSupport::TestCase` on 8.0.2 and 8.1.4 (notes, survey record) |
-| Error tracking | none | `Gemfile.lock` |
+| Error tracking | **v3:** honeybadger 6.10.1 (`'~> 6.10'`), errors only, production only; a project of its own (not the api's), plus a Honeybadger uptime check on `/heartbeat`. Branch `chore/honeybadger` (`7b8dd80`, `93f7d30`), deployed on its own ahead of slice 1 (OD7). **v4: live** — merged into tour `main` at `ad04756`; the first production notice (`UnsafeRedirectError`, the `es.` tour, `listings_controller.rb:43`) arrived 2026-11-01 11:31 −05:00 from honeybadger-ruby 6.10.1. The key comes only from `HONEYBADGER_API_KEY` in the Render environment. Before v3: none | `Gemfile:17–18`; `config/honeybadger.yml`; `render.yaml:10–11`; notes, "Honeybadger (v3)" |
 | Deprecation baseline | **2** `DEPRECATION WARNING: to_time …` lines at every test-environment boot; silenced in production | `config/environments/production.rb:45` `report_deprecations = false`; the 7.0 defaults chain leaves `to_time_preserves_timezone` at `:offset`, which 8.0 warns about |
 | Autoloading | `bin/rails zeitwerk:check` → "All is good!" | 2026-10-31, both versions |
 
@@ -163,6 +166,15 @@ and their `(= 8.1.4)` pins; under `activesupport`, `benchmark (>= 0.3)` → `jso
 `DEPENDENCIES` `rails (~> 8.0.2)` → `(~> 8.1.4)`. Bundler 2.6.9 writes no `CHECKSUMS` block. Anything else that moves
 is explained in the slice plan or reverted.
 
+**v3 correction:** the diff also adds **`action_text-trix (2.1.19)`**, because `actiontext (8.1.4)` depends on
+`action_text-trix (~> 2.1.15)`. Every 8.1.4 lock carries it; the survey's prose for the conservative recipe left it
+out. Checked on the Honeybadger branch's lock (2026-10-31, rsync copy, `--update rails sprockets --conservative`): the
+diff names exactly the 13 rails gems, `action_text-trix`, `benchmark`, `concurrent-ruby`, `json`, `sprockets` and
+`tsort`. `honeybadger (6.10.1)` and `ostruct (0.6.3)` are unchanged, and `ruby` stays in `PLATFORMS`. The copy boots on
+8.1.4 with the same four Honeybadger middleware entries. Bundler trap (notes, "Honeybadger (v3)"): adding a *new* gem
+with Bundler 2.6.9 drops the `ruby` platform and the generic `nokogiri`; `bundle _2.6.9_ lock --add-platform ruby`
+restores them. A rails requirement change does not trigger it.
+
 **Platforms (plan review point 2).** `Gemfile.lock` `PLATFORMS` already lists `x86_64-linux`, `x86_64-linux-gnu` and
 `x86_64-linux-musl` (with the aarch64, arm and darwin variants), so `bin/render-build.sh:6` is a no-op and Render
 installs the lock as tested — the expected lock diff above is the whole truth. **`json` 3.1.0 ships no precompiled
@@ -238,6 +250,24 @@ as the control). OD5 puts their fix branch in the same week as slice 1, on its o
    **HTTP 500**. Every agent's own listings page is down for any agent with a brokerage, a team, or no headshot, which
    the three samples suggest is every agent. Monday's `curl -sS -o /dev/null -w "%{http_code}\n"
    https://insightlistings.com/r/<slug>` from the Mac re-confirms it with a status line (§6).
+   **v4: fixed** on tour `main` `ad04756` (pushed):
+   - `9dbf6d1` (Dan) guards `_broker_logo.html.erb` (it renders when `@listing` is blank); `06ae511` (Dan) fixes the
+     account thumbnails.
+   - `79d5f11` reads `account.dig(:headshot, :s3Key)` at `_agent_detail.html.erb:5`. The account endpoint omits
+     `headshot` when there is none (insgt-api `accounts_helper.rb:33–34`); `virtual.json` always sends one with a nil
+     `s3Key` (`listing.rb:614–617`), so only `/r/` pages raised. Dev restore: 21 of 83 accounts with visible listings
+     and a slug have no headshot.
+   - `fc28ea9` reads `Array(@account[:organizations])` at `listings_controller.rb:22`. The endpoint also omits
+     `organizations` when there are none (`accounts_helper.rb:166–167`) — a third crash the v1 survey missed; the tour
+     pages already guard it (`lib/insight_photo.rb:108, 128`).
+   - **Correction to v3:** `_team_logo.html.erb:1` never raised on the account page. Its only render site,
+     `_agent_details.html.erb:14`, renders it only `if @listing && @listing[:showAgentTeamLogo]`. Unchanged.
+
+   Request evidence (test env, dev API): `/r/gregory-butler` (no headshot) raised at `_agent_detail.html.erb:5` and
+   `/r/deb-burton-bushell`, `/r/yager-realty-of-california` (no organizations) at `listings_controller.rb:22` before
+   the fix; all three render 200 after, and `/r/greg-timms`, `/r/colleen-crane` and four tour pages are byte-identical.
+   Production, 2026-11-01: `/r/gregory-butler` and `/r/deb-burton-bushell` render with the agent's name (fetch tool;
+   it reported no status line, and `public/500.html` names no agent).
 2. **The Spanish-subdomain redirect raises.** `listings_controller.rb:42` redirects to
    `ENV['LISTING_DOMAIN'] + request.original_fullpath` for a listing without `spanishListings`; from
    `es.insightlistings.com` that target is another host, and the 7.0 defaults raise on cross-host redirects →
@@ -248,6 +278,14 @@ as the control). OD5 puts their fix branch in the same week as slice 1, on its o
    `http://localhost:3002/…`). **Production: confirmed 2026-10-31 for the Spanish shape** —
    `https://es.insightlistings.com/30290-red-lure-pl-canyon-lake-92587/b/1qY5VLqV` answers **HTTP 500**. The
    custom-domain short-URL shape stays UNVERIFIED until Monday's curl.
+   **v4: fixed on tour branch `fix/cross-host-redirects`** (`156b7d4`, off `main` `ad04756`; not merged):
+   `allow_other_host: true` at `listings_controller.rb:9, 43, 50` (lines moved by `fc28ea9`). Honeybadger recorded the
+   `es.` shape in production (2026-11-01 11:31 −05:00, `:43`). The short-URL mechanism is now reproduced: `/s/`,
+   `/su/`, `/qb/`, `/qu/` requested on a host other than the canonical URL's raised `UnsafeRedirectError` at `:50` and
+   `:9` on `ad04756`, and answer 301 to the canonical URL on the branch; a real custom-domain listing has still not
+   been requested. On the branch the `es.` tour answers **302** → `https://insightlistings.com/…` in test and in
+   production mode (`Completed 302 Found`, no notice). The targets come from `LISTING_DOMAIN` and the API, never the
+   request; `original_fullpath` always starts with `/`, so only the path can vary.
 3. **`panos_controller.rb:19` renders `action: :error`**, and `app/views/panos/` holds only `show.html.erb` →
    `ActionView::MissingTemplate` → 500 whenever the API returns no pano. Read, not exercised (no pano order URL was
    requested).
@@ -257,7 +295,13 @@ as the control). OD5 puts their fix branch in the same week as slice 1, on its o
    (4,836 bytes) and `public/500.html` (7,918 bytes) with status **200** before routing reaches
    `ErrorsController` (`config/routes.rb` `match "/404"`, `match "/500"`), wherever the public file server is on —
    test, and production on Render (`production.rb:19`). Identical on both versions; the branded `errors/*` templates
-   render only through `listings_controller.rb:11, 56`.
+   render only through `listings_controller.rb:11, 56` (`:11, 57` from v4).
+7. **v4: the tour footer raised for a listing whose agent has no MLS organization.** `display_mls_name`
+   (`application_helper.rb:6`) read `listing[:account][:mls][:name]`, so the tour page raised at
+   `_footer.html.erb:16` (dev: `/1120-hunter-san-diego-92123/b/4erZP12X`, branded and unbranded). Fixed by `23f1b0e`
+   on `main` (`listing.dig(:account, :mls, :name).to_s`); production renders that page, 2026-11-01. For such a listing
+   the IDX sentence now reads "…provided by . …" and "Compilation ©2026 ." — the wording for this case is undecided
+   (§8 item 15). `_property_table.html.erb:59` already hid its MLS row. How many listings hit it is unknown.
 
 ---
 
@@ -293,8 +337,14 @@ the push so "unchanged" is provable). From the `ruby-version-bump` skill's Rende
 | S2 | service Shell tab: `bundle exec rails runner 'puts Rails.version; puts Rails.application.config.loaded_config_version'` | the slice's version and defaults |
 | S3 | status Live; Logs show one Puma boot, no repeated boots | — |
 | S4 | `curl -sS https://insightlistings.com/heartbeat` → `{"lub":"dub"}`; a real branded tour URL: `<title>` ends `MLS #<number>`, `#carousel` holds the same N `carousel__slide` divs as before the push, the disclosure link present iff it was before; `curl -sI https://insightlistings.com/s/<token>` → `301` with the same `Location` | identical to the pre-push capture |
-| S5 | Logs tab for ten minutes, then a Logs search for `Completed 5` over the first hour | no 5xx that was not there before the push (the account page, §3.4 item 1, may already 500 — capture it before, and do not count it) |
+| S5 | Logs tab for ten minutes, then a Logs search for `Completed 5` over the first hour | no 5xx that was not there before the push (v4: the account page and the footer are fixed; the `es.` redirect 500s until `fix/cross-host-redirects` deploys — capture before, and do not count what was already there) |
 | S-DEP | Logs search for `DEPRECATION` over the first day (only meaningful after OD2) | none |
+| SH (v3) | the tour's Honeybadger project → Errors, `environment:"production"` since the push, compared **by error** with the first day after the Honeybadger deploy (the baseline); and the `/heartbeat` uptime check | no new error. A new error whose backtrace touches what the slice changed is a finding; an old bug seen for the first time is recorded and fixed on its own branch. The uptime check stays green |
+
+**v3, P6 baseline:** since the Honeybadger deploy, the production middleware list has **28** lines (24 before,
+counting the `run` line). The additions are `Honeybadger::Rack::UserInformer`, `UserFeedback` and `ErrorNotifier`
+first, and `Honeybadger::Rack::RequestId` right after `ActionDispatch::RequestId`. Slice 1 captures its "before" list
+on that `main`. The P1 baseline is unchanged at **2**.
 
 **Rollback:** Events → previous successful deploy → "Rollback to this deploy". Then check that the service's
 **Auto-Deploy setting is still on** (plan review: a manual rollback may switch it off — UNVERIFIED; if it does, the next
@@ -348,7 +398,8 @@ sanitizer vendor and `Regexp.timeout`. If it slips, slice 2 runs on the render s
    A generated file not in this table is a STOP with the diff pasted.
 3. **Production deprecation logging on** (OD2, decided yes): `config/environments/production.rb:45`
    `report_deprecations = false` → `true`, plus `config.active_support.deprecation = :log`. The api document routed
-   production deprecations to Honeybadger; this app has only the Render log, and S-DEP reads it. Zero deprecations were
+   production deprecations to Honeybadger; here the Render log stays the deprecation channel even after the v3
+   Honeybadger deploy (OD7 is errors only), and S-DEP reads it. Zero deprecations were
    seen on every exercised path, so the expected volume is zero lines; the one thing it buys is the untested path
    (panos, custom domains, the Spanish locale).
 4. `config.load_defaults` stays `7.0`. Both shims stay as generated (all commented).
@@ -400,7 +451,7 @@ on 2026-10-31. Rows marked *inert* have no caller in `app/`, `lib/` or `config/`
 | 8 | `action_dispatch.strict_freshness = true` (8.0) | `false` → `true` | no `fresh_when`/`stale?` (grep empty) | inert |
 | 9 | `Regexp.timeout \|\|= 1` (8.0) | `nil` → `1` | no regex literal or `Regexp.new` in `app/`/`lib/`; the eight `gsub`/`include?` sites take string arguments. Gems: the sanitizer (Loofah/Nokogiri), I18n, Rack, URI, Net::HTTP. An overrun raises `Regexp::TimeoutError` → 500 on that page | low; S5 watches |
 | 10 | `action_controller.escape_json_responses = false` (8.1) | `nil` → `false` | `heartbeat_controller.rb:3` — body has no `<>&`, no U+2028/9 | inert |
-| 11 | **`action_controller.action_on_path_relative_redirect = :raise`** (8.1) | `:log` → `:raise` | the four `redirect_to` sites: `panos_controller.rb:8` (`'/'`, absolute path, fine); `listings_controller.rb:9, 49` (canonical URL from the API: `PROPERTY_WEBSITE_HOST`-prefixed, insgt-api `listing.rb:524`; dev value carries a scheme, seen as `http://localhost:3002/…`; production UNVERIFIED); `listings_controller.rb:42` (`LISTING_DOMAIN` + path; dev value carries a scheme — boolean probe, value not printed; production UNVERIFIED). A scheme-less value becomes `PathRelativeRedirectError` → 500 where today the browser resolves it | **gated by S-ENV before the flip** |
+| 11 | **`action_controller.action_on_path_relative_redirect = :raise`** (8.1) | `:log` → `:raise` | the four `redirect_to` sites (v4 lines: `listings_controller.rb:9, 50, 43`; v4's `allow_other_host: true` does not touch this check — actionpack 8.1.4 `redirecting.rb:158` handles path-relative URLs inside `_compute_redirect_to_location`, before the open-redirect check at `:161`): `panos_controller.rb:8` (`'/'`, absolute path, fine); `listings_controller.rb:9, 49` (canonical URL from the API: `PROPERTY_WEBSITE_HOST`-prefixed, insgt-api `listing.rb:524`; dev value carries a scheme, seen as `http://localhost:3002/…`; production UNVERIFIED); `listings_controller.rb:42` (`LISTING_DOMAIN` + path; dev value carries a scheme — boolean probe, value not printed; production UNVERIFIED). A scheme-less value becomes `PathRelativeRedirectError` → 500 where today the browser resolves it | **gated by S-ENV before the flip** |
 | 12 | `active_support.escape_js_separators_in_json = false` (8.1) | — | `image_handler.rb:74` `to_json` of bucket/key/edits; no U+2028/9 in S3 keys | inert |
 | 13 | `action_view.render_tracker = :ruby`, `remove_hidden_field_autocomplete` (8.1) | — | no fragment caching, no forms | inert |
 | 14 | `active_support.to_time_preserves_timezone` | gone on 8.1 | nothing to flip | n/a |
@@ -462,13 +513,13 @@ S-redirect: `curl -sI https://insightlistings.com/s/<token>` → 301, same `Loca
 
 ## 5. Risk register
 
-Ranked by likelihood × cost. There is no error tracker: every signal is the Render build log, the Logs tab, and the
-public URLs.
+Ranked by likelihood × cost. The signals are the Render build log, the Logs tab and the public URLs, and from v3
+Honeybadger: production errors and the `/heartbeat` uptime check (SH, §4.0).
 
 | Rank | Failure | Where | Detection |
 | :-- | :-- | :-- | :-- |
-| R1 | The Render build fails or the new instance does not boot — the §3.2 class of failure, or a gem that breaks only in the Render environment (x86_64 native gems: `json` 3.1.0 compiles from source on Render, no platform gem exists; nokogiri and tailwindcss-ruby come precompiled; the lock already carries `x86_64-linux`) | slice 1, at build or first boot | S1 build log (`assets:clean` is the last build step; a boot failure shows in Events as a failed deploy and the old instance keeps serving); S3; `/heartbeat` |
-| R2 | A deprecation-turned-removal on a path the survey never exercised: the pano page (§3.4 item 3 — not rendered), a custom-domain listing (root route through `CustomDomainConstraint`), the Spanish locale (already 500 in production, §3.4 item 2) | slice 1 | S5's 5xx search; S-DEP (OD2); the pano and custom-domain URLs added to S4 once Dan names one of each (the dev restore's `Listing.select_virtual` can find them — §8) |
+| R1 | The Render build fails or the new instance does not boot — the §3.2 class of failure, or a gem that breaks only in the Render environment (x86_64 native gems: `json` 3.1.0 compiles from source on Render, no platform gem exists; nokogiri and tailwindcss-ruby come precompiled; the lock already carries `x86_64-linux`) | slice 1, at build or first boot | S1 build log (`assets:clean` is the last build step; a boot failure shows in Events as a failed deploy and the old instance keeps serving); S3; `/heartbeat`; the Honeybadger uptime check (v3) |
+| R2 | A deprecation-turned-removal on a path the survey never exercised: the pano page (§3.4 item 3 — not rendered), a custom-domain listing (root route through `CustomDomainConstraint`), the Spanish locale (500 in production until `fix/cross-host-redirects` deploys, §3.4 item 2) | slice 1 | S5's 5xx search; SH (v3: a removed API surfaces as a new error class at the line that calls it); S-DEP (OD2); the pano and custom-domain URLs added to S4 once Dan names one of each (the dev restore's `Listing.select_virtual` can find them — §8) |
 | R3 | Row 11: a scheme-less `LISTING_DOMAIN` or `PROPERTY_WEBSITE_HOST` in production turns every short-URL or language redirect into a 500 | slice 2 | prevented by S-ENV; detected by S-redirect |
 | R4 | Row 7: YJIT on Render raises the instance's memory past its plan | slice 2 | Render Metrics after the push; S5 for restarts |
 | R5 | Row 9: `Regexp::TimeoutError` from a gem on a long description | slice 2 | S5; 24-hour Logs search |
@@ -483,10 +534,11 @@ slice 3 is pencilled for Mon 11-02, slices 4, 5a, 5b for 11-09, 11-10, 11-11). T
 
 | When | What | Hours (estimate) |
 | :-- | :-- | :-- |
+| Sat 10-31 – Sun 11-01 (v3–v4) | **Honeybadger deployed** (`chore/honeybadger`, OD7) — live by 11-01 on tour `main` `ad04756`, which also carries the account-page and footer fixes; the first day's inbox becomes SH's baseline | 0.5 |
 | **Mon 11-02, first thing** | the §3.4 production curls from the Mac — `/r/<slug>` ×2, the `es.` tour, `/s/<token>` for a custom-domain listing; their status lines set the fix branch's priority (OD5) | 0.25 |
 | **Mon 11-02** | merge `docs/rails-upgrade-virtual-tour`; implement slice 1 (afternoon, after the api's morning deploy) | 3 |
 | **Tue 11-03, 09:30 PT** | **deploy slice 1 (8.1.4)** — four days before 8.0's security end | 1 |
-| Wed 11-04, 09:30 PT | **deploy the §3.4 fix branch** (OD5) — its own branch and morning, if slice 1's S5 was clean | 1 (+2 to build it Tue) |
+| Wed 11-04, 09:30 PT | **deploy the §3.4 fix branch** (OD5) — its own branch and morning, if slice 1's S5 was clean. **v4: mostly done early** — items 1 and 7 live on `main` `ad04756`; item 2 on `fix/cross-host-redirects`, Dan's push; item 3 (pano) remains | 1 (+2 to build it Tue) |
 | Wed 11-04 – Fri 11-06 | slice 0 (OD3); S-ENV from the Mac; implement slice 2 (no deploy); start the insgt-galleries survey (OD6) | 3 + 2 + 2 |
 | **Mon 11-16, 09:30 PT** | **deploy slice 2 (`load_defaults 8.1`)** — after the api's defaults week, so the two defaults flips are a week apart | 1 |
 
@@ -511,9 +563,9 @@ kept beside each decision.
 | OD2 | Log deprecations in production (`report_deprecations = true`, `:log`) | **Yes.** Costs nothing; the only signal on panos and custom domains | yes recommended; log noise if a gem deprecation fires per request | §4.2 item 3, S-DEP |
 | OD3 | Slice 0, a runnable test harness with six integration tests | **Yes, timed:** not competing with slice 1 for Monday; lands Wed–Fri; earns its keep in slice 2's contract test | yes recommended; the render script is already the gate | §4.1, §6 |
 | OD4 | Accept the regenerated public error pages | **Accept the pages, reject `icon.*`** | accept recommended | §4.2 table |
-| OD5 | The §3.4 pre-existing failures | **Own branches, curls first** — the Monday status lines set the priority. The 2026-10-31 fetches already show `/r/<slug>` and the `es.` tour at HTTP 500, so the fix branch (`@listing&.[]` / `dig` guards in the three partials, `allow_other_host: true` at the three redirect sites, the pano template) ships the same week as slice 1, on its own branch and its own morning (§6) | own branches after slice 1 | §3.4, §6, §8 |
+| OD5 | The §3.4 pre-existing failures | **Own branches, curls first** — the Monday status lines set the priority. The 2026-10-31 fetches already show `/r/<slug>` and the `es.` tour at HTTP 500, so the fix branch (`@listing&.[]` / `dig` guards in the three partials, `allow_other_host: true` at the three redirect sites, the pano template) ships the same week as slice 1, on its own branch and its own morning (§6). **v4:** items 1 and 7 fixed on `main` `ad04756`, item 2 on `fix/cross-host-redirects`, ahead of slice 1; item 3 open | own branches after slice 1 | §3.4, §6, §8 |
 | OD6 | insgt-galleries (Rails 7.1.5.2) | **Pulled forward to right after slice 1.** By the maintenance rule (two years of security fixes from 7.1.0, 2023-10-05) its support ended about **2025-10-05**, thirteen months ago — computed, not read from the page (UNVERIFIED). Its lock has `sprockets (4.2.2)`, `sprockets-rails (3.5.2)`, `rails (7.1.5.2)`, Ruby 3.4.12 and `config.load_defaults 7.0` (read 2026-10-31): the §3.2 trap applies to it verbatim. Its survey's first question: are its pages public enough to make it the bigger exposure of the two (password-gated galleries)? | a follow-up line | §8 item 13 |
-| OD7 | An error tracker for the tour | **Not now.** The Render log is the signal; revisit with the api's Honeybadger trial (`rails-upgrade.md` §8 item 17) | not now | §5 |
+| OD7 | An error tracker for the tour | **v3, reversed the same day: yes, now, on its own deploy ahead of slice 1.** Honeybadger 6.10.1; errors only (Insights off); production only (the gem's `development_environments` default, not restated); revision from `RENDER_GIT_COMMIT`; log breadcrumbs left on (the app logs nothing of its own); a Honeybadger project separate from the api's, so the api's SH comparisons stay clean; an uptime check on `/heartbeat`. No deploy notifications, check-ins or JS reporting (§8 item 14). v2 decision: not now — the Render log was the signal | not now | §1.1, §4.0 SH, §5 |
 
 ---
 
@@ -523,11 +575,13 @@ Not in any slice. Candidates for their own small changes.
 
 1. **§3.4 item 1** — the account page: guard `@listing` in `_broker_logo.html.erb:1` and `_team_logo.html.erb:1`
    (or pass the flags in), guard `account[:headshot]` in `_agent_detail.html.erb:5`; one request test per case.
-   Production answers HTTP 500 today (§3.4); the fix ships this week (OD5, §6).
+   Production answers HTTP 500 today (§3.4); the fix ships this week (OD5, §6). **v4: done** — `9dbf6d1`,
+   `79d5f11`, `fc28ea9` on `main` `ad04756`; `_team_logo` needed nothing (§3.4 item 1). No request test exists yet
+   (slice 0, OD3, is where they belong).
 2. **§3.4 item 2** — `allow_other_host: true` at `listings_controller.rb:9, 42, 49` (the targets are the API's
    own canonical URLs and the tour's own domain); the `es.` shape answers HTTP 500 in production today (§3.4); the custom-domain `/s/<token>` shape is still
-   to be requested on Monday.
-3. **§3.4 item 3** — `panos_controller.rb:19`: render `errors/not_found` like `listings_controller.rb:56` does, or
+   to be requested on Monday. **v4: on `fix/cross-host-redirects` (`156b7d4`, `:9, 43, 50`), awaiting Dan's push.**
+3. **§3.4 item 3** — `panos_controller.rb:19`: render `errors/not_found` like `listings_controller.rb:57` does, or
    add the template.
 4. `webdrivers` 5.3.1 (abandoned; pins selenium-webdriver `< 4.11`): remove it and let selenium-webdriver 4.x
    manage drivers — test group only.
@@ -548,6 +602,10 @@ Not in any slice. Candidates for their own small changes.
     the P5 path list.
 13. insgt-galleries (OD6, pulled forward): survey right after slice 1 deploys, starting from its lock (`sprockets
     (4.2.2)` — the §3.2 trap; `rails (7.1.5.2)`; `load_defaults 7.0`) and from whether its pages are public.
+14. Honeybadger beyond errors (OD7 v3 non-goals): `honeybadger deploy` from `bin/render-build.sh`, Insights, and
+    production deprecations to Honeybadger the way the api routes them (OD2 keeps the Render log).
+15. The IDX sentence in `_footer.html.erb:16` for a listing with no MLS name (§3.4 item 7): it reads "provided by ."
+    and "Compilation ©2026 ." today. Decide the wording, or drop the two clauses when the name is blank.
 
 ---
 
@@ -557,3 +615,5 @@ Not in any slice. Candidates for their own small changes.
 | :-- | :-- | :-- |
 | 1 | 2026-10-31 | Initial document from the Phase 0 survey (insgt-virtual-tour `main` `eee78cf`; Rails 8.1.4 newest, 8.2 unreleased; 8.0 security support ends 2026-11-07). Path 8.0.2 → 8.1.4 in one hop; two slices plus an optional test-harness slice. Dependency audit: every gem resolves; the one blocker is `json` 3.1.0 (pulled in by activesupport 8.1.4) against sprockets 4.2.2's `create_additions`, which fails `assets:clean` and every production boot with a manifest — resolved by sprockets 4.4.1, verified through the full Render build sequence and a production boot. 8.1.4 on the 7.0 defaults verified: 0 deprecations, routes identical, middleware identical but for PermissionsPolicy, nine pages byte-identical against the live dev API. The 7.1–8.1 defaults mapped to this app: eleven inert rows, the sanitizer vendor measured on 3,352 description values (54 differ, all invisible), the path-relative redirect gated by S-ENV. Four pre-existing failures recorded (account page, Spanish-subdomain redirect, pano error template, the test helper). Seven open decisions. |
 | 2 | 2026-10-31 | The plan review's calls recorded as decisions (§7, OD1 A, OD2 yes, OD3 yes timed Wed–Fri, OD4 accept pages / reject icons, OD5 own branch this week, OD6 pulled forward, OD7 not now). Review point 1 closed with evidence: P4b, a production-mode render of the branded tour against the compiled manifest — identical on 8.0.2/sprockets 4.2.2 and 8.1.4/sprockets 4.4.1 (194,295 bytes, the same four digests, no missing asset). Point 2: `x86_64-linux` already in `PLATFORMS`; `json` 3.1.0 has no platform gem and compiles on Render (§3.1, R1). Point 3 answered early: production fetches show `/r/nora-nido`, `/r/logan-banta` and the `es.` tour at HTTP 500 with `/heartbeat` as the control (§3.4); the fix branch joins the calendar (§6). Calibration: the deadline marked soft, the slippage rule reworded without the Thursday exception, the 2027-10-10 forward anchor added (§1.3). Smaller points: S-MEM memory baseline before the slice 2 push with the one-process Puma fact (§4.3), the Auto-Deploy check after a rollback (§4.0), slice 0 timed off Monday (§4.1), OD6's garbled clause replaced by the galleries lock facts. |
+| 3 | 2026-10-31 | OD7 reversed: Honeybadger 6.10.1, errors only, on its own tour branch `chore/honeybadger` (`7b8dd80`, `93f7d30`), deployed ahead of slice 1 (§1.1, §6, §7). Verified on the branch: P1 2 (unchanged), zeitwerk clean, the build green, routes identical, middleware +4 Honeybadger entries (§4.0 v3 note), P5 byte-identical on nine pages. Production boots without a key; with a key from the environment it reports through a stubbed backend. SH added to §4.0; §5's detection gains Honeybadger. §3.1 corrected: the slice 1 lock diff also adds `action_text-trix`; the Bundler 2.6.9 `ruby`-platform trap recorded. §3.4 item 1 marked partly fixed (`9dbf6d1`, `06ae511`; two partials remain). §8 item 14 added. |
+| 4 | 2026-11-01 | Honeybadger live (tour `main` `ad04756`; first production notice 11:31 −05:00, the `es.` redirect) (§1.1, §6). §3.4 item 1 fixed (`9dbf6d1`, `06ae511`, `79d5f11`, `fc28ea9`), including a third crash the survey missed (no `organizations` in the account JSON); **v3's `_team_logo` claim corrected** — its caller guards it. §3.4 item 2 fixed on `fix/cross-host-redirects` (`156b7d4`, all three sites), the short-URL raise reproduced. §3.4 item 7 added and fixed (`23f1b0e`, the footer's MLS name). Slice 2 row 11: `allow_other_host` does not affect the path-relative check (actionpack source). §4.0 S5, §5 R2, §6, OD5, §8 items 1–3 brought up to date; §8 item 15 added. |
