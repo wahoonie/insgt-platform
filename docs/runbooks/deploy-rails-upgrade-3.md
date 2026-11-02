@@ -470,6 +470,15 @@ RECORDED:
 
 ```
 
+Confirmed (Dan, 2026-11-02):
+
+- S7: the buffer spans 13:34:59–14:54:05 UTC, so it starts 22 minutes after the push. Papertrail
+  from the push to one hour after it (13:12–14:12 UTC): no `status=5`, no `DoubleRenderError`. The
+  buffer holds no exception class at all, not even the scanners' `RoutingError`. **Passes.**
+- S9: Honeybadger's `import_listings` history shows the first check-in after the push at 08:36 -05:00
+  (13:36 UTC) and the next at 09:36 -05:00 (14:36 UTC), both `reporting`, inside the :36–:45 window;
+  hourly with no gap back through 11/1 22:36 -05:00. **Passes.**
+
 ### 7. 24 hours after the push (SH)
 
 Honeybadger → Errors, compared with the slice 0 baseline **by error**, plus slice 1's S-DEP
@@ -595,4 +604,5 @@ never reads it.
   (`66656131`, merged to `master` at 07:55 -0500 that morning and never released alone): a rollback
   to v665 removes it too, and an SH error with rack-session in its backtrace is that bump's, not this
   slice's. Suite on the merge 2,059/0; step 2's probe on the merge as expected; step 3's captures on
-  v665; step 5 passes (S0–S6, S8, S10, S-404; S11 by the substitute). S7, S9 and SH pending.
+  v665; step 5 passes (S0–S6, S8, S10, S-404; S11 by the substitute). S7 and S9 pass; SH
+  pending.
