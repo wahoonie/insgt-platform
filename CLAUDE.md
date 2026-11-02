@@ -36,6 +36,8 @@ The container is capped at 20 GB in `.devcontainer/docker-compose.yml`. Servers,
 
 **The Angular versions differ on purpose.** insgt-ops is on 19 and is not being upgraded right now. Never carry a convention from one app to another because both are "Angular" — load that repo's skill instead.
 
+**Git can refuse a repo mid-session with "detected dubious ownership".** Re-run the safe.directory block in `.devcontainer/setup.sh`, which whitelists `/workspace` and every repo under `apps/`, `lib/` and `functions/`, then retry; and never chain a bundler step and its commit in one shell without a `git status` between them, because the lockfile write lands while the commit is silently skipped. `/workspace` is a VirtioFS bind mount, and when the kernel refreshes a directory inode's cached attributes it can report an owner other than vscode, which git 2.35+ treats as someone else's repo. Only this container is exposed; the Mac checkout never sees it.
+
 ## AB 723
 
 California law (BPC § 10140.8, effective 2026-01-01) requires disclosure when listing photos have been digitally altered. The `Photo → UnalteredPhoto` relationship is the source of truth: an UnalteredPhoto exists only when the photo carries material alterations. Standard adjustments — HDR, exposure, white balance — never trigger it.
