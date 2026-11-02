@@ -1,6 +1,6 @@
 # Runbook: Rails Upgrade Slice 3 — 8.1.4, the landing target
 
-**Last updated:** 2026-10-30
+**Last updated:** 2026-11-02
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~30 min on the morning; S7 one hour after the push; S9 at the first hourly
 import; SH 24 h later
@@ -91,11 +91,13 @@ to make the window.**
       `git diff db/schema.rb` empty
 - [x] Review rounds complete (two rounds of `predeploy-review-rails`, Codex second opinion included,
       2026-10-30); this runbook's Status is `Ready`
-- [ ] Dan has merged `chore/rails-upgrade-slice-3` into `master` and `bundle exec rspec` is green
+- [x] Dan has merged `chore/rails-upgrade-slice-3` into `master` and `bundle exec rspec` is green
       **on the merge**: expected 2,059 examples, 0 failures, 0 `DEPRECATION WARNING` lines if `master`
-      is still f86877f5; a different count is sourced before the push, not recomputed
-- [ ] The production-config probe (step 2) printed the expected lines on the merge
-- [ ] Pre-push captures (step 3) recorded below, on the release that is live at that moment (v665)
+      is still f86877f5; a different count is sourced before the push, not recomputed. **Recorded:**
+      on the merge `05e3fd42` (`master` had moved to `921a069e`, rack-session 2.1.2, which adds no
+      spec), `2059 examples, 0 failures`
+- [x] The production-config probe (step 2) printed the expected lines on the merge
+- [x] Pre-push captures (step 3) recorded below, on the release that is live at that moment (v665)
 
 ## Pre-deploy
 
@@ -171,6 +173,22 @@ true
 --- DEPRECATION lines in the whole output: 0 ---
 ```
 
+RESULTS (2026-11-02, master, dev container):
+```
+"8.1.4"
+true
+true
+[["Rails", [:notify]], ["GlobalID", [:notify]], ["Lograge", [:notify]]]
+I, [2026-11-02T13:05:07.468371 #11676]  INFO -- honeybadger: ** [Honeybadger] Reporting error id=b91a3944-3ecd-4230-a63a-31cbc060440d level=1 pid=11676
+true
+false
+7.2
+583
+false
+true
+0
+```
+
 ### 3. Pre-push captures (on the host, on v665)
 
 ```bash
@@ -198,7 +216,77 @@ health page and `200` for `/up.json`; S-404 `204` (one head on 8.0.5.1); S6 the 
 RECORDED (before), on v665:
 
 ```
-(pending)
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).map(&:name).inspect'
+Running rails runner "puts PostalCode.find_by(zip: \"92008\").nearby_cities.limit(3).map(&:name).inspect" on ⬢ insgtapi... up, run.2581
+["Carlsbad", "Oceanside", "Leucadia"]
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).map(&:name).inspect'
+heroku run --no-tty --app insgtapi rails runner 't = ActiveSupport::TimeZone["Pacific Time (US & Canada)"].parse("2026-11-02 10:00").to_time; puts t; puts t.strftime("%Z"); puts t.zone.class'
+Running rails runner "puts PostalCode.find_by(zip: \"92008\").nearby_cities.limit(3).map(&:name).inspect" on ⬢ insgtapi... up, run.4887
+["Carlsbad", "Oceanside", "Leucadia"]
+Running rails runner "t = ActiveSupport::TimeZone[\"Pacific Time (US & Canada)\"].parse(\"2026-11-02 10:00\").to_time; puts t; puts t.strftime(\"%Z\"); puts t.zone.class" on ⬢ insgtapi... up, run.3488
+2026-11-02 10:00:00 -0800
+PST
+ActiveSupport::TimeZone
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'puts Rails.application.config.loaded_config_version'
+Running rails runner "puts Rails.application.config.loaded_config_version" on ⬢ insgtapi... up, run.3922
+7.2
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'metadata, _accounts = Account.search(status_type: StatusType.active, name: "<a term Dan searches daily in insgt-ops>"); puts metadata.inspect'
+Running rails runner "metadata, _accounts = Account.search(status_type: StatusType.active, name: \"<a term Dan searches daily in insgt-ops>\"); puts metadata.inspect" on ⬢ insgtapi... up, run.9441
+{total_count: 0, page: 1, per_page: 20, page_count: 1, links: {self: ""}, page_min: 1, page_max: 0}
+➜  insgt-api git:(master) curl -sS -o /dev/null -w "%{http_code}\n" https://api.insightphotos.net/up
+200
+➜  insgt-api git:(master) curl -sS -w "\n%{http_code}\n" https://api.insightphotos.net/up.json | head -c 200
+<!DOCTYPE html><html><body style="background-color: green"></body></html>
+200
+➜  insgt-api git:(master) JWT=''
+➜  insgt-api git:(master) curl -sS -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $JWT" https://api.insightphotos.net/orders/0
+RELEASE=v665
+204
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner "Notifier.send_error_email('rails upgrade slice 3', 'release $RELEASE').deliver_now"
+Running rails runner "Notifier.send_error_email('rails upgrade slice 3', 'release v665').deliver_now" on ⬢ insgtapi... up, run.8473
+Delivered-To: ops@insightphotos.net
+Received: by 2002:a05:612c:2c16:b0:62a:39ad:d40b with SMTP id ir22csp5455445vqb; Mon, 2 Nov 2026 05:09:48 -0800 (PST)
+X-Received: by 2002:a05:6214:4498:b0:91b:5480:ee2a with SMTP id 6a1803df08f44-91ca4b73b7cmr152398126d6.41.1793624988626; Mon, 02 Nov 2026 05:09:48 -0800 (PST)
+ARC-Seal: i=1; a=rsa-sha256; t=1793624988; cv=none; d=google.com; s=arc-20260327; b=PMmi9nT6FTArXp+43z6iAVKxhudLwXUeYHNzYyw7kDatH8AJ2O3QHqW7Wc0gtb77PW nqyd1JMVTp14L8XpoGiPijSuQWPP+SsxaQX3eUV9V/chn6Fhkj9y/GR9MQqnFnwVE1e/ xIBlrenk6IOZ14Ir4PTak4EL2bFmsbK0ez4v3nriXnR1s5vLZ7tQ461xOcWywIuegLQc mqIhxNsL2M3ddIKI/6XQ2XFPz52EbnQ1RwUqXtmLFIZtmFBtMdjvkkjQENgYw1/ftc2I 0Sy0fNhj78qJGJzBWDfOfQ9WnfZth2Npr16Lw+9oD1IOndq3fUzuh3K5j+Dbt5oQkqxu 1uTw==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20260327; h=content-transfer-encoding:to:mime-version:subject:message-id:from :date:dkim-signature; bh=paRobE6LAqvMl/tl7Qzr11JCjjh2aTYQcrosBclUABg=; fh=b95oPXqlXN0IXjY3bSBH1Sto+nGkMQ+sdX7jSrHqLQs=; b=E5gBf6tbO9iEiTDFq/6lGfumwNYwW6lG5OqePkyvuwYL+epPVZxBuFCyYDCaqAYZJc 0FIKBq/hIvo38a7TpClW/RWrr2qqap9FzZZMF+n6qfER2rShfnl0jqIdaS1YtHHf6pBV jL2tfqgXvNm2gw1/x+YfGwGF2ETHhJUTFpPxYOglIvQ4vu4fj5hR5Nyw8CVQ+FbmOVL7 pT5X92arcNOceB7S41Gy4j/yrUyBZK5O0jQRbUbialLQIAKdLhVHlA5S2ciLizUptmL8 M8YyEzEUSCm+VT57aVsgxnj8FVTPy/susHlK744ahd1oyyUJvSl6RowW2Ot15sdJaNps YucQ==; dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com; dkim=pass header.i=@insightphotos.net header.s=s1 header.b=PcH4Fajg; spf=pass (google.com: domain of bounces+1863658-eac4-ops=insightphotos.net@team.insightphotos.net designates 50.31.41.209 as permitted sender) smtp.mailfrom="bounces+1863658-eac4-ops=insightphotos.net@team.insightphotos.net"; dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=insightphotos.net
+Return-Path: <bounces+1863658-eac4-ops=insightphotos.net@team.insightphotos.net>
+Received: from o1.ptr4593.insightphotos.net (o1.ptr4593.insightphotos.net. [50.31.41.209]) by mx.google.com with ESMTPS id 6a1803df08f44-91ca80f94a3si111446416d6.489.2026.11.02.05.09.47 for <ops@insightphotos.net> (version=TLS1_3 cipher=TLS_AES_128_GCM_SHA256 bits=128/128); Mon, 02 Nov 2026 05:09:48 -0800 (PST)
+Received-SPF: pass (google.com: domain of bounces+1863658-eac4-ops=insightphotos.net@team.insightphotos.net designates 50.31.41.209 as permitted sender) client-ip=50.31.41.209;
+Authentication-Results: mx.google.com; dkim=pass header.i=@insightphotos.net header.s=s1 header.b=PcH4Fajg; spf=pass (google.com: domain of bounces+1863658-eac4-ops=insightphotos.net@team.insightphotos.net designates 50.31.41.209 as permitted sender) smtp.mailfrom="bounces+1863658-eac4-ops=insightphotos.net@team.insightphotos.net"; dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=insightphotos.net
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=insightphotos.net; h=date:from:subject:mime-version:to:content-type: content-transfer-encoding:cc:content-type:date:from:subject:to; s=s1; t=1793624987; bh=paRobE6LAqvMl/tl7Qzr11JCjjh2aTYQcrosBclUABg=; b=PcH4Fajgyq5SyeAnNGqdNbpTmzpFJ6wZaxwjnSZaE4EHzVPZ5QeW5TGWkZb6/8AURPWg gOiRdTBtCQOjd21uXzdZa7K0YBCCgZ0rUNTlC6nG0fljcFRxjNiUkHHOCGPQFKu+Tbdjo1 fo06F7mT0MfK+1SomE630hja9YwFoqpAKJNB5obj5P1CjMwPqwnivSLhMNCt9l9kN5O8hy n15Aaybbx+rXgjSEai2Xsk8Ms4BKDZWVvFL6jj1tb+8j/NvNRKcEs2VOwfzKs2I1GewMdf 5UFCgeuRRWb6Dsx41KuiGgl7dxMdcttRECzVl+3/ruL2VqfRZtkulxI3+nIWSJ1g==
+Received: by recvd-b4fff8755-4pf8b with SMTP id recvd-b4fff8755-4pf8b-1-6AE88B9B-62 2026-11-02 13:09:47.67911368 +0000 UTC m=+2923758.415533606
+Received: from heroku.com (unknown) by geopod-ismtpd-2 (SG) with ESMTP id sPqSgzoaTNSUGdbS5FeRhA for <ops@insightphotos.net>; Mon, 02 Nov 2026 13:09:47.463 +0000 (UTC)
+Date: Mon, 02 Nov 2026 13:09:47 +0000 (UTC)
+From: team@insightphotos.net
+Message-ID: <6ae88b9b31e2d_2658869a2@bbac86f1-c64d-43d0-aa43-8f03bab61060.mail>
+Subject: SystemError::rails upgrade slice 3
+MIME-Version: 1.0
+X-SG-EID: =?us-ascii?Q?u001=2EpR+yjs3hVT4DQE4Uj1u4uFyI311fE1TC5NLOcsssBAPr0AKvIOjcG8SSs?= =?us-ascii?Q?KsKtuo=2FuEhF7FcT+5PYctFdTr3s36BEzn9OKTuj?= =?us-ascii?Q?9fxRPEqwnx2O5lK4AH+hlaW1WBD9uhLAF+fxiiU?= =?us-ascii?Q?kLzcLf0mQUwYuEVhP86PANW2fb4pnb8H5T8ctAy?= =?us-ascii?Q?NWYtp5ZVZ9w7LvvTQYl5eezx5qbLOPOTZyWihZJ?= =?us-ascii?Q?A=3D=3D?=
+To: ops@insightphotos.net
+X-Entity-ID: u001.xRuvYZtPvSadNSzvFvk2lg==
+Content-Type: multipart/alternative; boundary="--==_mimepart_6ae88b9b3158e_2658868ea"; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+----==_mimepart_6ae88b9b3158e_2658868ea
+Content-Type: text/plain; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+
+release v665
+
+
+----==_mimepart_6ae88b9b3158e_2658868ea
+Content-Type: text/html; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+
+<html>
+  <body>
+    release v665
+
+  <img src="http://email.insightphotos.net/wf/open?upn=u001.DSVPlkpxHi6LhdwlANY-2Fp3iY5m35raKFmiBolSl-2FhCZIWMNtD6fZn0h0S-2BJ3X5bTI9AzsZGD5YULADTojDaWj2AQ6w21QWoz1vtuhCoh15qrO1Oun0SYxQcXP-2B3fJH-2FxzeguE5MGJLlzwUyZmxAAvXVt-2Fz0YdqPJmV6FUjJJ0-2BEdxNOvegeJaIItiY5gEtyXWEN4Vmb-2FWsDUX3VSRqOlUQ-3D-3D" alt="" width="1" height="1" border="0" style="height:1px !important;width:1px !important;border-width:0 !important;margin-top:0 !important;margin-bottom:0 !important;margin-right:0 !important;margin-left:0 !important;padding-top:0 !important;padding-bottom:0 !important;padding-right:0 !important;padding-left:0 !important;"/></body>
+</html>
+
+----==_mimepart_6ae88b9b3158e_2658868ea--
 ```
 
 ## Deploy
@@ -214,10 +302,13 @@ The second Rails 8.x slug on this buildpack (v663 built 8.0.5.1). Watch the buil
 install (`action_text-trix` is the one new gem) and for any `assets:precompile` attempt (none
 expected). A failed build is not a release; v665 stays live.
 
-RECORDED:
+RECORDED: Confirmed action_text-trix installed, and no assets:precompile was attempted.
 
+RECORDED (2026-11-02):
 ```
-(pending)
+  v      description       user                    created_at
+ ────────────────────────────────────────────────────────────────────────────────────────
+  v666   Deploy 05e3fd42   ops@insightphotos.net   2026/11/02 08:12:27 -0500 (~ 18s ago)
 ```
 
 ### 5. Within 30 minutes
@@ -226,7 +317,7 @@ Set `RELEASE` first. Every `heroku run … rails runner` below prints the Active
 before its own output (Known); it is not a failure.
 
 ```bash
-RELEASE=vNNN   # the release `heroku releases -n 1` printed
+RELEASE=v666   # the release `heroku releases -n 1` printed
 heroku ps --app insgtapi
 heroku logs --ps backgroundworker.1 -n 300 --app insgtapi | grep Booted
 curl -sS -o /dev/null -w "%{http_code}\n" https://api.insightphotos.net/up
@@ -240,6 +331,7 @@ curl -sS -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $JWT" https:
 heroku run --no-tty --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).map(&:name).inspect'
 heroku run --no-tty --app insgtapi rails runner 'puts Stripe::Balance.retrieve.livemode'
 heroku run --no-tty --app insgtapi rails runner "Notifier.send_error_email('rails upgrade slice 3', 'release $RELEASE').deliver_now"
+
 ```
 
 Expected, reasoned before the push:
@@ -265,7 +357,78 @@ then look.
 RECORDED:
 
 ```
-(pending)
+➜  insgt-api git:(master) RELEASE=v666
+➜  insgt-api git:(master) heroku ps --app insgtapi
+=== backgroundworker (Standard-2X): bundle exec sidekiq -c 4 (1)
+
+backgroundworker.1: up 2026/11/02 08:12:32 -0500 (~ 2m ago)
+
+=== web (Standard-2X): bundle exec puma -C config/puma.rb (2)
+
+web.1: up 2026/11/02 08:12:33 -0500 (~ 2m ago)
+web.2: up 2026/11/02 08:12:34 -0500 (~ 2m ago)
+
+➜  insgt-api git:(master) heroku logs --ps backgroundworker.1 -n 300 --app insgtapi | grep Booted
+2026-11-02T13:12:36.246146+00:00 app[backgroundworker.1]: pid=2 tid=242 INFO: Booted Rails 8.1.4 application in production environment
+➜  insgt-api git:(master) curl -sS -o /dev/null -w "%{http_code}\n" https://api.insightphotos.net/up
+200
+➜  insgt-api git:(master) curl -sS -w "\n%{http_code}\n" https://api.insightphotos.net/up.json | head -c 200
+{"status":"up","timestamp":"2026-11-02T13:15:42Z"}
+200
+➜  insgt-api git:(master) heroku run --no-tty --exit-code --app insgtapi rails runner "puts Honeybadger.notify('rails upgrade slice 3 marker', error_class: 'UpgradeMarker', fingerprint: 'rails-upgrade-marker', tags: 'upgrade', context: { rails: Rails.version, release: '$RELEASE' }, sync: true).inspect"
+Running rails runner "puts Honeybadger.notify('rails upgrade slice 3 marker', error_class: 'UpgradeMarker', fingerprint: 'rails-upgrade-marker', tags: 'upgrade', context: { rails: Rails.version, release: 'v666' }, sync: true).inspect" on ⬢ insgtapi... up, run.6213
+W, [2026-11-02T13:15:57.693536 #4]  WARN -- : Generating image variants require the image_processing gem. Please add `gem "image_processing", "~> 1.2"` to your Gemfile or set `config.active_storage.variant_processor = :disabled`.
+I, [2026-11-02T13:15:57.840503 #4]  INFO -- honeybadger: ** [Honeybadger] Reporting error id=37405fd8-6db7-43cb-9a87-739b99a83c21 level=1 pid=4
+I, [2026-11-02T13:15:57.900965 #4]  INFO -- honeybadger: ** [Honeybadger] Success ⚡ https://app.honeybadger.io/notice/37405fd8-6db7-43cb-9a87-739b99a83c21 id=37405fd8-6db7-43cb-9a87-739b99a83c21 code=201 level=1 pid=4
+"37405fd8-6db7-43cb-9a87-739b99a83c21"
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'puts Rails.version; p Rails.application.config.active_support.key?(:to_time_preserves_timezone)'
+Running rails runner "puts Rails.version; p Rails.application.config.active_support.key?(:to_time_preserves_timezone)" on ⬢ insgtapi... up, run.2473
+W, [2026-11-02T13:16:12.256274 #2]  WARN -- : Generating image variants require the image_processing gem. Please add `gem "image_processing", "~> 1.2"` to your Gemfile or set `config.active_storage.variant_processor = :disabled`.
+8.1.4
+false
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 't = ActiveSupport::TimeZone["Pacific Time (US & Canada)"].parse("2026-11-02 10:00").to_time; puts t; puts t.strftime("%Z"); puts t.zone.class'
+Running rails runner "t = ActiveSupport::TimeZone[\"Pacific Time (US & Canada)\"].parse(\"2026-11-02 10:00\").to_time; puts t; puts t.strftime(\"%Z\"); puts t.zone.class" on ⬢ insgtapi... up, run.3026
+W, [2026-11-02T13:16:25.331773 #2]  WARN -- : Generating image variants require the image_processing gem. Please add `gem "image_processing", "~> 1.2"` to your Gemfile or set `config.active_storage.variant_processor = :disabled`.
+2026-11-02 10:00:00 -0800
+PST
+ActiveSupport::TimeZone
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'puts Rails.application.config.loaded_config_version'
+Running rails runner "puts Rails.application.config.loaded_config_version" on ⬢ insgtapi... up, run.3954
+W, [2026-11-02T13:16:38.894775 #2]  WARN -- : Generating image variants require the image_processing gem. Please add `gem "image_processing", "~> 1.2"` to your Gemfile or set `config.active_storage.variant_processor = :disabled`.
+7.2
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'metadata, _accounts = Account.search(status_type: StatusType.active, name: "<the same term as step 3>"); puts metadata.inspect'
+Running rails runner "metadata, _accounts = Account.search(status_type: StatusType.active, name: \"<the same term as step 3>\"); puts metadata.inspect" on ⬢ insgtapi... up, run.4132
+W, [2026-11-02T13:16:51.343060 #2]  WARN -- : Generating image variants require the image_processing gem. Please add `gem "image_processing", "~> 1.2"` to your Gemfile or set `config.active_storage.variant_processor = :disabled`.
+{total_count: 0, page: 1, per_page: 20, page_count: 1, links: {self: ""}, page_min: 1, page_max: 0}
+➜  insgt-api git:(master) curl -sS -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $JWT" https://api.insightphotos.net/orders/0
+204
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).map(&:name).inspect'
+Running rails runner "puts PostalCode.find_by(zip: \"92008\").nearby_cities.limit(3).map(&:name).inspect" on ⬢ insgtapi... up, run.2479
+W, [2026-11-02T13:17:12.420373 #2]  WARN -- : Generating image variants require the image_processing gem. Please add `gem "image_processing", "~> 1.2"` to your Gemfile or set `config.active_storage.variant_processor = :disabled`.
+["Carlsbad", "Oceanside", "Leucadia"]
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner 'puts Stripe::Balance.retrieve.livemode'
+Running rails runner "puts Stripe::Balance.retrieve.livemode" on ⬢ insgtapi... up, run.2988
+W, [2026-11-02T13:17:40.240625 #2]  WARN -- : Generating image variants require the image_processing gem. Please add `gem "image_processing", "~> 1.2"` to your Gemfile or set `config.active_storage.variant_processor = :disabled`.
+true
+➜  insgt-api git:(master) heroku run --no-tty --app insgtapi rails runner "Notifier.send_error_email('rails upgrade slice 3', 'release $RELEASE').deliver_now"
+Running rails runner "Notifier.send_error_email('rails upgrade slice 3', 'release v666').deliver_now" on ⬢ insgtapi... up, run.6721
+W, [2026-11-02T13:17:57.687025 #2]  WARN -- : Generating image variants require the image_processing gem. Please add `gem "image_processing", "~> 1.2"` to your Gemfile or set `config.active_storage.variant_processor = :disabled`.
+```
+
+Confirmed (Dan, 2026-11-02):
+
+- S0: `UpgradeMarker` gained an occurrence with context `{ "rails" => "8.1.4", "release" => "v666" }`.
+- S1: the Honeybadger uptime check is green.
+- S6: `SystemError::rails upgrade slice 3` with body `release v666` arrived at ops@insightphotos.net.
+- No `RailsDeprecation` in Honeybadger since the push.
+
+```
+S11 (substitute — the step 3 and step 5 runner commands still had the placeholder search
+term, so both returned 0 and compared nothing):
+- Production v666, insgt-ops GET /accounts?name=richard&onlyOnce=false&zeroShoots=false&perPage=25
+  → totalCount 20, pageCount 1.
+- Dev database, the same request through the full stack: 8.0.5.1 (f86877f5) and 8.1.4 (05e3fd42)
+  both 200, totalCount 20, the same 20 ids in the same order; production's first 16 match.
 ```
 
 ### 6. One hour after the push (S7) and the first import (S9)
@@ -303,9 +466,9 @@ Honeybadger → Errors, compared with the slice 0 baseline **by error**, plus sl
 with the push):
 
 ```
-environment:"production" created.after:"2026-11-02 09:00 UTC-8"
-environment:"production" class:"RailsDeprecation" occurred.after:"2026-11-02 09:00 UTC-8"
-environment:"production" class:"AbstractController::DoubleRenderError" occurred.after:"2026-11-02 09:00 UTC-8"
+environment:"production" created.after:"2026-11-02 05:12 UTC-8"
+environment:"production" class:"RailsDeprecation" occurred.after:"2026-11-02 05:12 UTC-8"
+environment:"production" class:"AbstractController::DoubleRenderError" occurred.after:"2026-11-02 05:12 UTC-8"
 ```
 
 Expected: nothing new from any of the three. The 24 h before the push ran on v665 (Ruby 3.4.12), so an
@@ -415,3 +578,10 @@ never reads it.
 - **2026-10-30 — implemented and verified in development** (branch `chore/rails-upgrade-slice-3`,
   `a5bfab70`…`5ffe92c4` off `master` f86877f5): step 1's table; P-PROD as step 2's RESULTS; Dan's 8.1
   dump (two hunks, committed as `5ffe92c4`) and round-trip load (empty diff).
+- **2026-11-02 — deployed as v666** (`05e3fd42`, the merge of `chore/rails-upgrade-slice-3` into
+  `master` `921a069e`), released **05:12:27 PST** (13:12:27 UTC; `heroku releases` prints 08:12:27
+  -0500), before the 09:00–11:30 PT window, as slice 2 was. v666 also carries rack-session 2.1.2
+  (`66656131`, merged to `master` at 07:55 -0500 that morning and never released alone): a rollback
+  to v665 removes it too, and an SH error with rack-session in its backtrace is that bump's, not this
+  slice's. Suite on the merge 2,059/0; step 2's probe on the merge as expected; step 3's captures on
+  v665; step 5 passes (S0–S6, S8, S10, S-404; S11 by the substitute). S7, S9 and SH pending.
