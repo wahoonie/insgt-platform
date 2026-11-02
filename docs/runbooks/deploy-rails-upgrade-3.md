@@ -456,7 +456,18 @@ ended the day before, so the local clock moved and the schedule did not).
 RECORDED:
 
 ```
-(pending)
+➜  insgt-api git:(master) heroku logs -n 1500 --app insgtapi > /tmp/s7.log
+➜  insgt-api git:(chore/rails-upgrade-slice-4) head -1 /tmp/s7.log | cut -c1-32
+2026-11-02T13:34:59.340906+00:00
+➜  insgt-api git:(chore/rails-upgrade-slice-4) tail -1 /tmp/s7.log | cut -c1-32
+2026-11-02T14:54:05.406402+00:00
+➜  insgt-api git:(chore/rails-upgrade-slice-4) grep -c "status=5" /tmp/s7.log
+0
+➜  insgt-api git:(chore/rails-upgrade-slice-4) grep -oE '\] [A-Z][A-Za-z0-9]*(::[A-Z][A-Za-z0-9]*)* \(' /tmp/s7.log | sort | uniq -c | sort -rn
+➜  insgt-api git:(chore/rails-upgrade-slice-4) grep -c "DoubleRenderError" /tmp/s7.log
+0
+➜  insgt-api git:(chore/rails-upgrade-slice-4)
+
 ```
 
 ### 7. 24 hours after the push (SH)
