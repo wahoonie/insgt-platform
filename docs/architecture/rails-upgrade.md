@@ -3,8 +3,8 @@
 **Repo:** `insgt-api` · **Platform:** Heroku app `insgtapi` (Render.com cutover follows, §2)
 **Status:** v6 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
 S7, S9 and SH pass); slice 2 deployed (v663, 2026-10-28 08:53 -0400; S7, S9 and SH pass); slice 3
-implemented, verified and reviewed (2026-10-30; push planned Mon 2026-11-02); OD10 open
-**Version:** 6 · **Last updated:** 2026-10-30
+deployed (v666, 2026-11-02 08:12 -0500; S7, S9 and SH pass); OD10 open
+**Version:** 6 · **Last updated:** 2026-11-03
 **Supersedes:** v5 (2026-10-29). See §9.
 **Companion files:** `rails-upgrade-codebase-notes.md` (the `file:line` map; every repo claim below
 is sourced there), `rails-upgrade-slices/slice-{0,1,2,3,4,5}.md` (the slice prompts), and the
@@ -1024,7 +1024,13 @@ citations are the installed 8.1.4 gems.
 **Gates.** After plan; after verification. **Effort (estimate):** 6 h plus the deploy morning.
 **Deadline (fact):** before Sat 2026-11-07, 8.0's security end date. **v6, actual:** survey and plan
 Wed 2026-10-28 (approved the same day, with the control dump); implementation, verification and two
-review rounds Fri 2026-10-30; push planned Mon 2026-11-02 (§6).
+review rounds Fri 2026-10-30; push planned Mon 2026-11-02 (§6). **Deployed Mon 2026-11-02** as v666
+(`05e3fd42`, 05:12:27 PST — before the 09:00 window, as slice 2 was; it also carries rack-session 2.1.2,
+`66656131`, never released alone). S0–S6, S8, S10 and S-404 as expected (S-404 `204`); S11 by a
+substitute, because the runner still carried its placeholder term — an insgt-ops account search, the
+same 20 ids on 8.0.5.1 and 8.1.4 in development. S7 and S9 pass. **SH passes (Dan, reported 2026-11-03
+at about 22½ h): no new error in Honeybadger** — no new `RailsDeprecation`, so nothing under OD8 stops
+slice 5, and no `DoubleRenderError`. Runbook: `docs/runbooks/deploy-rails-upgrade-3.md` (`Deployed`).
 
 ### 4.5 Slice 4 — `belongs_to` optionality follows column nullability
 
@@ -1270,7 +1276,9 @@ slot); nobody pushes after 11:30 to make the window.
 run on `master`); slice 2's SH closed Thu 10-29; the Ruby 3.4.12 bump shipped Thu 10-29 as v665,
 outside the slices; slice 3 implemented, verified and reviewed **Fri 10-30**. Push planned **Mon 11-02,
 09:00–11:30 PT** (17:00–19:30 UTC — DST ended Sun 11-01); fallbacks Tue 11-03, then Wed 11-04, **the
-last morning before 8.0's security end date (Sat 11-07)** — a slip past it is a §7 decision. The rest
+last morning before 8.0's security end date (Sat 11-07)** — a slip past it is a §7 decision.
+**Deployed Mon 11-02 at 05:12 PT** as v666, before the window as slice 2 was, outside every delivery
+window; its SH passed Tue 11-03, reported at about 22½ h. The 11-07 deadline is met. The rest
 of the table stands: slice 4 Mon 11-09 (after two quiet weekdays, §4.5), 5a Tue 11-10, 5b Wed 11-11,
 the quiet week to Wed 11-18, then the rehearsal.
 

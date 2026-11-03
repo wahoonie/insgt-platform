@@ -1,12 +1,11 @@
 # Runbook: Rails Upgrade Slice 3 — 8.1.4, the landing target
 
-**Last updated:** 2026-11-02
+**Last updated:** 2026-11-03
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~30 min on the morning; S7 one hour after the push; S9 at the first hourly
 import; SH 24 h later
-**Status:** Ready — implemented and verified in development 2026-10-30 (step 1); two review rounds of
-`predeploy-review-rails` done 2026-10-30 (no blocker, no open should-fix; the record is under Known).
-Awaiting Dan's review and merge.
+**Status:** Deployed 2026-11-02 by Dan — v666 `05e3fd42`, 08:12:27 -0500 (05:12:27 PST); steps 3–7
+recorded; S7, S9 and SH pass (SH reported 2026-11-03 at about 22½ h); write-back done
 
 ## Summary
 
@@ -510,8 +509,15 @@ record it here and fix it on its own branch; it does not block the slice.
 RECORDED:
 
 ```
-(pending)
+No errors recorded.
 ```
+
+Confirmed (Dan, 2026-11-03):
+
+- SH: no new error in Honeybadger since the push. Reported at about 11:50 UTC, about 22½ h after the
+  push and short of the 24 h this step names (slice 2's SH was read at about 21 h). No new
+  `RailsDeprecation`, so nothing under OD8 stops slice 5; no `DoubleRenderError`, so the head
+  enumeration stands; nothing to triage against rack-session 2.1.2. **Passes.**
 
 ## Rollback
 
@@ -604,5 +610,8 @@ never reads it.
   (`66656131`, merged to `master` at 07:55 -0500 that morning and never released alone): a rollback
   to v665 removes it too, and an SH error with rack-session in its backtrace is that bump's, not this
   slice's. Suite on the merge 2,059/0; step 2's probe on the merge as expected; step 3's captures on
-  v665; step 5 passes (S0–S6, S8, S10, S-404; S11 by the substitute). S7 and S9 pass; SH
-  pending.
+  v665; step 5 passes (S0–S6, S8, S10, S-404; S11 by the substitute). S7 and S9 pass.
+- **2026-11-03 — SH passes**: no new error in Honeybadger since the push, reported at about 11:50 UTC
+  (about 22½ h after it). Write-back done: this runbook `Deployed`; `docs/plans/rails-upgrade-slice-3.md`
+  `Deployed`; `rails-upgrade.md` §4.4's as-deployed line, §6 as it went and the status header (still
+  v6, no version bump, as slice 2's close-out was).
