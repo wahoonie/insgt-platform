@@ -6,13 +6,13 @@
 morning; ~30 min for the push and step 5's checks; S7 one hour after the push; S9 at the first hourly
 import; SH and S13 24 h later
 **Status:** Draft — implemented and verified in development 2026-11-03; two review rounds done
-2026-11-03, one finding open for Dan (`FloorplansController#create_bulk`, Known)
+2026-11-03; round 2's open finding fixed as commit 5 on Dan's decision
 
 ## Summary
 
 Ships `docs/architecture/rails-upgrade.md` §4.5 (v6; v7 amends it after verification — see
 `docs/plans/rails-upgrade-slice-4.md` for every deviation and why). Branch
-`chore/rails-upgrade-slice-4`, four commits off `master` **`8b726308`** — not the survey's `05e3fd42`:
+`chore/rails-upgrade-slice-4`, five commits off `master` **`8b726308`** — not the survey's `05e3fd42`:
 the orders-CSV hotfix (`bead424b`…`0ec0b0fa`, merged as `8b726308`) landed on `master` after the plan
 was approved. It touches `orders_controller.rb`, `lib/order_param.rb`, `application_controller.rb`'s
 `render_bad` and one new spec file (21 examples); no model, so the plan's reflection table stands.
@@ -29,15 +29,20 @@ was approved. It touches `orders_controller.rb`, `lib/order_param.rb`, `applicat
    line); `TagsResource` validates that its `resource_id` names a row of the class its
    `resource_type` picks (OD10); `spec/models/tags_resource_spec.rb` (9) and
    `spec/requests/areas_properties_create_spec.rb` (3).
+5. `bd0859b8` fix: refuse a floorplan bulk create whose order token resolves nothing —
+   `FloorplansController#create_bulk` answers `422` `["Order must exist"]` before creating anything
+   when the batch's `order_token` resolves no active order; `spec/requests/floorplans_create_bulk_spec.rb`
+   (1). Review round 2's finding, fixed in the slice on Dan's decision (2026-11-03).
 
 **No migration, no DDL, no ENV change, no gem change, no client release.** `config.load_defaults`
 stays `7.2`.
 
-**Production was v666** (`05e3fd42`, 2026-11-02 05:12:27 PST) at the survey. Whether the hotfix merge
-`8b726308` has been released since is **UNVERIFIED** from the container: `heroku releases -n 3` on the
-host decides the "before" release and the rollback target. If `master` moves again before the push,
-merge `master` into the branch, rerun the suite on the merge, and move the "before" captures and the
-rollback target to the new release.
+**Production is v668** (Dan, `heroku releases`, 2026-11-03): v667 `Deploy 8b726308` (the hotfix,
+2026-11-02 14:07:20 -0500), then v668 `Set WEB_CONCURRENCY, RAILS_MAX_THREADS config vars`
+(15:29:33 -0500), on v666 (`05e3fd42`, slice 3). So production's code is this branch's base, and
+**v668 is the rollback target**. If `master` moves again before the push, merge `master` into the
+branch, rerun the suite on the merge, and move the "before" captures and the rollback target to the
+new release.
 
 **Where this sits.** The fourth of six deploy mornings: 5a (Tue 11-10), 5b (Wed 11-11), the quiet
 week to Wed 11-18, then the Render rehearsal (§6).
@@ -51,11 +56,12 @@ week to Wed 11-18, then the Render rehearsal (§6).
   `ListingDescription#listing`, `ListingPhoto#listing` and `#photo`, `MarketingEventImport#marketing_event`
   and `#order_type`, `MlsImport#mls`, `MlsListing#listing` and `#mls`, `MlsMetadataCache#mls`,
   `OrderTypesService#order_type` (already a 422 through `order_types_service.rb:12`; gains the line),
-  `RawPhoto#order`, `Schedule#user`, `UnalteredPhoto#photo`. S12 is the direct read. **One exception:
-  `POST /floorplans/create_bulk`** ignores `save`'s result (`floorplans_controller.rb:21–25`), and
-  `create_bulk_params` sets `order_id: nil` when the `order_token` resolves no order (`:118–123`). That
-  request answered `500` and now answers `200` with floorplans that were never saved (`id` null).
-  insgt-ops sends the token of the order on screen, so it is not expected (Known).
+  `RawPhoto#order`, `Schedule#user`, `UnalteredPhoto#photo`. S12 is the direct read. **`POST
+  /floorplans/create_bulk`** ignores `save`'s result, and `create_bulk_params` sets `order_id: nil`
+  when the batch's `order_token` resolves no active order — a soft-deleted order's token included,
+  since `find_by_token` answers active orders only (`token.rb:23–25`). Commit 4 alone would have
+  turned that request's `500` into a `200` listing unsaved floorplans; commit 5 makes it a `422`
+  `["Order must exist"]` before anything is created.
 - **30 associations' 422 bodies gain a line.** Where the key column already has a presence validator,
   the omission answers `["User must exist", "User can't be blank"]` where it answered
   `["User can't be blank"]` (decision 7). No client matches either string (modification G: 0 files in
@@ -112,7 +118,10 @@ make the window.**
       ```
 
       Expected: no new error, compared by error (§4.0 SH's triage); no `RailsDeprecation` beyond
-      S-DEP's; no `DoubleRenderError`. Observed: ___
+      S-DEP's; no `DoubleRenderError`. The window also holds v667 (the orders-CSV hotfix, 14:07
+      -0500) and v668 (`WEB_CONCURRENCY`, `RAILS_MAX_THREADS`, 15:29 -0500): an error first seen
+      after either is triaged against that release before slice 3 — an orders-CSV backtrace against
+      v667, a pool, timeout or memory error against v668. Observed: ___
 - [ ] **Honeybadger baseline for the 17** (modification E; Dan, before Thursday's review):
 
       ```
@@ -128,7 +137,7 @@ make the window.**
 - [ ] Review rounds complete (two rounds of `predeploy-review-rails`, Codex second opinion included);
       this runbook's Status is `Ready`
 - [ ] Dan has merged `chore/rails-upgrade-slice-4` into `master` and `bundle exec rspec` is green
-      **on the merge**: expected `2098 examples, 0 failures`, 0 `DEPRECATION WARNING` lines if `master`
+      **on the merge**: expected `2099 examples, 0 failures`, 0 `DEPRECATION WARNING` lines if `master`
       is still `8b726308`; a different count is sourced before the push, not recomputed
 - [ ] The production-config probe (step 1, P-PROD) printed the expected lines on the merge
 - [ ] Pre-push captures (step 3) recorded below, on the release that is live at that moment
@@ -137,12 +146,13 @@ make the window.**
 
 ### 1. Development verification — done 2026-11-03
 
-On the branch at `c055b8ed` (the dev container; Ruby 3.4.12; Rails 8.1.4; the development database
-is the production restore `tmp/latest-2026-10-30.dump`):
+On the branch at `bd0859b8` (P1, P2, P-PROD and routes) and `c055b8ed` (the rest — commit 5 changes
+only `create_bulk` and adds its spec); the dev container; Ruby 3.4.12; Rails 8.1.4; the development
+database is the production restore `tmp/latest-2026-10-30.dump`:
 
 | # | Result |
 | :-- | :-- |
-| P1 | `2098 examples, 0 failures` (64.7 s); `CI=1`: `2098 examples, 0 failures` (63.2 s); `0` `DEPRECATION WARNING` lines in each; the 24 rspec-rails `:unprocessable_entity` warnings unchanged. Baseline on `master` `8b726308`: 2,080 (2,059 at the survey's `05e3fd42` plus the hotfix's 21 in `orders_csv_date_range_spec.rb`), so +18: 5 contract, 1 area, 9 tags-resource, 3 request. Before review round 1 (`1c2b0e97`, 4 tags-resource examples): 2,093 / 0 in both modes |
+| P1 | `2099 examples, 0 failures` (70.7 s); `CI=1`: `2099 examples, 0 failures` (67.9 s); `0` `DEPRECATION WARNING` lines in each; the 24 rspec-rails `:unprocessable_entity` warnings unchanged. Baseline on `master` `8b726308`: 2,080 (2,059 at the survey's `05e3fd42` plus the hotfix's 21 in `orders_csv_date_range_spec.rb`), so +19: 5 contract, 1 area, 9 tags-resource, 3 areas-properties, 1 floorplans. Earlier states, both modes: 2,093 / 0 at `1c2b0e97` (before review round 1), 2,098 / 0 at `c055b8ed` |
 | P2 | `zeitwerk:check` → "all is good" (the `lib/` notice as on `master`) |
 | P3 | `slice4_p3` queue: `Booted Rails 8.1.4 application in development environment`, `start`, `[PropertyDataLookupWorker] Property#1964 already has property data, skipping`, `done` (`elapsed=0.229`); `Sidekiq::Status::status(jid)` → `nil` (§8 item 10) |
 | P4 | `4 examples, 0 failures` |
@@ -162,7 +172,9 @@ that step's (cited, not reproduced — trap 5): the WARN line, `"8.1.4"`, `true`
 `DEPRECATION` count of `0`. This slice changes none of them.
 
 RESULTS (2026-11-03 12:17:25 UTC, branch `1c2b0e97`, dev container — the same application tree as
-`c055b8ed`; round 1's amend changed only `spec/models/tags_resource_spec.rb`):
+`c055b8ed`; round 1's amend changed only `spec/models/tags_resource_spec.rb`). Re-run at 13:02:30
+UTC on `bd0859b8`: the same lines (`"8.1.4"` … `583`, `false`, `true`) and a `DEPRECATION` count of
+`0`:
 
 ```
 W, [2026-11-03T12:17:25.844598 #18536]  WARN -- : Generating image variants require the image_processing gem. Please add `gem "image_processing", "~> 1.2"` to your Gemfile or set `config.active_storage.variant_processor = :disabled`.
@@ -398,7 +410,7 @@ heroku logs -n 1500 --app insgtapi > /tmp/s7-before.log
 grep -c "status=422" /tmp/s7-before.log
 head -1 /tmp/s7-before.log | cut -c1-32
 tail -1 /tmp/s7-before.log | cut -c1-32
-RELEASE=<the live release>
+RELEASE=v668   # or the newer one `heroku releases -n 3` printed, if master moved
 heroku run --no-tty --app insgtapi rails runner "Notifier.send_error_email('rails upgrade slice 4', 'release $RELEASE').deliver_now"
 ```
 
@@ -423,8 +435,7 @@ git push heroku master
 heroku releases -n 1 -a insgtapi          # record the release (vNNN) and its time
 ```
 
-No gem changes, so the build installs nothing new. A failed build is not a release; the live release
-stays.
+No gem changes, so the build installs nothing new. A failed build is not a release; v668 stays.
 
 RECORDED: ___
 
@@ -514,8 +525,8 @@ environment:"production" class:"RailsDeprecation" occurred.after:"<push>"
   job, neither expected.
 - **No `ActiveRecord::NotNullViolation` at all.**
 - No new error whose backtrace touches `tags_resource.rb`, `area.rb`, `listing.rb`,
-  `order_url_group.rb`, `config/initializers/new_framework_defaults.rb` or activerecord's
-  `associations/builder/belongs_to.rb`.
+  `order_url_group.rb`, `floorplans_controller.rb`, `config/initializers/new_framework_defaults.rb`
+  or activerecord's `associations/builder/belongs_to.rb`.
 - No new `RailsDeprecation`.
 
 Anything else is an old bug seen for the first time: record it here and fix it on its own branch; it
@@ -539,8 +550,9 @@ RECORDED: ___
 heroku rollback --app insgtapi
 ```
 
-Back to the release step 3 recorded. Nothing to undo: no migration, no ENV change, no data written by
-the slice, and the dangling rows are exactly as they were.
+Back to v668 (the hotfix's code with its `WEB_CONCURRENCY` and `RAILS_MAX_THREADS`), or to the
+release step 3 recorded if `master` moved. Nothing to undo: no migration, no ENV change, no data
+written by the slice, and the dangling rows are exactly as they were.
 
 ## Known, kept by decision
 
@@ -558,11 +570,10 @@ the slice, and the dangling rows are exactly as they were.
   photo-typed with no association at all. The model validates by `resource_type` under the
   framework's own new-or-changed condition. Real polymorphism is a data migration (§4.5).
 - **Call sites that ignore `save`'s result now skip a write silently** where the key names nothing
-  (review round 1, Claude and Codex). Before this slice the same input raised (a `500`) or wrote a
-  dangling row; neither was reported to the caller as a validation error, and none of these sites
-  is reached by today's inputs (D39 and D45–D50, step 2):
-  - `FloorplansController#create_bulk` (`floorplans_controller.rb:21–25`): an `order_token` that
-    resolves no order — `500` before, `200` with unsaved floorplans after (Summary).
+  (review round 1, Claude and Codex). Before this slice the same input wrote a dangling row, which
+  was not reported to the caller either, and none of these sites is reached by today's inputs (D39
+  and D45–D50, step 2). The one site where a `500` would have become a `200`,
+  `FloorplansController#create_bulk`, is commit 5's guard, not this list.
   - `OrdersUser`'s contractor helpers (`orders_user.rb:102–114`): a contractor id that names no user
     (no foreign key on `orders_users.user_id`) — a dangling assignment before, the assignment left as
     it was after; `POST`/`PATCH /orders` answer `200` either way.
@@ -596,7 +607,10 @@ the slice, and the dangling rows are exactly as they were.
   Claude's own findings: `create_bulk`, and the two Summary corrections (the save-and-ignore
   exception, the measured SELECT cost). Round 2: Codex agreed the fix is sufficient and agreed with
   the other dispositions, except that `create_bulk` should be fixed in this slice ("converting an
-  exception into apparent success is introduced here"). **Open for Dan.**
+  exception into apparent success is introduced here"). Dan (2026-11-03): fix it in the slice —
+  commit 5 `bd0859b8`, its example red (`200`) before the guard, green after, and red again with the
+  guard removed; an active order's batch still creates every floorplan (a throwaway probe: `200`,
+  two rows). No third review round.
 
 ## After the deploy — write-back (platform repo)
 
@@ -608,5 +622,6 @@ the slice, and the dangling rows are exactly as they were.
 ## Deploy log
 
 - **2026-11-03 — implemented and verified in development** (branch `chore/rails-upgrade-slice-4`,
-  `39b213f3`…`c055b8ed` off `master` `8b726308`): step 1's table; P-PROD as step 1's RESULTS; step 2's
-  reports against the development restore matched the plan's prediction.
+  `39b213f3`…`bd0859b8` off `master` `8b726308`, which is production's code as v667/v668): step 1's
+  table; P-PROD as step 1's RESULTS; step 2's reports against the development restore matched the
+  plan's prediction.
