@@ -1,10 +1,11 @@
 # Rails Upgrade — insgt-api 7.2.3 → 8.1.4
 
 **Repo:** `insgt-api` · **Platform:** Heroku app `insgtapi` (Render.com cutover follows, §2)
-**Status:** v5 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
-S7, S9 and SH pass); slice 2 deployed (v663, 2026-10-28 08:53 -0400; S7, S9 and SH pass); OD10 open
-**Version:** 5 · **Last updated:** 2026-10-29
-**Supersedes:** v4 (2026-10-26). See §9.
+**Status:** v6 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
+S7, S9 and SH pass); slice 2 deployed (v663, 2026-10-28 08:53 -0400; S7, S9 and SH pass); slice 3
+deployed (v666, 2026-11-02 08:12 -0500; S7, S9 and SH pass); OD10 open
+**Version:** 6 · **Last updated:** 2026-11-03
+**Supersedes:** v5 (2026-10-29). See §9.
 **Companion files:** `rails-upgrade-codebase-notes.md` (the `file:line` map; every repo claim below
 is sourced there), `rails-upgrade-slices/slice-{0,1,2,3,4,5}.md` (the slice prompts), and the
 contract spec `insgt-api/spec/architecture/rails_upgrade_spec.rb` (created by slice 1; later slices
@@ -59,7 +60,9 @@ is harmless: the suite is RSpec and minitest is only rails-dom-testing's depende
 actionpack `rack >= 2.2.4, < 3.3`, 8.0.5.1 and 8.1.4 drop the cap (rack stays 3.2.4 unless
 updated); 8.1.4's activesupport adds `json` and drops `benchmark` (the Gemfile lists `benchmark`
 explicitly, so the lock keeps it); 8.x no longer depends on `cgi`/`racc`. honeybadger 6.10.0 adds
-only `logger` and `ostruct`, both already locked.
+only `logger` and `ostruct`, both already locked. **v6, from slice 3:** actiontext 8.1.4 also adds
+`action_text-trix (~> 2.1.15)` (`actiontext-8.1.4.gemspec:31`), so `action_text-trix (2.1.19)` enters
+the lock (§3.1).
 
 ### 1.3 Support dates and what they imply
 
@@ -81,7 +84,8 @@ Implications:
 - 7.2.x has had no security support since 2026-08-09 (the October 2025 release post); 7.2.4 is a
   courtesy final release, not a return to support. Slice 1 is a stepping stone, not a resting place.
 - 8.0.x loses security support on **Sat 2026-11-07**. Slice 3 (8.1.4) must be in production before
-  that; §6 places it on Wed 2026-11-04.
+  that; §6 placed it on Wed 2026-11-04. **v6:** planned for Mon 2026-11-02, with Tue 11-03 and Wed
+  11-04 as the only fallbacks (§6).
 - On 8.1.4 the app is on the only series with security support beyond 2026-11-07. As of today 8.1 is
   already past its stated bug-fix window, so future 8.1.x releases will be security-only.
 - **The next bump is 8.2**, when it ships. Two things gate it now: zipline's `actionpack < 8.2` cap
@@ -123,7 +127,8 @@ These rules are settled; slice prompts cite this section.
    (`config/initializers/strong_migrations.rb:18`), `config.load_defaults 7.2` until slice 5b, and
    **no gem added or major-bumped other than `rails` itself and `honeybadger`** (added once, in
    slice 0). A survey finding that genuinely breaks this ordering is recorded in §7, never silently
-   reordered.
+   reordered. **v6:** the rule is about the Gemfile. `action_text-trix` enters the lock at 8.1.4 as
+   Action Text's own runtime dependency, through `rails/all`, with no Gemfile change (§3.1).
 7. **The documents reach the slices through the platform repo.** This document, its notes and the
    slice prompts live in `insgt-platform/docs/architecture/` (where every design document lives —
    `insgt-platform/CLAUDE.md:11`, "it tracks only `.claude/`, `.devcontainer/`, `docs/`"), on branch
@@ -159,10 +164,12 @@ Every gem that constrains or hooks Rails, from `Gemfile.lock` and the rubygems c
 | oj 3.16.13, multi_json 1.19.1 | none | OK | OK | OK | None; the only coupling is `MultiJson.use(:oj)` (`config/initializers/multijson.rb`) |
 | puma 7.2.0, rack 3.2.4, rack-cors 3.0.0, pg 1.6.3, redis 5.4.1, connection_pool 2.5.5 | — | OK | OK | OK | None |
 | minitest 6.0.1 | — | **downgrade** | — | — | Forced by 7.2.4's `minitest < 6`; expected lock movement in slice 1 |
+| **action_text-trix 2.1.19** (v6; enters at 8.1.4) | runtime dep `railties` only | — | — | **added** | Action Text 8.1's new runtime dependency (`actiontext-8.1.4.gemspec:31`, `~> 2.1.15`), loaded because `rails/all` loads Action Text. Its one initializer registers `trix.js`/`trix.css` only `if app.config.respond_to?(:assets)` (`action_text/trix/engine.rb:4`); this API has no asset pipeline, so it is inert. Goes when §8 item 7 drops Action Text. Accepted at the slice 3 plan gate |
 | stripe 18.3.0, aws-sdk-s3/ssm/sts, twilio-ruby 5.76.0, rets 0.11.2, prawn, rqrcode, rubyzip, bcrypt, jwt 2.10.2, hashids, shortuuid, coupon_code, phone | no Rails dependency | OK | OK | OK | None |
 
 **No blocking gem. No gem major bump is required to reach 8.1.4.** Beyond `rails` and the
-`honeybadger` addition, the only lockfile movement the upgrade causes is the minitest downgrade.
+`honeybadger` addition, the only lockfile movement the upgrade causes is the minitest downgrade
+(v6: and `action_text-trix` at 8.1.4, above).
 Any other gem bump proposed inside a slice is out of scope (§2.6) — the "gem major bump not named
 in §3" trap is this sentence.
 
@@ -223,7 +230,7 @@ any code exists.
 | P6 | `bin/rails runner 'puts Notifier.send_error_email("rails upgrade", "render check").message.subject'` | `SystemError::rails upgrade` (both ERB templates render; nothing is delivered) |
 | P7 | `bundle exec rspec spec/requests/users_directory_spec.rb spec/requests/orders_processing_parent_pays_spec.rb spec/workers` | 0 failures (JWT request path; raw `select_all` through `OrderSql`; Sidekiq fake queue) |
 | P8 | `bin/rails runner 'p = Photo.unscoped.where(status_type: 1).order(:id).last; puts p.thumb_url'` then `curl -sS -o /dev/null -w "%{http_code}\n" "<url>"` | a URL built by `S3ImageHandler`; `200` (an S3/CloudFront read of a real object — ASSUMPTION: `thumb_url` is the generated reader's name per `CLAUDE.md`; the slice plan pins it) |
-| P-PROD | **v5.** The production-config probe (slice 1's runbook step 2: `RAILS_ENV=production HONEYBADGER_REPORT_DATA=false bundle exec dotenv sh -c '… exec bin/rails runner "$1"' _ '…'` against the dev restore), from slice 2 extended with `p ActiveSupport.to_time_preserves_timezone`, `p Rails.application.config.loaded_config_version` and `p Rails.application.routes.routes.count`, its whole output grepped for `DEPRECATION` | every registered deprecator maps to `[:notify]`, `report_deprecations` not `false`, `received?` `true`, the slice's expected values, `0` `DEPRECATION` lines — the only production-mode boot (eager load, routes drawn) before the push. `HONEYBADGER_REPORT_DATA=false` keeps the probe's own deprecation out of production's Honeybadger and the SH baseline |
+| P-PROD | **v5.** The production-config probe (slice 1's runbook step 2: `RAILS_ENV=production HONEYBADGER_REPORT_DATA=false bundle exec dotenv sh -c '… exec bin/rails runner "$1"' _ '…'` against the dev restore), from slice 2 extended with `p ActiveSupport.to_time_preserves_timezone`, `p Rails.application.config.loaded_config_version` and `p Rails.application.routes.routes.count`, its whole output grepped for `DEPRECATION` | every registered deprecator maps to `[:notify]`, `report_deprecations` not `false`, `received?` `true`, the slice's expected values, `0` `DEPRECATION` lines — the only production-mode boot (eager load, routes drawn) before the push. `HONEYBADGER_REPORT_DATA=false` keeps the probe's own deprecation out of production's Honeybadger and the SH baseline. **v6, from slice 3:** `p ActiveSupport.to_time_preserves_timezone` is **replaced** by `p Rails.application.config.active_support.key?(:to_time_preserves_timezone)` (expected `false`) — on 8.1 the reader deprecates — and `p Rails.version` (first) and `p ActionController::Base.escape_json_responses` (last, `true` until 5b) are added; the output starts with the Active Storage WARN line |
 
 **Production spot checks, from the Mac, within 30 minutes of the push** (capture S4's and S6's
 answers *before* the push on the previous release, so "unchanged" is provable):
@@ -234,7 +241,7 @@ answers *before* the push on the previous release, so "unchanged" is provable):
 | SH | Honeybadger → Errors, filtered to the window since the push, compared with the slice 0 baseline (§4.1) **by error, not by class** (v5, slice 1's amendment). Two searches: `environment:"production" created.after:"<push time>"`, and `environment:"production" class:"NoMethodError" occurred.after:"<push time>"` (the baseline's three `NoMethodError`s were fixed by v661, so a recurrence is a finding even though the error is old) | **no new error**. Triage every error the first search returns: does its backtrace touch what the slice changed? Yes is a finding, resolved before the slice is called deployed; no is an old bug seen for the first time, or an old error regrouped because a line moved — recorded, fixed on its own branch, not blocking. From slice 1 on, also: no new `RailsDeprecation` beyond S-DEP's (§4.2) — one is a deprecation on a path the suite does not reach, a STOP for the next slice under OD8 — and no `DeprecationReporter` failure notice |
 | S1 | `curl -sS -o /dev/null -w "%{http_code}\n" https://api.insightphotos.net/up` | `200` (from slice 3, `/up.json` → `{"status":"up",...}`); the Honeybadger uptime monitor (slice 0) stays green |
 | S2 | `heroku ps --app insgtapi`; `heroku logs --ps backgroundworker.1 -n 300 --app insgtapi \| grep Booted` | `web.1 up`, `backgroundworker.1 up`; `Booted Rails <version> application in production environment` |
-| S3 | `heroku run --app insgtapi rails runner 'puts Rails.version'` | the slice's version |
+| S3 | `heroku run --app insgtapi rails runner 'puts Rails.version'` | the slice's version. **v6, from slice 3:** also `p Rails.application.config.active_support.key?(:to_time_preserves_timezone)` → `false`. **No command on 8.1 calls `ActiveSupport.to_time_preserves_timezone`**: the reader itself deprecates (`activesupport-8.1.4/lib/active_support.rb:124–129`), which in production is a `RailsDeprecation` notice. From 8.1.4 every `heroku run … rails runner` prints Active Storage's `image_processing` WARN line before its output (§4.4 as built, §8 item 7) |
 | S4 | `heroku run --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).map(&:name).inspect'` | identical to the pre-push capture — `["Carlsbad", "Oceanside", "Leucadia"]` on v661 and v662 (the ASSUMPTION that 92008 has coordinates held). **v5:** `map`, not `pluck`: `nearby_cities` selects and orders by `distance_in_miles` (`postal_code.rb:131–132`) and `pluck` replaces the select, so the `ORDER BY` raises `PG::UndefinedColumn` (slice 1's probe on v661 did; that notice is excluded from the baseline) |
 | S5 | `heroku run --app insgtapi rails runner 'puts Stripe::Balance.retrieve.livemode'` | `true` (read-only Stripe API call with the production key) |
 | S6 | `heroku run --app insgtapi rails runner "Notifier.send_error_email('rails upgrade slice <N>', 'release <vNNN>').deliver_now"` | ops@insightphotos.net receives `SystemError::rails upgrade slice <N>` within minutes (SendGrid path exercised) |
@@ -592,7 +599,7 @@ recurrence. Runbook: `docs/runbooks/deploy-rails-upgrade-1.md`. **Effort (actual
 
    | Generated file | Decision | Why |
    | :-- | :-- | :-- |
-   | `config/initializers/new_framework_defaults_8_0.rb` | **accept**, then uncomment only `to_time_preserves_timezone = :zone` | the shim is the point of the update; the one flip is forced (gap below) |
+   | `config/initializers/new_framework_defaults_8_0.rb` | **accept**, then uncomment only `to_time_preserves_timezone = :zone` | the shim is the point of the update; the one flip is forced (gap below). **v6:** `:18` stays commented for good — on 8.1 any value deprecates and 8.2 removes the key; 5a must not uncomment it, 5b deletes the file (§4.6) |
    | `bin/rails`, `bin/rake`, `bin/setup`, `bin/rubocop` | **accept** | stock binstubs; `bin/setup` gains `db:prepare`/`--reset`; no app behaviour |
    | `bin/dev` | **reject** | this repo has none; the platform's `bin/dev` drives `Procfile.dev` (`insgt-platform/CLAUDE.md`) |
    | `config/application.rb` | **reject** | the template writes `config.load_defaults 8.0` — slice 5b owns that line (§2.6); it would also drop slice 1's `draw_routes` line |
@@ -804,6 +811,13 @@ the slice's changes (slice 3's survey had reproduced it on both versions) and fi
 (insgt-api `55c86f1d`, merged `96f89db8`). Runbook: `docs/runbooks/deploy-rails-upgrade-2.md`. v6
 carries the full record and the §8 item for that error.
 
+**v6, after slice 2:** the `orders#show` fix deployed as **v664** (`96f89db8`, 2026-10-28 15:35:27
+-0400): `set_order` answers `render_unauthorized` when neither a JWT nor an `access_token` is present
+(`orders_controller.rb:681–696`, `set_order_for_current_user` at `:698–703`), pinned by
+`spec/requests/orders_show_authentication_spec.rb`; §8 item 24. The Ruby 3.4.12 patch bump deployed as
+**v665** (`f86877f5`, 2026-10-29 08:02:41 -0400; §1.2). Neither is a slice; v665 is slice 3's "before"
+release and rollback target.
+
 ### 4.4 Slice 3 — 8.1.4, the landing target
 
 **Scope.**
@@ -827,7 +841,7 @@ carries the full record and the §8 item for that error.
    **v5:** the line is `config/application.rb:20`, not the shim (§4.3 gap 1 as built). **Slice 3's
    survey decides whether it is deleted, kept or replaced** — how 8.1.4 treats the config is slice
    3's finding; the branch-source claims above were read in October and are the survey's starting
-   point, not its conclusion.
+   point, not its conclusion. **v6: decided — deleted, inside the bump commit** (as built, below).
 4. `db/schema.rb` re-dump (decided OD7), **not from the working development database** (unmerged
    feature-branch migrations would pollute the diff). Method, on the slice 3 branch:
    `RAILS_ENV=test bin/rails db:drop db:create db:schema:load` (loads the committed file into a
@@ -836,7 +850,8 @@ carries the full record and the §8 item for that error.
    else → STOP with the diff (the three `t.float` columns at `:903, 970, 972` are the candidates —
    UNVERIFIED whether any is PG `real`, which 8.0's float4/float8 distinction would dump with a
    `limit:`). The account-classification codebase notes' `db/schema.rb` line ranges are unaffected
-   by a header-only change.
+   by a header-only change. **v6:** all three are `double precision`; the dump is the header plus an
+   extension hunk from 8.0's dumper, bracketed by a control dump and a round-trip load (as built).
 5. `config.load_defaults` stays `7.2`. `strong_migrations`: no migration in this slice;
    `target_version` untouched; no rolling-deploy window exists because old and new code share the
    schema.
@@ -848,7 +863,8 @@ carries the full record and the §8 item for that error.
 - `app/controllers/application_controller.rb:303`, `app/controllers/orders_controller.rb:597`:
   Action Pack 8.1.0 "Raise `AbstractController::DoubleRenderError` if `head` is called after
   rendering." The guard renderers return `false`, so a `head` after a `render_*` would now raise;
-  the plan traces both paths and adds a spec for each.
+  the plan traces both paths and adds a spec for each. **v6:** the exposure was wider — five setters
+  headed twice on a miss (as built, below).
 - `app/models/concerns/{account_query,property_query}.rb`, `app/models/phone_number.rb:209` (the
   `.or(` sites): Active Record 8.1.0 "Fix `#merge` with `#or` or `#and` and a mixture of attributes
   and SQL strings resulting in an incorrect query." Results change only where the old SQL was
@@ -911,8 +927,110 @@ the engineer uses daily in insgt-ops returns the same `totalCount` as before the
 **Rollback.** `heroku rollback` to the slice 2 release. No schema change (the dump, if committed,
 changes no DDL).
 
+**v6, as built** (insgt-api `chore/rails-upgrade-slice-3`, five commits off `master` f86877f5 = v665;
+plan `docs/plans/rails-upgrade-slice-3.md`; runbook `docs/runbooks/deploy-rails-upgrade-3.md`). Source
+citations are the installed 8.1.4 gems.
+
+- *Item 1.* `Gemfile:29`; `bundle update rails --conservative`. The 13 gems to 8.1.4 with their pins;
+  activesupport's `benchmark (>= 0.3)` edge becomes `json`; **`action_text-trix (2.1.19)` enters**
+  (§3.1); `DEPENDENCIES` `rails (~> 8.1.4)`; nothing else moves (`minitest` 5.27.0, `rack` 3.2.4).
+  Identical, line for line, to the scratch resolution.
+- *Item 2.* `app:update --force` on an rsync copy. Accepted: `new_framework_defaults_8_1.rb` verbatim
+  (six commented flags — rows 5–10 of §4.6; there is no `yjit` line) and `bin/rubocop`'s one comment
+  line. `bin/rails`, `bin/rake`, `config/boot.rb`, `inflections.rb` identical. Rejected: `config/ci.rb`,
+  `bin/ci`, `bin/dev`, `bin/setup`, `config/puma.rb`, `config/application.rb`, `config/environment.rb`,
+  the three environment files (the production template sets `report_deprecations = false` with no
+  `:notify`; the test template turns `:raise` into `:stderr`), `cors.rb`, `filter_parameter_logging.rb`,
+  and four comment lines added to `content_security_policy.rb` (§8 item 2 deletes the file).
+  `assets.rb` created and removed in the run; `active_storage:update` copied nothing.
+- *Item 3, decided: deleted.* On 8.1.4 both the reader and the writer of
+  `to_time_preserves_timezone` deprecate (`active_support.rb:124–129`, `:131–137`); `set_configs` still
+  forwards any set key (`railtie.rb:142–147`); no `load_defaults` block sets the key any more
+  (`configuration.rb` — the 5.0 `:offset` and 8.0 `:zone` lines are gone), so with the line deleted
+  nothing reaches the writer; `to_time` is `getlocal(time_zone)` unconditionally
+  (`time_with_zone.rb:501–503`). With the line on 8.1.4 the test boot raises at `railtie.rb:145`;
+  without it on 8.0.5.1 the 7.2 `:offset` reaches the 8.0 writer and raises the other way. So the
+  deletion (`config/application.rb:14–20` and its trailing blank line) **rides in the bump commit** and
+  the separate commit sketched below cannot exist as a green step; a `Rails.gem_version` guard was
+  considered and rejected (a third commit with no bisect value). Behaviour is unchanged on every value
+  the contract spec pins. Two consequences: **no command calls `ActiveSupport.to_time_preserves_timezone`
+  on 8.1** (S3 and P-PROD use `config.active_support.key?`, §4.0), and **5a must not uncomment the 8.0
+  shim's `:18`** (§4.6).
+- *Item 4.* The three `t.float` columns are `double precision` (`information_schema.columns` on the
+  dev restore; `postgresql_adapter.rb:696–697` dumps `limit: 24` only for `float4`) — §8 item 16
+  closed. **Control dump on `master` 03e270c6 (Dan, 2026-10-28):** `[7.2]` → `[8.0]` **and**
+  `enable_extension "plpgsql"` → `"pg_catalog.plpgsql"`, re-sorted ahead of `pg_stat_statements` —
+  Active Record 8.0's "Include schema name in `enable_extension` statements" (its CHANGELOG), not drift;
+  discarded. **The 8.1 dump after the shim commit:** exactly those two hunks with `[8.1]` — committed.
+  **Round-trip load** of the committed file into a clean test database, then a dump: `git diff` empty —
+  the `[8.1]` header and the schema-qualified extension load and reproduce themselves (P1 then ran
+  against that database). OD7's rule amended (§7).
+- *The `head` exposure.* Every `head` the app sends comes from five producers: the literals
+  (`application_controller.rb:303` inside `render_no_content`, `:302–305`; `orders_controller.rb:597`),
+  `render_no_content` (35 direct call sites), `find_instance` (`:186–194`, 55 calls),
+  `find_instance_by_public_id` (1) and `destroy_instance` (`:181–184`, 51). **Five setters called
+  `find_instance` and then `render_no_content` again on a miss** — dead on 8.0 (the second `head`
+  overwrote the first), `AbstractController::DoubleRenderError` on 8.1 (`head.rb:28`):
+  `OrdersController#set_order_for_current_user`, `TransactionsController#set_transaction_order`,
+  `RawPhotosController#set_order` (plus a third `head` at its trailing guard, reachable with a bogus
+  `access_token` and no JWT), `ListingRoomsController#set_listing_room`,
+  `ListingPropertyFeaturesController#set_listing_property_feature`. Without the fix every
+  `GET /orders/<missing id>` from a logged-in user would answer 500. A walk of every controller method
+  containing a producer (128 methods, 140 call sites on f86877f5) found no sixth;
+  `orders_controller.rb:597` is the first statement of its action, unreachable after a render. Fixed
+  first, as its own commit: `return if performed?` after each `find_instance` (`performed?` is
+  `response_body || response.committed?`, `metal.rb:245–247`; a before-action that renders halts the
+  chain, `callbacks.rb:36`), raw photos' two branch guards `return render_no_content if …`. The trailing
+  guards keep their now-dead `blank?` half (trimming them is a refactor). Rejected: an idempotent
+  `render_no_content` (hides every future render-then-`head`). Two pre-existing cases left (§8 items
+  22–23); the root cause is §8 item 21.
+- *The rest of the list, as found.* The `.or` sites: no count changed (the fix is 7.2.3's).
+  `remote_ip`: the port is stripped before `IPAddr` validation (`remote_ip.rb:179–196`) — `XFF
+  203.0.113.7:1234` gave `REMOTE_ADDR` on 8.0, `203.0.113.7` on 8.1; ASSUMPTION: Heroku's router writes
+  bare addresses. `/up.json`: the HTML page on 8.0, `{"status":"up","timestamp":…}` as
+  `application/json` on 8.1 (`health_controller.rb:45–50`); `format.html` comes first, so `/up` and a
+  request without a JSON `Accept` still get the page; no client calls `/up` (grep of every app). Under
+  `load_defaults 7.2`: `escape_json_responses` `true`, `escape_js_separators_in_json` `true`,
+  `raise_on_missing_required_finder_order_columns` `false`, `action_on_path_relative_redirect` `:log`.
+  No other 8.1 deprecation fired in the suite under `:raise`, eager-loaded or not.
+- *New at 8.1: one Active Storage WARN line per process boot.* `Generating image variants require the
+  image_processing gem …` — 8.1 resolves the variant transformer at boot (`activestorage-8.1.4
+  engine.rb:94–129`, rescuing the `LoadError` and logging it); 8.0.5.1 required `image_processing`
+  only when generating a variant. Production logs to STDOUT (`production.rb:51`), so every dyno boot
+  and every `heroku run … rails runner` shows it. Not raised, not a deprecation, not reported. Left
+  for §8 item 7.
+- *Spec plan as built.* `rails_upgrade_spec.rb` (11 examples): floor `8.1.4`; "sets no `to_time`
+  configuration on 8.1" (`config.active_support` has no `:to_time_preserves_timezone` key — replaces the
+  `:zone` example; the reader cannot be asked); the three behaviour examples unchanged; "draws a known
+  route and none of Active Storage's" (`recognize_path('/up')` first — §8 item 20 done); "the 8.0 and 8.1
+  defaults stay off" (the four 8.1 values above added). `spec/requests/missing_record_guards_spec.rb`
+  (11 examples): the five JWT misses and raw photos with an unknown token are the regressions (red on
+  8.1.4 without the guards, `DoubleRenderError` from each setter); the no-credential and orders-token
+  requests pin the behaviour around them (the auth layer answers first on transactions and the two
+  listing resources; raw photos has no auth gate). Deliberate breaks seen red for every example group.
+  The suite: **2,059 examples, 0 failures, 0 deprecation lines**, plain and with `CI=1`; the 24 rack
+  warnings unchanged.
+- *Commits as built, in this order* (`a5bfab70`, `3b7780d4`, `218b0844`, `847a85d6`, `5ffe92c4`):
+  `fix: stop heading twice when a guarded record is missing` · `build: upgrade rails to 8.1.4` (with
+  the `to_time` deletion) · `chore: apply the rails 8.1 app:update binstubs` (`bin/rubocop`) · `chore:
+  add the rails 8.1 framework defaults shim` · `chore: re-dump schema.rb under rails 8.1`. Rebuilt once
+  after review round 1 to fold a spec-comment clarification into the first; the tree was otherwise
+  unchanged. Two review rounds, no blocker; the Codex should-fix on `/up` was regraded (above).
+- *Post-deploy additions* (runbook): S3 the `key?` probe; S-404 `GET /orders/0` with a real JWT → `204`
+  (the direct proof of the first commit); S11 the whole `Account.search` metadata hash; S9 judged in UTC
+  (DST ended Sun 11-01); SH adds a `DoubleRenderError` search. Development: P1–P8 and P-PROD pass
+  (P-PROD: `"8.1.4"`, three `[:notify]` pairs, `false`, `7.2`, `583`, `true`, 0 `DEPRECATION` lines).
+
 **Gates.** After plan; after verification. **Effort (estimate):** 6 h plus the deploy morning.
-**Deadline (fact):** before Sat 2026-11-07, 8.0's security end date.
+**Deadline (fact):** before Sat 2026-11-07, 8.0's security end date. **v6, actual:** survey and plan
+Wed 2026-10-28 (approved the same day, with the control dump); implementation, verification and two
+review rounds Fri 2026-10-30; push planned Mon 2026-11-02 (§6). **Deployed Mon 2026-11-02** as v666
+(`05e3fd42`, 05:12:27 PST — before the 09:00 window, as slice 2 was; it also carries rack-session 2.1.2,
+`66656131`, never released alone). S0–S6, S8, S10 and S-404 as expected (S-404 `204`); S11 by a
+substitute, because the runner still carried its placeholder term — an insgt-ops account search, the
+same 20 ids on 8.0.5.1 and 8.1.4 in development. S7 and S9 pass. **SH passes (Dan, reported 2026-11-03
+at about 22½ h): no new error in Honeybadger** — no new `RailsDeprecation`, so nothing under OD8 stops
+slice 5, and no `DoubleRenderError`. Runbook: `docs/runbooks/deploy-rails-upgrade-3.md` (`Deployed`).
 
 ### 4.5 Slice 4 — `belongs_to` optionality follows column nullability
 
@@ -1025,7 +1143,7 @@ changes, blast radius with `file:line`, whether it can flip alone.
 
 | # | Flag (file where it lives) | What it changes | Blast radius | Safe alone? |
 | :-- | :-- | :-- | :-- | :-- |
-| 1 | `active_support.to_time_preserves_timezone = :zone` (8.0) | `to_time` keeps the receiver's zone | done in slices 1–3; on 8.1 the config key is removed | n/a |
+| 1 | `active_support.to_time_preserves_timezone = :zone` (8.0) | `to_time` keeps the receiver's zone | done in slices 1–3. **v6:** on 8.1 the behaviour is unconditional and the key is deprecated for any value, read or written (§4.4 as built); 8.2 removes it. The 8.0 shim's `:18` stays commented — **never uncommented in 5a** — and goes with the file in 5b | n/a |
 | 2 | `action_dispatch.strict_freshness = true` (8.0) | `ETag` beats `Last-Modified` when a request carries both | affects `fresh_when`/`stale?` only — none in `app/` (grep empty); `Rack::ConditionalGet`/`Rack::ETag` in the stack have their own logic | yes — inert |
 | 3 | `Regexp.timeout = 1` (8.0; applied as `Regexp.timeout \|\|= 1`) | a process-wide 1 s cap on every regex match; overrun raises `Regexp::TimeoutError` | every regex in the process, gems included; the dense sites are `lib/crmls.rb` (560 lines), `lib/sandicor.rb` (473), `app/models/listing.rb` (1083) over MLS payloads, plus `RawSqlSanitizer` and the parameter underscoring. Currently `Regexp.timeout = nil` (runner) | yes, **in its own deploy (5a)** — the one flag with a real, if unlikely, runtime failure mode; §5 |
 | 4 | `yjit = !Rails.env.local?` (8.1) | YJIT off in development and test | production unchanged (`yjit=true` today; `RubyVM::YJIT.enabled?` true) | yes |
@@ -1040,7 +1158,8 @@ None needs a coordinated deploy with insgt-ops/insgt-app: the only client-visibl
 bytes whose parsed value is identical (rows 5 and 8).
 
 **Scope** (two deploys, decided: 5a Tue 2026-11-10, 5b Wed 2026-11-11):
-- **5a** — uncomment rows 2 and 3 in `new_framework_defaults_8_0.rb`; contract spec pins
+- **5a** — uncomment rows 2 and 3 in `new_framework_defaults_8_0.rb` (`:25`, `:30`; never `:18`, the
+  `to_time` line — v6); contract spec pins
   `Regexp.timeout == 1`. Deploy; S7, then `heroku logs | grep -c "Regexp::TimeoutError"` and SH
   across **one full `import_listings` cycle** (the `Crmls.import` path; its Honeybadger check-in
   from slice 0 shows the cadence — `scheduler.rake` names the tasks but the schedule lives in the
@@ -1048,7 +1167,9 @@ bytes whose parsed value is identical (rows 5 and 8).
   `lib/tasks/scheduler.rake` and the check-in history; if the cadence is less than daily, 5b and
   the rehearsal each slip a week** (§6). **v3:** the cadence is hourly (§4.1 item 5), so no slip on
   that account; the slice 5 plan confirms it from the check-in history.
-- **5b** — uncomment rows 4–10 in `new_framework_defaults_8_1.rb`; delete the five shim files
+- **5b** — uncomment rows 4–10 in `new_framework_defaults_8_1.rb` (**v6:** the generated shim carries
+  rows 5–10 only, at `:28, 36, 46, 61, 66, 74`; row 4, `yjit`, has no shim line and arrives with
+  `load_defaults 8.1`); delete the five shim files
   (`new_framework_defaults.rb` — by now only its two inert CSRF lines remain, `:10, :13`, inert
   because `application_controller.rb:3` skips verification; `_6_0.rb`, `_7_2.rb` all comments;
   `_8_0.rb`, `_8_1.rb` now fully applied); set `config.load_defaults 8.1`. **5b does not touch
@@ -1099,6 +1220,12 @@ Honeybadger error that was not in the slice 0 baseline, compared by error (v5).*
 | R2 | Slice 4's presence validation on 47 associations changes a save's outcome: a path that raised `PG::NotNullViolation` now returns 422, or a row with a dangling `NOT NULL` key becomes unsaveable | slice 4 | Honeybadger: new `ActiveRecord::RecordInvalid` occurrences with "must exist" from `save!` paths, or `ActiveRecord::NotNullViolation` disappearing from a path that used to raise it; lograge 422 counts on create endpoints; the pre-deploy dangling-key report (STOP on non-zero) |
 | R3 | The two `to_time` steps (offset in slice 1, zone in slice 2) move a date boundary for a Pacific user — `search_time_params` (`lib/app_param.rb:28–34`) consumers, report dates, `strftime` on derived `Time`s | slices 1–2 | pre-deploy: the time-zone request specs by name (§4.2); post-deploy: S8's offset print, and a date-filtered orders count for a Pacific day compared before/after the push; symptom in the wild: an order "missing" from or "extra" on a day's list in insgt-ops (no exception — the one risk Honeybadger cannot see) |
 
+**v6, R1 at 8.1.4 (slice 3), as verified in development:** Sidekiq 7.3.10 boots and runs a job
+(P3); honeybadger loads and reports through the Null backend (P-PROD); jbuilder, lograge, oj,
+strong_migrations, string_utils, shoulda-matchers, rspec-rails, factory_bot and geocoder run inside the
+green suite; `action_text-trix` is inert. The Heroku build and the SendGrid and Stripe paths are
+proved only by the release (S5, S6).
+
 **v4, R3 step one (slice 1), as verified in development:** no `.to_time` in `app/` or `lib/`
 (`grep -rn '\.to_time\b' app lib` → empty); the one indirect caller found in review is
 `orders_helper.rb:93`, through `time_ago_in_words`, an elapsed time that the offset does not change; the four
@@ -1110,7 +1237,9 @@ ops@ `SystemError::` emails from the CRMLS/Sandicor rescues (`lib/crmls.rb:115,3
 `lib/sandicor.rb:66,120,416`), a missed `import_listings` check-in (S9); the 8.1 `.or`-merge SQL
 correctness fix changing a search count (slice 3, S11); `remote_ip` → Stripe `client_ip`
 (informational); JSON byte changes (slice 5b, S15); a `RailsDeprecation` notice from an untested
-path (slice 1's reporter — a finding, not a failure).
+path (slice 1's reporter — a finding, not a failure); **v6:** an `AbstractController::DoubleRenderError`
+from a `head`-after-render site outside the five slice 3 fixed (the enumeration was exhaustive over
+`app/controllers`; a render from a concern or library hook is the residual — S7 and SH watch it).
 
 ---
 
@@ -1143,6 +1272,16 @@ to slice 2's moved slot and applies to slice 3's: review and merge not complete 
 slice moves to the next legal morning (slice 2 would have taken Mon 11-02 and cost slice 3 that
 slot); nobody pushes after 11:30 to make the window.
 
+**v6, as it went:** slice 3 surveyed and planned Wed 10-28 (approved that day, with the control dump
+run on `master`); slice 2's SH closed Thu 10-29; the Ruby 3.4.12 bump shipped Thu 10-29 as v665,
+outside the slices; slice 3 implemented, verified and reviewed **Fri 10-30**. Push planned **Mon 11-02,
+09:00–11:30 PT** (17:00–19:30 UTC — DST ended Sun 11-01); fallbacks Tue 11-03, then Wed 11-04, **the
+last morning before 8.0's security end date (Sat 11-07)** — a slip past it is a §7 decision.
+**Deployed Mon 11-02 at 05:12 PT** as v666, before the window as slice 2 was, outside every delivery
+window; its SH passed Tue 11-03, reported at about 22½ h. The 11-07 deadline is met. The rest
+of the table stands: slice 4 Mon 11-09 (after two quiet weekdays, §4.5), 5a Tue 11-10, 5b Wed 11-11,
+the quiet week to Wed 11-18, then the rehearsal.
+
 Total ≈ 36 h of implementation plus six deploy mornings. 5a gets one day before 5b; the slice 5
 plan reads `lib/tasks/scheduler.rake` and the `import_listings` check-in history for the import
 cadence — **if it is less than daily, 5b and the rehearsal each slip a week** (§4.6). **v3:** hourly
@@ -1168,7 +1307,7 @@ from the facts those decisions surfaced (OD10, OD11). OD11 was settled at the sl
 | OD4 | `belongs_to_required_by_default` | **Rejected the relocation**; rule D′ (optionality = column nullability), its own slice 4 with a contract spec, a production nullability STOP and a null-count report | §4.5 |
 | OD5 | Sidekiq | Keep 7.3.10 (Heroku Redis host history; Sidekiq 8 after the cutover); P3 strengthened to "a job runs"; a check-in watches the recurring import | §3.1, §4.0, §4.1, §8 |
 | OD6 | `rails/all` | §8 item scoped to Action Cable, Action Text, Action Mailbox; Active Storage stays for OrderProcessingNote; OD2's line revisited at that design, presigned `blob.url(expires_in:)` preferred | §8 item 7 |
-| OD7 | `db/schema.rb` re-dump | Yes, from a clean test database loaded from the committed file, never from development; header-only → commit, else STOP | §4.4 step 4 |
+| OD7 | `db/schema.rb` re-dump | Yes, from a clean test database loaded from the committed file, never from development; header-only → commit, else STOP. **v6 (slice 3):** the rule became "the header and the `pg_catalog.plpgsql` extension hunk" — 8.0's dumper schema-qualifies `plpgsql`, proven by a control dump on 8.0.5.1 before the branch; a round-trip load of the committed file must dump identically | §4.4 step 4 |
 | OD8 | Gem-originated deprecations | STOP, as written; the fallback is a callable behaviour (raise by default; log only for a listed gem path **and** message pattern, each pair recorded here with its §8 removal item); slice 1 keeps plain `:raise` and turns production deprecation reporting on through Honeybadger | §4.2 |
 | OD9 | Documents branch | `docs/rails-upgrade` stays; verified based on the platform repo's `main` (not insgt-api's `master`, which never carries these files); merges into `main` before slice 0 | §2.7 |
 | **OD10 (open)** | Rule D′ meets `TagsResource#user`/`#property` (two `belongs_to` on one `NOT NULL` column) and `Area#state` (no column) | **Recommendation:** the structural shared-column rule (both `optional: true`, spec asserts exactly-one) and deleting `Area#state`. **Against:** the structural rule is a rule the spec must encode, not a plain equality; the alternative (real polymorphism) is a data migration | §4.5 — blocks slice 4's plan |
@@ -1184,6 +1323,15 @@ built the same day with the §6 slippage rule stated in the runbook. The gate's 
 both routes, a scratch-app build if one existed — none does, slice 3 decides the `application.rb`
 line, the P1 count not a criterion) are recorded in `docs/plans/rails-upgrade-slice-2.md`.
 
+**Slice 3 plan gate (2026-10-28), eight questions answered as recommended:** `action_text-trix`
+accepted (§3.1); the `application.rb` deletion folded into the bump commit (a version guard
+considered); the double-`head` fix first, as its own commit with one request spec; the `to_time`
+contract example rewritten to pin the key's absence, not deleted; `bin/rubocop` as its own commit;
+the dump sequencing; S-404 included; build now, push Mon 11-02. Additions: **A** the head enumeration
+made exhaustive (no sixth site) with unauthenticated examples; **B** a control dump before and a
+round-trip load after the 8.1 dump (three `db:*` sequences, Dan's); **C** `find_instance`'s contract
+to §8 (item 21) so the guard does not become the fix. Recorded in `docs/plans/rails-upgrade-slice-3.md`.
+
 ---
 
 ## 8. Follow-up list
@@ -1196,7 +1344,8 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 2. Delete dead files: `config/secrets.yml`, `config/secrets.yml.rb` (carry literal dev/test
    `secret_key_base`), `config/newrelic.yml`, `config/elasticsearch.yml`, `config/spring.rb`,
    `bin/spring`, `bin/update`, and for an API-only app `config/initializers/{content_security_policy,
-   cookies_serializer,session_store}.rb`.
+   cookies_serializer,session_store}.rb`. (v6: the 8.1 `app:update` adds four comment lines to the CSP
+   file; slice 3 rejected them for that reason.)
 3. `config.silence_healthcheck_path = "/up"` (8.0 railties) so lograge stops logging the health check.
 4. `config.logger = ActiveSupport::TaggedLogging.logger(STDOUT)` in place of the three-line chain
    at `production.rb:51–53` (the 7.1+ idiom the template uses).
@@ -1212,7 +1361,11 @@ Not in any slice. Each is a candidate for its own small change after the Render 
    revisited at that feature's design**, with presigned `blob.url(expires_in:)` preferred over
    `rails_blob_path` (consistent with `S3ImageHandler`/Lambda bypassing Rails); if presigned URLs
    are chosen the line stays. The thumbnail variant re-opens the §3.3 libvips posture (ruby-vips
-   ≥ 2.2.1, libvips ≥ 8.13 or boot fails on 8.1.3.1+).
+   ≥ 2.2.1, libvips ≥ 8.13 or boot fails on 8.1.3.1+). **v6, from slice 3:** dropping Action Text also
+   drops `action_text-trix` from the lock (§3.1); and until that design picks a processor, Active
+   Storage 8.1 logs one `image_processing` WARN per process boot (`engine.rb:94–129`; §4.4 as built) —
+   `config.active_storage.variant_processor = :disabled` in `config/application.rb` silences it, and
+   the design replaces that line with its real processor.
 8. `Model.connection.select_all` / `exec_query` → `with_connection { |connection| … }` at the ~25
    sites (soft-deprecated since 7.2; silent through 8.1).
 9. `config/application.rb:20–21` — the `autoload_paths += Dir["lib/**/"]` / `eager_load_paths`
@@ -1220,7 +1373,7 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 10. `config/sidekiq_status.rb` — nothing requires it (UNVERIFIED whether the status middleware is
     installed in production; P3 from slice 1 on answers it for development); either wire it through
     an initializer or delete it. (Codex, slice 2's review: confirmed never loaded by the boot path;
-    still out of every slice's scope.)
+    still out of every slice's scope.) v6: still `nil` on 8.1.4 (slice 3's P3).
 11. `config/database.yml` `pool:` → `max_connections:` (8.1 naming; the old key still works).
 12. **Sidekiq 8, as its own change after the Render cutover** (decided OD5), gated on the Valkey
     version Render provides and on an audit of everything that reads raw job payloads — 8.0
@@ -1232,7 +1385,8 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 15. **`NOT NULL` migration candidates from slice 4's null-count report**: nullable FK columns that
     are always populated get the four-step `NOT NULL` sequence (`README.md` §Migrations) after the
     Render cutover — no slice carries a migration.
-16. The three `t.float` columns — confirm `double precision` vs `real` so a future dump has no surprise.
+16. ~~The three `t.float` columns — confirm `double precision` vs `real` so a future dump has no
+    surprise.~~ **Closed (v6, slice 3):** all three are `double precision`; the 8.1 dump added no `limit:`.
 17. Honeybadger Insights (off in slice 0) and the uptime/check-in set — decide after the trial
     whether to keep the subscription and what else to check in (the other three scheduler tasks).
 18. OD8 deprecation exemptions — none recorded; this item is the placeholder their removal cites.
@@ -1245,7 +1399,27 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 20. The inherited route-absence examples (`spec/architecture/rails_upgrade_spec.rb`, "draws none";
     `spec/requests/active_storage_routes_spec.rb`) pass on an empty route set; slice 2's member-route
     examples fail there, so nothing changes now. Assert a known route before the absence when slice 3
-    next touches the contract spec (Codex nit, slice 2's review, both rounds).
+    next touches the contract spec (Codex nit, slice 2's review, both rounds). **Done (v6, slice 3):**
+    the contract example asserts `recognize_path('/up')` before the absence.
+21. **`find_instance`'s contract** (v6; slice 3 plan gate addition C). It renders a 204 as a side
+    effect on a miss and returns `false` or the instance (`application_controller.rb:186–194`), so its
+    55 callers guard defensively — which is how five setters came to `head` twice. Make the return
+    value the idiom (`return unless find_instance(…)`), or move the miss to a `rescue_from` → 204, and
+    retire the `return if performed?` guards slice 3 added. Not an upgrade change.
+22. **`OrdersController#download_files` renders after a `head`** on a missing order
+    (`orders_controller.rb:473–484`: `find_instance` heads, then `return render_unauthorized if
+    @order.blank?` renders) — `DoubleRenderError` on every Rails version (probed on 8.0.5.1 and 8.1.4).
+    The download Lambda's path. One `return if performed?` on its own branch.
+23. **`NotificationAudiencesController#set_notification_audience`** (`notification_audiences_controller.rb:38–41`)
+    raises `NoMethodError` on `nil.notification_id` when the audience is missing, before any second
+    `head`. Its fix must guard with `performed?` too, or it becomes a double `head` on 8.1.
+24. ~~`OrdersController#show` with no credential~~ — **done** (v6): `set_order` left `@order` nil and the
+    jbuilder view raised (`NoMethodError`, a 500; seen in slice 2's SH). Fixed by insgt-api `55c86f1d`
+    (`render_unauthorized` when neither credential is present), deployed as v664;
+    `spec/requests/orders_show_authentication_spec.rb`.
+25. **`/up.json` is not exempt from the SSL redirect or host authorization** (v6): `production.rb:48` and
+    `:101` match `request.path == '/up'` only. Irrelevant today (the uptime check hits `/up` over HTTPS
+    on a listed host); revisit with the Render cutover's health-check path.
 
 ---
 
@@ -1258,3 +1432,4 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 | 3 | 2026-10-26 | Slice 0 implemented and verified in development (insgt-api `chore/rails-upgrade-slice-0`: `d4dd6d9e`, `a641c52b`). §4.1: the 6.10.0 `filter_keys` default includes `HTTP_AUTHORIZATION` and a YAML list replaces it (left unset); ENV-over-YAML precedence answered, with `HONEYBADGER_ENV` selecting the YAML section; log breadcrumbs off after the adversarial review; `HTTP_REFERER` kept unfiltered by decision; the spec plan as built (a config spec with a serialized-notice example; `api_key` not nil in test because `.env` holds it); the dev job on its own queue; the start-up log check corrected to "no line at boot"; the uptime check created. OD11 settled; the `import_listings` cadence is hourly (§4.1, §4.6, §6). §4.0 P3: `Sidekiq::Status` returns `nil` in development, for slice 1's plan to pin. Runbook `docs/runbooks/deploy-rails-upgrade-0.md`; notes extended. |
 | 4 | 2026-10-26 | Slice 1 implemented and verified in development (insgt-api `chore/rails-upgrade-slice-1`, eight commits `5c9446da`…`a5d9b001`, two review rounds); slice 0 deployed as v659; production now v661 (v660 and v661 are listing fixes from `master`, outside the upgrade). §4.0: P3's id-0 assumption falsified (the worker re-raises) — P3 runs an already-fetched property on its own queue and asserts the log lines; P4 is 4 examples (`:110–148`), not 3. §4.2 item 1: `Gemfile:29`; the lock diff's two `activesupport` constraint lines and minitest's `prism` line named. Item 4: the log-history reach (Heroku 1,500 lines; Papertrail `fixa`, about fourteen days, 0 hits) and the code/database URL audit. Item 5 as built: scope stated (every registered deprecator; not unregistered gem deprecators or `Kernel#warn`); `to_prepare` wiring (a bare initializer reference fails the boot); dedupe key and fingerprint `"<gem_name>: <message>"` (Honeybadger groups on the fingerprint alone; the message carries the call site but not the deprecator); raw `backtrace:`; the subscriber never raises (log line and failure notice, rescued separately; key claimed before notify); `received?` for the deploy probe; the boot window it cannot cover. Spec plan as built (the behavioural gate example; `have_received` for the dedupe). Verification: the pre-push production-config probe, v661 as the "before" and rollback release, the suite on the merge into `master` (2,040 expected), the baseline spanning v659, v660 and v661. §4.3: the 8.0 `to_time` semantics revisited there. §5 R3 step one's evidence. §8 item 19 (the gate sees only loaded classes). Runbook `docs/runbooks/deploy-rails-upgrade-1.md`. |
 | 5 | 2026-10-27 | Slice 1 deployed as v662 (2026-10-27 08:15 -0400; S7 and S9 pass; SH pending), with its owed amendments: §2.2 and §5 "quiet" by Honeybadger error; §4.0 S4 `map`, S7 (saved buffer, Papertrail hour, exception classes), SH (two searches, triage rule), S0 (release variable), P-PROD, P1 twice; §4.1 item 7. Slice 2 implemented, verified and reviewed (insgt-api `chore/rails-upgrade-slice-2`, five commits `671c3c6b`…`4b464230`; 2,045 examples; two review rounds, no blocker): §4.3 as built — `:zone` in `config/application.rb` because `set_configs` forwards the `load_defaults` value before `config/initializers` (the shim cannot do it under `:raise`); the routes `only:` validation found and fixed; the three Active Storage migrations pre-existing and kept; `puma.rb` and `bin/setup` rejected; `Time#zone` is a `TimeZone` object; the autosave and `#merge`/`#or` fixes are 7.2.3's, not this slice's; `racc` stays in the lock; the `transform_keys` claim corrected; the commit order (routes, `:zone`, bump, binstubs, shim). §4.4 reworded: slice 3's survey decides the `application.rb` line's fate; the migrations are not re-copied. §6 the calendar as it went; §7 the slice 2 plan-gate decisions; §8 items 10, 19, 20. Slice prompts 2 and 3 annotated; notes extended. Runbook `docs/runbooks/deploy-rails-upgrade-2.md` (`Ready`); plan `docs/plans/rails-upgrade-slice-2.md`. |
+| 6 | 2026-10-30 | Slice 3 implemented, verified and reviewed (insgt-api `chore/rails-upgrade-slice-3`, five commits `a5bfab70`…`5ffe92c4` off v665; 2,059 examples; two review rounds, no blocker); push planned Mon 2026-11-02. §4.4 as built: the `to_time` line **deleted inside the bump commit** (8.1 deprecates the key for any value, reader and writer; 8.0 cannot boot without it), so the planned separate commit is gone; **five setters headed twice on a miss** — a 500 on 8.1 — fixed first with `return if performed?` after an exhaustive head-producer walk; `action_text-trix` enters the lock (§1.2, §2.6, §3.1); the `app:update` deltas (`bin/rubocop` accepted, the CSP comment lines rejected); the three floats are `double precision`; the dump's extension hunk is 8.0's dumper, bracketed by a control dump and a round-trip load (OD7 amended); `/up.json`, `remote_ip` and the 8.1 defaults under 7.2 as found; a new Active Storage boot WARN. §4.0 S3 and P-PROD read `config.active_support.key?` — the reader deprecates on 8.1. §4.3: v664 (the `orders#show` fix) and v665 (Ruby 3.4.12) recorded. §4.6: the 8.0 shim's `to_time` line is never uncommented; the 8.1 shim has no `yjit` row. §5 R1 at 8.1.4; §6 as it went; §7 OD7 and the slice 3 plan gate; §8 items 2, 7, 10, 16 (closed), 20 (done), 21–25 new. Slice prompts 4 and 5 annotated; notes extended. Runbook `docs/runbooks/deploy-rails-upgrade-3.md` (`Ready`); plan `docs/plans/rails-upgrade-slice-3.md`. |

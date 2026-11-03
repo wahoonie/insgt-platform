@@ -6,7 +6,7 @@
 
 ## Scope
 
-Two deploys, §4.6: **5a** rows 2–3 of the flag table (`strict_freshness`, `Regexp.timeout`) in the 8.0 shim, deployed alone and watched across one full `import_listings` cycle; **5b** rows 4–10 in the 8.1 shim, the five shim files deleted, `config.load_defaults 8.1`, the contract spec pinning `loaded_config_version`, `Regexp.timeout` and the JSON escaping behaviour. Each deploy gets its own runbook (`deploy-rails-upgrade-5a.md`, `-5b.md`) and §4.6's post-deploy checks (S10, S14–S16).
+Two deploys, §4.6: **5a** rows 2–3 of the flag table (`strict_freshness`, `Regexp.timeout`; the 8.0 shim's `:25` and `:30` — never `:18`, the `to_time` line, v6) in the 8.0 shim, deployed alone and watched across one full `import_listings` cycle; **5b** rows 4–10 in the 8.1 shim (v6: the generated shim holds rows 5–10, six lines at `:28, 36, 46, 61, 66, 74`; row 4, `yjit`, arrives only with `load_defaults 8.1`), the five shim files deleted, `config.load_defaults 8.1`, the contract spec pinning `loaded_config_version`, `Regexp.timeout` and the JSON escaping behaviour. Each deploy gets its own runbook (`deploy-rails-upgrade-5a.md`, `-5b.md`) and §4.6's post-deploy checks (S10, S14–S16).
 
 ## Out of scope — do not touch
 
@@ -23,11 +23,12 @@ Slice 4 deployed and quiet (§2.2) for one weekday: `Rails.version` → `8.1.4`,
 1. The import cadence, from `lib/tasks/scheduler.rake` and the `import_listings` check-in history (§4.6, §6): if less than daily, 5b and the rehearsal each slip a week — say so at the plan gate.
 2. The row 5 proof: the `render_errors` request spec with a `<b>` message and the JBuilder spec that stays escaped (§4.6 gap 1), with the deliberate-break output.
 3. The exact `Regexp.timeout` value the runner prints after 5a (`1.0` expected, §4.6).
-4. The final content of `config/application.rb` after the bump: only `load_defaults 8.1`, `draw_routes = false` (slice 1) and what was there before.
+4. The final content of `config/application.rb` after the bump: only `load_defaults 8.1`, `draw_routes = false` (slice 1) and what was there before. (v6: slice 3 deleted the `to_time` block; nothing replaces it.)
+5. (v6) How the contract spec's "the 8.0 and 8.1 defaults stay off" example (slice 3) is rewritten in each deploy: 5a flips `strict_freshness` and `Regexp.timeout`; 5b the four 8.1 values and `loaded_config_version`.
 
 ## Traps for the review
 
-1. A flag flipped in the wrong deploy (any 8.1 row in 5a; `Regexp.timeout` in 5b).
+1. A flag flipped in the wrong deploy (any 8.1 row in 5a; `Regexp.timeout` in 5b); the 8.0 shim's `to_time` line uncommented, or any `to_time_preserves_timezone` reference (v6 — on 8.1 any value deprecates, §4.4 as built).
 2. A shim file surviving 5b, or `belongs_to_required_by_default` reappearing when `new_framework_defaults.rb` is deleted.
 3. A client-facing byte change asserted as "identical" without the parsed-value spec.
 4. An opportunistic refactor; a gem major bump not named in §3; a `config.load_defaults` value other than `8.1`, or bumped before 5b; any edit to `StrongMigrations.target_version`; a Ruby version change; a Postgres version change.
