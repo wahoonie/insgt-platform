@@ -108,7 +108,7 @@ make the window.**
 
 - [x] **Slice 3's SH result** (`deploy-rails-upgrade-3.md` step 7): **passes** — no new error since
       v666's push (Dan, 2026-11-03, about 22½ h)
-- [ ] **Two quiet weekdays** after v666 (Tue 11-03, Wed 11-04), read Thu 11-05 — Honeybadger →
+- [x] **Two quiet weekdays** after v666 (Tue 11-03, Wed 11-04), read Thu 11-05 — Honeybadger →
       Errors:
 
       ```
@@ -121,8 +121,11 @@ make the window.**
       S-DEP's; no `DoubleRenderError`. The window also holds v667 (the orders-CSV hotfix, 14:07
       -0500) and v668 (`WEB_CONCURRENCY`, `RAILS_MAX_THREADS`, 15:29 -0500): an error first seen
       after either is triaged against that release before slice 3 — an orders-CSV backtrace against
-      v667, a pool, timeout or memory error against v668. Observed: ___
-- [ ] **Honeybadger baseline for the 17** (modification E; Dan, before Thursday's review):
+      v667, a pool, timeout or memory error against v668. Observed (Dan, Thu 2026-11-05):
+      **passes**. All three searches return No Results, each run twice, once with `-is:resolved`
+      and once with `is:resolved`, both with `-is:ignored`. Nothing new from v666, v667 or v668,
+      and S-DEP's `RailsDeprecation` has no new occurrence.
+- [x] **Honeybadger baseline for the 17** (modification E; Dan, before Thursday's review):
 
       ```
       environment:"production" class:"ActiveRecord::NotNullViolation" occurred.after:"2026-10-26 00:00 UTC-7"
@@ -130,10 +133,18 @@ make the window.**
 
       Each hit is a production path that answers 422 (or raises `RecordInvalid` at a `save!`) after
       this slice: record its controller, action and the column the message names. Zero hits means the
-      17 are unexercised in production, and SH's "must exist" watch expects nothing. Observed: ___
+      17 are unexercised in production, and SH's "must exist" watch expects nothing. Observed (Dan,
+      Thu 2026-11-05): **zero hits**. No Results with `-is:resolved` and with `is:resolved`, both
+      with `-is:ignored`. Nothing can hide a hit: insgt-api has no `rescue_from` and no rescue of
+      `ActiveRecord::StatementInvalid` or `PG::` errors in `app/` or `lib/`. The only controller
+      `rescue StandardError` is `OrdersController#temp_credentials` (`orders_controller.rb:43`),
+      which writes nothing. `config/honeybadger.yml` ignores no exceptions. So the 17 are unexercised in production, and
+      SH's "must exist" watch expects nothing.
 - [ ] **The nullability STOP reads `OK`**, and the null-count and dangling-key reports are pasted,
-      **twice** — Thursday's review and the morning of the push (step 2; modification D)
-- [ ] **The dangling-key rule** (step 2) applied to both reads: no STOP, or the STOP resolved
+      **twice** — Thursday's review and the morning of the push (step 2; modification D).
+      Thursday: done, `OK`; Monday: ___
+- [ ] **The dangling-key rule** (step 2) applied to both reads: no STOP, or the STOP resolved.
+      Thursday: no STOP; Monday: ___
 - [ ] Review rounds complete (two rounds of `predeploy-review-rails`, Codex second opinion included);
       this runbook's Status is `Ready`
 - [ ] Dan has merged `chore/rails-upgrade-slice-4` into `master` and `bundle exec rspec` is green
@@ -393,7 +404,23 @@ SELECT ou.user_id, COUNT(*) AS rows, MIN(ou.created_at)::date AS first, MAX(ou.c
 SELECT t.id, t.resource_id, t.tag_id, t.status_type, t.created_at::date FROM tags_resources t LEFT JOIN photos p ON p.id = t.resource_id WHERE t.resource_type = 7 AND p.id IS NULL ORDER BY t.id;
 ```
 
-RESULTS — Thursday 2026-11-05 (nullability; null counts; dangling and the named rows): ___
+RESULTS — Thursday 2026-11-05 (nullability; null counts; dangling and the named rows): read at
+16:59 UTC (08:59 PT), files `tmp/{prod-columns,null-counts,dangling,dangling-rows}-2026-11-05.*`. The
+reports gave 39, 52 and 3 result sets, 0 errors. **No STOP.**
+
+- **(a) Nullability:** `wc -l` → `220`; `schema.rb columns=219 database columns=219`,
+  `OK: no nullability mismatch`, exit 0.
+- **(b) Null counts:** `nulls = 0` on a table with rows for exactly the restore's five:
+  `areas.city_id` (3,525), `areas.area_type_id` (3,525), `notifications.order_event_id` (622),
+  `order_url_groups.order_id` (212), `photos.order_id` (639,326). `headshots` is empty in
+  production too, so `headshots.user_id`'s `0` is not a sixth. Every other column has nulls.
+- **(c) Dangling:** D1–D51 are 0 except **D29 = 2, D39 = 27, D50 = 32**, each exactly at the
+  restore's ceiling. D52 `1:4660, 7:724591` lists only `1:` and `7:` (restore `1:4652, 7:717874`;
+  the growth is live tagging, all on supported types).
+- **Named rows,** identical to the restore's: orders `2827` (account 873, status 2, 2016-11-02) and
+  `4302` (account 1190, status 1, 2017-07-05); `orders_users` `user_id = 0`, 27 rows,
+  2017-07-07 … 2019-05-02, 24 active; 32 `tags_resources` rows `434522`…`434553`, tag 69, photo
+  ids `549637`…`549668`, all active, all 2025-06-17. No new writer since the restore.
 
 RESULTS — Monday 2026-11-09 (the same): ___
 
