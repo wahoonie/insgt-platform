@@ -1,6 +1,6 @@
 # Runbook: Rails Upgrade Slice 4 — `belongs_to` optionality follows column nullability
 
-**Last updated:** 2026-11-03
+**Last updated:** 2026-11-05
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~45 min of read-only production reports at Thursday's review and again on the
 morning; ~30 min for the push and step 5's checks; S7 one hour after the push; S9 at the first hourly
@@ -16,6 +16,8 @@ Ships `docs/architecture/rails-upgrade.md` §4.5 (v6; v7 amends it after verific
 the orders-CSV hotfix (`bead424b`…`0ec0b0fa`, merged as `8b726308`) landed on `master` after the plan
 was approved. It touches `orders_controller.rb`, `lib/order_param.rb`, `application_controller.rb`'s
 `render_bad` and one new spec file (21 examples); no model, so the plan's reflection table stands.
+On 2026-11-05 `master` moved again — v669, the Rails 8.1.4.1 security bump (`24cd8180`,
+`Gemfile.lock` only) — and was merged into the branch as `3f67af13` (Deploy log).
 
 1. `39b213f3` test: pin belongs_to optionality to column nullability — five structural examples
    appended to `spec/architecture/rails_upgrade_spec.rb`; red on three by design until commit 4
@@ -37,12 +39,16 @@ was approved. It touches `orders_controller.rb`, `lib/order_param.rb`, `applicat
 **No migration, no DDL, no ENV change, no gem change, no client release.** `config.load_defaults`
 stays `7.2`.
 
-**Production is v668** (Dan, `heroku releases`, 2026-11-03): v667 `Deploy 8b726308` (the hotfix,
-2026-11-02 14:07:20 -0500), then v668 `Set WEB_CONCURRENCY, RAILS_MAX_THREADS config vars`
-(15:29:33 -0500), on v666 (`05e3fd42`, slice 3). So production's code is this branch's base, and
-**v668 is the rollback target**. If `master` moves again before the push, merge `master` into the
-branch, rerun the suite on the merge, and move the "before" captures and the rollback target to the
-new release.
+**Production is v669** (Dan, `heroku releases`, 2026-11-05): `Deploy 24cd8180`, 12:30:35 -0500, the
+Rails 8.1.4.1 security bump (`40fb2672`, `Gemfile.lock` only — the 13 Rails gems and, forced by
+`actionpack`'s new floor, `rails-html-sanitizer` 1.7.2, `loofah` 2.25.3, `nokogiri` 1.19.7), pushed
+on a Thursday by Dan's decision (§2.4 item 4 says Mon–Wed; a security release). Before it: v667
+`Deploy 8b726308` (the hotfix, 2026-11-02 14:07:20 -0500) and v668 `Set WEB_CONCURRENCY,
+RAILS_MAX_THREADS config vars` (15:29:33 -0500), on v666 (`05e3fd42`, slice 3). `master` was merged
+into the branch as `3f67af13` and the suite re-run on it (step 1), so production's code is this
+branch's base and **v669 is the rollback target**. If `master` moves again before the push, repeat:
+merge `master` into the branch, rerun the suite on the merge, and move the "before" captures and
+the rollback target to the new release.
 
 **Where this sits.** The fourth of six deploy mornings: 5a (Tue 11-10), 5b (Wed 11-11), the quiet
 week to Wed 11-18, then the Render rehearsal (§6).
@@ -121,10 +127,14 @@ make the window.**
       S-DEP's; no `DoubleRenderError`. The window also holds v667 (the orders-CSV hotfix, 14:07
       -0500) and v668 (`WEB_CONCURRENCY`, `RAILS_MAX_THREADS`, 15:29 -0500): an error first seen
       after either is triaged against that release before slice 3 — an orders-CSV backtrace against
-      v667, a pool, timeout or memory error against v668. Observed (Dan, Thu 2026-11-05):
+      v667, a pool, timeout or memory error against v668. From 2026-11-05 17:30 UTC it also holds
+      v669 (Rails 8.1.4.1): an error first seen after that in `remote_ip`, strong parameters, the
+      sanitizer or tag helpers, sessions, Active Storage or `safe_constantize` is triaged against
+      v669 first — the files that release touched. Observed (Dan, Thu 2026-11-05, before v669):
       **passes**. All three searches return No Results, each run twice, once with `-is:resolved`
       and once with `is:resolved`, both with `-is:ignored`. Nothing new from v666, v667 or v668,
-      and S-DEP's `RailsDeprecation` has no new occurrence.
+      and S-DEP's `RailsDeprecation` has no new occurrence. Monday, the same three searches for
+      v669's days: ___
 - [x] **Honeybadger baseline for the 17** (modification E; Dan, before Thursday's review):
 
       ```
@@ -149,7 +159,8 @@ make the window.**
       this runbook's Status is `Ready`
 - [ ] Dan has merged `chore/rails-upgrade-slice-4` into `master` and `bundle exec rspec` is green
       **on the merge**: expected `2099 examples, 0 failures`, 0 `DEPRECATION WARNING` lines if `master`
-      is still `8b726308`; a different count is sourced before the push, not recomputed
+      is still `24cd8180` (sourced 2026-11-05 on the merge `3f67af13`: 2,080 + 19, the 8.1.4.1 bump
+      adds no example); a different count is sourced before the push, not recomputed
 - [ ] The production-config probe (step 1, P-PROD) printed the expected lines on the merge
 - [ ] Pre-push captures (step 3) recorded below, on the release that is live at that moment
 
@@ -178,7 +189,8 @@ database is the production restore `tmp/latest-2026-10-30.dump`:
 | Reports | step 2's three, against the development restore: nullability `OK` (219/219); D29 `2`, D39 `27`, D50 `32`, D52 `1:4652, 7:717874`, every other row `0` — the plan's prediction exactly |
 
 **P-PROD** is `deploy-rails-upgrade-3.md` step 2's wrapper, unchanged, and its expected lines are
-that step's (cited, not reproduced — trap 5): the WARN line, `"8.1.4"`, `true`, `true`, the three
+that step's (cited, not reproduced — trap 5): the WARN line, `"8.1.4.1"` (`"8.1.4"` on the
+2026-11-03 runs below, before v669), `true`, `true`, the three
 `[:notify]` pairs, the `Reporting error` line, `true`, `false`, `7.2`, `583`, `false`, `true`, and a
 `DEPRECATION` count of `0`. This slice changes none of them.
 
@@ -202,6 +214,10 @@ false
 true
 0
 ```
+
+Re-run 2026-11-05, after v669, on the merge `3f67af13` (`master` `24cd8180`, Rails 8.1.4.1):
+`"8.1.4.1"` and every other line the same, `DEPRECATION` count `0`. On the same tree: P1
+`2099 examples, 0 failures`, 0 deprecation lines (65.6 s); routes 583.
 
 RESULTS (on the merge, before the push): ___
 
@@ -437,7 +453,7 @@ heroku logs -n 1500 --app insgtapi > /tmp/s7-before.log
 grep -c "status=422" /tmp/s7-before.log
 head -1 /tmp/s7-before.log | cut -c1-32
 tail -1 /tmp/s7-before.log | cut -c1-32
-RELEASE=v668   # or the newer one `heroku releases -n 3` printed, if master moved
+RELEASE=v669   # or the newer one `heroku releases -n 3` printed, if master moved
 heroku run --no-tty --app insgtapi rails runner "Notifier.send_error_email('rails upgrade slice 4', 'release $RELEASE').deliver_now"
 ```
 
@@ -462,7 +478,8 @@ git push heroku master
 heroku releases -n 1 -a insgtapi          # record the release (vNNN) and its time
 ```
 
-No gem changes, so the build installs nothing new. A failed build is not a release; v668 stays.
+No gem change beyond v669's, so the build installs nothing new. A failed build is not a release;
+v669 stays.
 
 RECORDED: ___
 
@@ -494,9 +511,9 @@ Expected, reasoned before the push:
 
 | # | Check | Expected |
 | :-- | :-- | :-- |
-| S2 | `heroku ps`, `grep Booted` | all dynos up; `Booted Rails 8.1.4 application in production environment` |
+| S2 | `heroku ps`, `grep Booted` | all dynos up; `Booted Rails 8.1.4.1 application in production environment` |
 | S1 | `/up` | `200`; the Honeybadger uptime check green |
-| S0 | marker | a notice id; `UpgradeMarker` gains an occurrence with context `rails: 8.1.4` and the real release |
+| S0 | marker | a notice id; `UpgradeMarker` gains an occurrence with context `rails: 8.1.4.1` and the real release |
 | S3 | runbook 3 step 5's runner | `8.1.4`, `false` |
 | S10 | `loaded_config_version` | `7.2` |
 | S4 | nearby cities | identical to step 3's capture |
@@ -577,7 +594,8 @@ RECORDED: ___
 heroku rollback --app insgtapi
 ```
 
-Back to v668 (the hotfix's code with its `WEB_CONCURRENCY` and `RAILS_MAX_THREADS`), or to the
+Back to v669 (Rails 8.1.4.1 on the hotfix's code, with v668's `WEB_CONCURRENCY` and
+`RAILS_MAX_THREADS`), or to the
 release step 3 recorded if `master` moved. Nothing to undo: no migration, no ENV change, no data
 written by the slice, and the dangling rows are exactly as they were.
 
@@ -645,6 +663,13 @@ written by the slice, and the dangling rows are exactly as they were.
 - `docs/plans/rails-upgrade-slice-4.md`: Status `Deployed`.
 - `rails-upgrade.md`: §4.5's "as deployed" line, §6's calendar as it went (the v7 amendment itself is
   written before the push).
+- `rails-upgrade.md` §1.2 and §4.4: v669, the Rails 8.1.4.1 security bump of 2026-11-05 between
+  slices 3 and 4, as v6 recorded v664/v665 after slice 2; the Thursday push as a §2.4 item 4
+  exception taken for a security release (Dan, 2026-11-05).
+- `rails-upgrade.md` §8: `/cable` is mounted in production (`rails/all`;
+  `ActionCable.server.config.mount_path` → `"/cable"`) with nothing using it — GHSA-8474's reachable
+  surface. `config.action_cable.mount_path = nil` is the advisory's own mitigation and a one-line
+  cleanup candidate.
 
 ## Deploy log
 
@@ -652,3 +677,24 @@ written by the slice, and the dangling rows are exactly as they were.
   `39b213f3`…`bd0859b8` off `master` `8b726308`, which is production's code as v667/v668): step 1's
   table; P-PROD as step 1's RESULTS; step 2's reports against the development restore matched the
   plan's prediction.
+- **2026-11-05 — Thursday's prerequisite reads** (Dan): the two-quiet-weekdays and
+  `NotNullViolation` Honeybadger searches, and step 2's three production reports — all as expected,
+  no STOP (Prerequisites; step 2 RESULTS).
+- **2026-11-05 — Rails 8.1.4.1 shipped as v669, outside the slice.** The 2026-11-04 security
+  release (21 advisories; rubyonrails.org/2026/11/4). Branch `chore/rails-8-1-4-1` off `master`
+  `8b726308`, one commit `40fb2672` (`Gemfile.lock` only), merged as `24cd8180` 12:28:31 -0500,
+  released v669 12:30:35 -0500 — on a Thursday by Dan's decision, §2.4 item 4 set aside for a
+  security release. Verified before the push in the dev container: `2080 examples, 0 failures`
+  (`master`'s count), 0 deprecation lines; `zeitwerk:check` clean; routes 583, byte-identical to
+  `master`; P-PROD every line as runbook 3 expects with `"8.1.4.1"`, `DEPRECATION` `0`; the 13 Rails
+  gems' source against 8.1.4 differs only in the advisories' files. Exposure: GHSA-8474-xrp6-wh69
+  (unauthenticated ReDoS through `safe_constantize`) is reachable at `/cable`, which `rails/all`
+  mounts here; the Active Storage advisories need an attachment (none exist, no routes drawn);
+  `Parameters#each_key` is unused (the two `each_key` calls are on Hashes); `remote_ip` is read once
+  (`transactions_controller.rb:55`, Stripe's `client_ip` fallback). After the push: `heroku run …
+  rails runner 'puts Rails.version'` → `8.1.4.1` (17:35:53 UTC, after the WARN line); `grep Booted`
+  → `Booted Rails 8.1.4.1 application in production environment` from `backgroundworker.1` at
+  17:30:45 and again at 17:31:12 UTC — two boots 27 s apart where slice 3's S2 showed one; read in
+  S7 with `heroku logs --ps backgroundworker.1 -n 300` for a crash or restart line between them.
+  Then `master` merged into this branch as `3f67af13`; `2099 examples, 0 failures`, routes 583 and
+  P-PROD `"8.1.4.1"` on the merge (step 1).
