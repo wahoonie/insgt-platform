@@ -648,7 +648,37 @@ recorded beside step 3's (R2's lograge reading; not a criterion — a rise is a 
 is read against modification E's baseline). S9: the first `import_listings` check-in after the push
 arrives on time, **judged in UTC** (about :36–:45 past each UTC hour).
 
-RECORDED: ___
+RECORDED:
+
+```
+➜  insgt-api git:(master) heroku logs -n 1500 --app insgtapi > /tmp/s7.log
+➜  insgt-api git:(master) head -1 /tmp/s7.log | cut -c1-32
+2026-11-09T13:40:33.317455+00:00
+➜  insgt-api git:(master) tail -1 /tmp/s7.log | cut -c1-32
+2026-11-09T15:11:09.832276+00:00
+➜  insgt-api git:(master) grep -c "status=5" /tmp/s7.log
+0
+➜  insgt-api git:(master) grep -oE '\] [A-Z][A-Za-z0-9]*(::[A-Z][A-Za-z0-9]*)* \(' /tmp/s7.log | sort | uniq -c | sort -rn
+➜  insgt-api git:(master) grep -c "status=422" /tmp/s7.log
+0
+➜  insgt-api git:(master) grep -c "NotNullViolation" /tmp/s7.log
+0
+➜  insgt-api git:(master)
+```
+
+- **S9** (Dan, Honeybadger → Check-Ins, read at about 13:40 UTC): `import_listings` "is reporting",
+  last seen "4 minutes ago" — about 13:36 UTC, the first check-in after the 13:27:45 UTC push and
+  inside the :36–:45 slot; next expected "1 hour from now" (report period 1 hour, grace 30 minutes).
+  **Pass.**
+- **S7** (Dan, read at about 15:11–15:19 UTC, more than an hour after the push). **Pass.**
+  - `heroku logs -n 1500`: the buffer spans `2026-11-09T13:40:33.317455+00:00` …
+    `2026-11-09T15:11:09.832276+00:00` (about 1 h 31 min, starting 13 min after the push).
+    `status=5` `0`; no exception class at all, not even `ActionController::RoutingError`;
+    `status=422` `0`, as step 3's (S12's own 422, at about 13:32 UTC, falls before the buffer);
+    `NotNullViolation` `0`.
+  - Papertrail, which covers the push through the read: `status=5` — the newest match is
+    `Nov 02 11:54:42 AM` (H12 request timeouts on `web.1`, a week before the push), so none since
+    the push; `NotNullViolation` — "No matching events", searched back to Oct 29 at 07:00 PM.
 
 ### 7. 24 hours after the push (SH, S13)
 
@@ -817,3 +847,7 @@ written by the slice, and the dangling rows are exactly as they were.
   boot), S1 and the uptime check, S0 (context `8.1.4.1`, `v671`), S3 (`8.1.4.1`, `false`), S10, S4,
   S5, S6 and **S12 (`422` `["Property must exist"]`, count unchanged at 17140)**; Honeybadger shows
   only the marker in the 30 minutes (step 5).
+- **2026-11-09 — S9 and S7 pass** (Dan): `import_listings` checked in at about 13:36 UTC, the first
+  slot after the push. The buffer 13:40–15:11 UTC holds no `status=5`, no exception class, no 422 and
+  no `NotNullViolation`; Papertrail has no `status=5` since Nov 02 and no `NotNullViolation` back to
+  Oct 29 (step 6).
