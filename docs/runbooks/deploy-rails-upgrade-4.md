@@ -1,12 +1,14 @@
 # Runbook: Rails Upgrade Slice 4 — `belongs_to` optionality follows column nullability
 
-**Last updated:** 2026-11-05
+**Last updated:** 2026-11-09
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~45 min of read-only production reports at Thursday's review and again on the
 morning; ~30 min for the push and step 5's checks; S7 one hour after the push; S9 at the first hourly
 import; SH and S13 24 h later
-**Status:** Draft — implemented and verified in development 2026-11-03; two review rounds done
-2026-11-03; round 2's open finding fixed as commit 5 on Dan's decision
+**Status:** Ready — implemented and verified in development 2026-11-03 (step 1); two review rounds of
+`predeploy-review-rails` done 2026-11-03; round 2's finding fixed as commit 5, no third round (Dan's
+decision); the slice's diff on the merge `6e0e9953` is identical to the reviewed one. Monday's
+prerequisite reads pass (2026-11-09). Awaiting Dan's merge.
 
 ## Summary
 
@@ -17,7 +19,8 @@ the orders-CSV hotfix (`bead424b`…`0ec0b0fa`, merged as `8b726308`) landed on 
 was approved. It touches `orders_controller.rb`, `lib/order_param.rb`, `application_controller.rb`'s
 `render_bad` and one new spec file (21 examples); no model, so the plan's reflection table stands.
 On 2026-11-05 `master` moved again — v669, the Rails 8.1.4.1 security bump (`24cd8180`,
-`Gemfile.lock` only) — and was merged into the branch as `3f67af13` (Deploy log).
+`Gemfile.lock` only) — and was merged into the branch as `3f67af13`; on 2026-11-06 it moved once more
+— v670, the Forwarded-header fix (`ff4b3353`) — merged as `6e0e9953` (Deploy log).
 
 1. `39b213f3` test: pin belongs_to optionality to column nullability — five structural examples
    appended to `spec/architecture/rails_upgrade_spec.rb`; red on three by design until commit 4
@@ -46,9 +49,14 @@ on a Thursday by Dan's decision (§2.4 item 4 says Mon–Wed; a security release
 `Deploy 8b726308` (the hotfix, 2026-11-02 14:07:20 -0500) and v668 `Set WEB_CONCURRENCY,
 RAILS_MAX_THREADS config vars` (15:29:33 -0500), on v666 (`05e3fd42`, slice 3). `master` was merged
 into the branch as `3f67af13` and the suite re-run on it (step 1), so production's code is this
-branch's base and **v669 is the rollback target**. If `master` moves again before the push, repeat:
+branch's base and v669 was the rollback target. If `master` moves again before the push, repeat:
 merge `master` into the branch, rerun the suite on the merge, and move the "before" captures and
 the rollback target to the new release.
+
+**Production is now v670** (Dan, `heroku releases`, 2026-11-09): `Deploy ff4b3353`, 2026-11-06
+07:59:16 -0500, the Forwarded-header fix (`77fcef70`: one initializer and one spec, no gem change).
+`master` was merged into the branch again as `6e0e9953` and the suite re-run on it, so **v670 is the
+rollback target** and step 3's "before".
 
 **Where this sits.** The fourth of six deploy mornings: 5a (Tue 11-10), 5b (Wed 11-11), the quiet
 week to Wed 11-18, then the Render rehearsal (§6).
@@ -130,11 +138,16 @@ make the window.**
       v667, a pool, timeout or memory error against v668. From 2026-11-05 17:30 UTC it also holds
       v669 (Rails 8.1.4.1): an error first seen after that in `remote_ip`, strong parameters, the
       sanitizer or tag helpers, sessions, Active Storage or `safe_constantize` is triaged against
-      v669 first — the files that release touched. Observed (Dan, Thu 2026-11-05, before v669):
+      v669 first — the files that release touched. From 2026-11-06 12:59 UTC it also holds v670
+      (the Forwarded-header fix): an error in `remote_ip` or an `IpSpoofAttackError` is triaged
+      against v670 first. Observed (Dan, Thu 2026-11-05, before v669):
       **passes**. All three searches return No Results, each run twice, once with `-is:resolved`
       and once with `is:resolved`, both with `-is:ignored`. Nothing new from v666, v667 or v668,
       and S-DEP's `RailsDeprecation` has no new occurrence. Monday, the same three searches for
-      v669's days: ___
+      v669's and v670's days (Dan, 2026-11-09): **passes**. All three searches return No Results,
+      each run twice, once with `-is:resolved` and once with `is:resolved`, both with
+      `-is:ignored`; the window still opens 2026-11-02 05:12 UTC-8, so it spans v667 to v670.
+      Nothing new, and S-DEP's `RailsDeprecation` has no new occurrence.
 - [x] **Honeybadger baseline for the 17** (modification E; Dan, before Thursday's review):
 
       ```
@@ -149,18 +162,23 @@ make the window.**
       `ActiveRecord::StatementInvalid` or `PG::` errors in `app/` or `lib/`. The only controller
       `rescue StandardError` is `OrdersController#temp_credentials` (`orders_controller.rb:43`),
       which writes nothing. `config/honeybadger.yml` ignores no exceptions. So the 17 are unexercised in production, and
-      SH's "must exist" watch expects nothing.
-- [ ] **The nullability STOP reads `OK`**, and the null-count and dangling-key reports are pasted,
+      SH's "must exist" watch expects nothing. Monday re-read (Dan, 2026-11-09): No Results with
+      `-is:resolved` and with `is:resolved`, both with `-is:ignored`; still zero hits.
+- [x] **The nullability STOP reads `OK`**, and the null-count and dangling-key reports are pasted,
       **twice** — Thursday's review and the morning of the push (step 2; modification D).
-      Thursday: done, `OK`; Monday: ___
-- [ ] **The dangling-key rule** (step 2) applied to both reads: no STOP, or the STOP resolved.
-      Thursday: no STOP; Monday: ___
-- [ ] Review rounds complete (two rounds of `predeploy-review-rails`, Codex second opinion included);
+      Thursday: done, `OK`; Monday: done, `OK` (12:40–12:45 UTC)
+- [x] **The dangling-key rule** (step 2) applied to both reads: no STOP, or the STOP resolved.
+      Thursday: no STOP; Monday: no STOP — the same counts, and the named rows byte-identical to
+      Thursday's
+- [x] Review rounds complete (two rounds of `predeploy-review-rails`, Codex second opinion included);
       this runbook's Status is `Ready`
 - [ ] Dan has merged `chore/rails-upgrade-slice-4` into `master` and `bundle exec rspec` is green
-      **on the merge**: expected `2099 examples, 0 failures`, 0 `DEPRECATION WARNING` lines if `master`
-      is still `24cd8180` (sourced 2026-11-05 on the merge `3f67af13`: 2,080 + 19, the 8.1.4.1 bump
-      adds no example); a different count is sourced before the push, not recomputed
+      **on the merge**: expected `2100 examples, 0 failures`, 0 `DEPRECATION WARNING` lines if `master`
+      is still `ff4b3353` (sourced 2026-11-09 on the merge `6e0e9953`: `2100 examples, 0 failures`,
+      72.1 s — `3f67af13`'s 2,099 plus `spec/requests/forwarded_header_spec.rb`, the only spec file
+      `master` added, whose dry run is `1 example`; re-run by Claude, 67.9 s: the same count,
+      0 `DEPRECATION WARNING` lines, the 24 `:unprocessable_entity` warnings unchanged); a different
+      count is sourced before the push, not recomputed
 - [ ] The production-config probe (step 1, P-PROD) printed the expected lines on the merge
 - [ ] Pre-push captures (step 3) recorded below, on the release that is live at that moment
 
@@ -438,9 +456,30 @@ reports gave 39, 52 and 3 result sets, 0 errors. **No STOP.**
   2017-07-07 … 2019-05-02, 24 active; 32 `tags_resources` rows `434522`…`434553`, tag 69, photo
   ids `549637`…`549668`, all active, all 2025-06-17. No new writer since the restore.
 
-RESULTS — Monday 2026-11-09 (the same): ___
+RESULTS — Monday 2026-11-09 (the same): read at 12:40–12:45 UTC (04:40–04:45 PT), files
+`tmp/{prod-columns,null-counts,dangling,dangling-rows}-2026-11-09.*`. The reports gave 39, 52 and 3
+result sets, 0 errors. **No STOP.** The null-count and dangling outputs were first redirected to the
+`-2026-11-05` names. That overwrote Thursday's raw files, so Thursday's numbers now survive only as
+recorded above. Both outputs were renamed to `-2026-11-09` at 12:43 UTC. (a) ran on the branch at
+`3f67af13`, just before `master` was merged in again; that merge touches no `db/` file, so
+`schema.rb` is the same on the merge.
 
-Disposition (Dan): ___
+- **(a) Nullability:** `wc -l` → `220`; `schema.rb columns=219 database columns=219`,
+  `OK: no nullability mismatch`.
+- **(b) Null counts:** `nulls = 0` on a table with rows for exactly the same five (row counts):
+  `areas.city_id` (3,529), `areas.area_type_id` (3,529), `notifications.order_event_id` (622),
+  `order_url_groups.order_id` (216), `photos.order_id` (639,912). `headshots` is still empty. Every
+  other column has nulls.
+- **(c) Dangling:** D1–D51 are 0 except **D29 = 2, D39 = 27, D50 = 32**, unchanged since Thursday and
+  at the restore's ceiling. D52 `1:4660, 7:730010` lists only `1:` and `7:` (type 1 unchanged since
+  Thursday; type 7 +5,419, live tagging).
+- **Named rows** (12:44:58 UTC): byte-identical to Thursday's `tmp/dangling-rows-2026-11-05.txt` —
+  orders `2827` and `4302`; `orders_users` `user_id = 0`, 27 rows, 24 active; `tags_resources`
+  `434522`…`434553`, tag 69. No new writer.
+
+Disposition (Dan): proceed — the counts are at or below the restore's; the 2 orders, 27
+`orders_users` rows and 32 `tags_resources` rows stay as they are and go to §8 as one cleanup item;
+no migration.
 
 ### 3. Pre-push captures (on the host, on the release that is live)
 
@@ -453,7 +492,7 @@ heroku logs -n 1500 --app insgtapi > /tmp/s7-before.log
 grep -c "status=422" /tmp/s7-before.log
 head -1 /tmp/s7-before.log | cut -c1-32
 tail -1 /tmp/s7-before.log | cut -c1-32
-RELEASE=v669   # or the newer one `heroku releases -n 3` printed, if master moved
+RELEASE=v670   # or the newer one `heroku releases -n 3` printed, if master moved again
 heroku run --no-tty --app insgtapi rails runner "Notifier.send_error_email('rails upgrade slice 4', 'release $RELEASE').deliver_now"
 ```
 
@@ -479,7 +518,7 @@ heroku releases -n 1 -a insgtapi          # record the release (vNNN) and its ti
 ```
 
 No gem change beyond v669's, so the build installs nothing new. A failed build is not a release;
-v669 stays.
+v670 stays.
 
 RECORDED: ___
 
@@ -594,8 +633,8 @@ RECORDED: ___
 heroku rollback --app insgtapi
 ```
 
-Back to v669 (Rails 8.1.4.1 on the hotfix's code, with v668's `WEB_CONCURRENCY` and
-`RAILS_MAX_THREADS`), or to the
+Back to v670 (Rails 8.1.4.1 on the hotfix's code plus the Forwarded-header fix, with v668's
+`WEB_CONCURRENCY` and `RAILS_MAX_THREADS`), or to the
 release step 3 recorded if `master` moved. Nothing to undo: no migration, no ENV change, no data
 written by the slice, and the dangling rows are exactly as they were.
 
@@ -698,3 +737,12 @@ written by the slice, and the dangling rows are exactly as they were.
   S7 with `heroku logs --ps backgroundworker.1 -n 300` for a crash or restart line between them.
   Then `master` merged into this branch as `3f67af13`; `2099 examples, 0 failures`, routes 583 and
   P-PROD `"8.1.4.1"` on the merge (step 1).
+- **2026-11-09 — Monday's reads; `master` merged into the branch again** (Dan): step 2's three
+  reports and the named rows, no STOP (step 2 RESULTS); the Honeybadger reads, No Results
+  (Prerequisites). `master` had moved to `ff4b3353` (2026-11-06, `fix/ignore-forwarded-header`:
+  `config/initializers/forwarded_priority.rb` and `spec/requests/forwarded_header_spec.rb`; no `db/`
+  or `Gemfile.lock` change). It was merged into this branch as `6e0e9953`. `ff4b3353` is v670
+  (2026-11-06 07:59:16 -0500), now the rollback target and step 3's "before". On `6e0e9953`:
+  `2100 examples, 0 failures` (72.1 s; +1, `forwarded_header_spec.rb`), re-run by Claude with
+  0 `DEPRECATION WARNING` lines; `bin/rails routes` byte-identical to `master` `ff4b3353`'s (583
+  lines, from a scratch worktree), `active_storage` `0`. Still to record there: P-PROD: ___
