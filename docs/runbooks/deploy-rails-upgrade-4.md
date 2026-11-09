@@ -172,16 +172,19 @@ make the window.**
       Thursday's
 - [x] Review rounds complete (two rounds of `predeploy-review-rails`, Codex second opinion included);
       this runbook's Status is `Ready`
-- [ ] Dan has merged `chore/rails-upgrade-slice-4` into `master` and `bundle exec rspec` is green
+- [x] Dan has merged `chore/rails-upgrade-slice-4` into `master` and `bundle exec rspec` is green
       **on the merge**: expected `2100 examples, 0 failures`, 0 `DEPRECATION WARNING` lines if `master`
       is still `ff4b3353` (sourced 2026-11-09 on the merge `6e0e9953`: `2100 examples, 0 failures`,
       72.1 s — `3f67af13`'s 2,099 plus `spec/requests/forwarded_header_spec.rb`, the only spec file
       `master` added, whose dry run is `1 example`; re-run by Claude, 67.9 s: the same count,
       0 `DEPRECATION WARNING` lines, the 24 `:unprocessable_entity` warnings unchanged); a different
-      count is sourced before the push, not recomputed
+      count is sourced before the push, not recomputed. **Merged** 2026-11-09 08:16:15 -0500 as
+      `316fa0e1` (tree identical to `6e0e9953`); on it (Claude, 65.4 s): `2100 examples, 0 failures`,
+      0 `DEPRECATION WARNING` lines, the 24 `:unprocessable_entity` warnings unchanged
 - [x] The production-config probe (step 1, P-PROD) printed the expected lines on the merge
       (`6e0e9953`, 2026-11-09 13:05 UTC)
-- [ ] Pre-push captures (step 3) recorded below, on the release that is live at that moment
+- [x] Pre-push captures (step 3) recorded below, on the release that is live at that moment (v670,
+      2026-11-09 13:17–13:18 UTC; the S6 email arrived)
 
 ## Pre-deploy
 
@@ -526,7 +529,20 @@ Expected before: S4 `["Carlsbad", "Oceanside", "Leucadia"]`; S10 `7.2`; an area 
 (whatever they print is S12's "before"); a `status=422` count and the buffer's span (S7's comparison,
 not a criterion); S6 the email arrives.
 
-RECORDED (before): ___
+RECORDED (before) — Dan, on the host, 2026-11-09 13:17–13:18 UTC (05:17–05:18 PT), on **v670**
+(`Deploy ff4b3353`, 2026/11/06 07:59:16 -0500, current), so `RELEASE=v670`. Each runner printed the
+Active Storage WARN line first (Known):
+
+- **S4:** `["Carlsbad", "Oceanside", "Leucadia"]` — as expected.
+- **S10:** `7.2` — as expected.
+- **S12's "before":** `Area.unscoped.order(:id).first.id` → `1` (S12's `areaId`);
+  `AreasProperty.unscoped.count` → `17140`.
+- **S7's "before":** `0` `status=422` lines in a 1,500-line buffer spanning
+  `2026-11-09T11:26:31.889365+00:00` … `2026-11-09T13:17:39.499293+00:00` (about 1 h 51 min).
+- **S6:** `Notifier.send_error_email('rails upgrade slice 4', 'release v670').deliver_now` returned
+  without an error (13:18:35 UTC); `SystemError::rails upgrade slice 4` arrived at
+  ops@insightphotos.net at 13:18:36 UTC (05:18 PST), from team@insightphotos.net through SendGrid,
+  body `release v670` — as expected.
 
 ## Deploy
 
@@ -767,3 +783,7 @@ written by the slice, and the dangling rows are exactly as they were.
   0 `DEPRECATION WARNING` lines; `bin/rails routes` byte-identical to `master` `ff4b3353`'s (583
   lines, from a scratch worktree), `active_storage` `0`; P-PROD every line as expected with
   `"8.1.4.1"`, `DEPRECATION` `0` (step 1).
+- **2026-11-09 — merged into `master`; step 3's captures** (Dan): `chore/rails-upgrade-slice-4`
+  merged as `316fa0e1` (08:16:15 -0500; tree identical to `6e0e9953`); `2100 examples, 0 failures`,
+  0 deprecation lines on it (Claude). Step 3 on v670, 13:17–13:18 UTC: S4, S10 as expected; S12's
+  "before" area `1`, `AreasProperty` `17140`; S7's "before" `0` 422s; the S6 email arrived.
