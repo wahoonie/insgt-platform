@@ -28,6 +28,11 @@ base and reproduced line for line (step 1).
 **No migration, no DDL, no ENV change, no gem change, no client release.** `config.load_defaults`
 stays `7.2`, and no 8.1 flag moves.
 
+**`master` moved after the branch was cut.** It is now `3b35d11b`, the Client-IP header fix
+(`cd1e3737`), and that fix was not pushed as of 2026-11-09 16:32 UTC. It touches no file 5a touches,
+and the merge was rehearsed (Prerequisites; step 2). Whether it ships on its own first decides 5a's
+"before" and rollback release (Prerequisites).
+
 **What changes in production:**
 
 - **`Regexp.timeout` `nil` → `1.0`**, process-wide: web, worker and every Scheduler one-off. A match
@@ -94,8 +99,20 @@ that hour's :30 run is the watched one; a later push moves the reads an hour, no
       Known)
 - [x] This runbook's Status is `Ready` (2026-11-09, after the v8 write-back)
 - [ ] Dan has merged `chore/rails-upgrade-slice-5a` into `master`, and `bundle exec rspec` is green
-      **on the merge**: expected `2103 examples, 0 failures` and 0 `DEPRECATION WARNING` lines if
-      `master` is still `316fa0e1`. A different count is sourced before the push, not recomputed.
+      **on the merge**. **`master` moved on 2026-11-09** to `3b35d11b` (`Merge branch
+      'fix/ip-spoof-attack'`, 16:32 UTC, local and not pushed then), whose one commit `cd1e3737` adds
+      `config/initializers/client_ip_header.rb` and one example in `spec/requests/forwarded_header_spec.rb`.
+      Expected on the merge with `master` at `3b35d11b`: `2104 examples, 0 failures`, 0
+      `DEPRECATION WARNING` lines. That was sourced 2026-11-09 by Claude on a scratch merge in a
+      detached worktree (`a12699c8`, not kept): plain `2104 examples, 1 failure` — the known
+      one-second flake `calculator_spec.rb:965` (expected `16:42:42`, got `16:42:41`), green alone —
+      then `2104 examples, 0 failures` on the rerun; `CI=1` `2104 examples, 0 failures`; the 24 rack
+      warnings. If `master` is still `316fa0e1`, the expected count is `2103`. Any other count is
+      sourced before the push, not recomputed.
+- [ ] **Which release carries the Client-IP fix.** If `3b35d11b` is pushed on its own before 5a, its
+      release is 5a's "before" and rollback target, and 5a's release carries only 5a. If it ships
+      with 5a, the release carries both, and an `IpSpoofAttackError` or `remote_ip` error in SH is
+      triaged against `client_ip_header.rb` first. Recommended: push it on its own.
 - [ ] The production-config probe (step 2) printed the expected lines on the merge.
 - [ ] Pre-push captures (step 3) recorded, on the release that is live at that moment.
 
@@ -236,6 +253,13 @@ false
 false
 --- DEPRECATION lines: 0
 ```
+
+REHEARSED (2026-11-09 16:45:06 UTC, by Claude, on a scratch merge of the branch into `master`
+`3b35d11b` in a detached worktree, `a12699c8`, not kept — the tree Dan's merge produces while `master`
+stays there): `exit 0`; one WARN line; `"8.1.4.1"`, `true`, `true`, the three `[:notify]` pairs, one
+`Reporting error` line, `true`, `false`, `7.2`, `583`, `false`, `true`, `1.0`, `true`, `false`, `true`,
+`true`, `false`, `:log`, `false`; `DEPRECATION` `0`. Every line as expected; `client_ip_header.rb`
+changes none of them.
 
 RESULTS (on the merge, before the push): ___
 
