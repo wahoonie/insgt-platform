@@ -556,7 +556,11 @@ heroku releases -n 1 -a insgtapi          # record the release (vNNN) and its ti
 No gem change beyond v669's, so the build installs nothing new. A failed build is not a release;
 v670 stays.
 
-RECORDED: ___
+RECORDED: **v671**, `git push heroku master` of `316fa0e1` (Dan, 2026-11-09; `heroku/master` →
+`316fa0e1`). Dynos restarted 08:27:50–08:27:56 -0500 (13:27:50–13:27:56 UTC, 05:27 PST): before the
+09:00 PT window, as slices 2 and 3 were, and outside the 08:00 and 12:00 delivery windows.
+`heroku releases -n 1`: `v671   Deploy 316fa0e1   ops@insightphotos.net   2026/11/09 08:27:45 -0500`
+(13:27:45 UTC).
 
 ### 5. Within 30 minutes
 
@@ -564,7 +568,7 @@ Set `RELEASE` and `JWT` first. Every `heroku run … rails runner` prints the Ac
 before its own output (Known); it is not a failure.
 
 ```bash
-RELEASE=vNNN   # the release `heroku releases -n 1` printed
+RELEASE=v671   # the release `heroku releases -n 1` printed
 JWT='<a real JWT, copied from an insgt-ops session>'
 heroku ps --app insgtapi
 heroku logs --ps backgroundworker.1 -n 300 --app insgtapi | grep Booted
@@ -589,7 +593,7 @@ Expected, reasoned before the push:
 | S2 | `heroku ps`, `grep Booted` | all dynos up; `Booted Rails 8.1.4.1 application in production environment` |
 | S1 | `/up` | `200`; the Honeybadger uptime check green |
 | S0 | marker | a notice id; `UpgradeMarker` gains an occurrence with context `rails: 8.1.4.1` and the real release |
-| S3 | runbook 3 step 5's runner | `8.1.4`, `false` |
+| S3 | runbook 3 step 5's runner | `8.1.4.1`, `false` (corrected 2026-11-09, before S3 ran: the row predated v669; S2, S0 and P-PROD already expected `8.1.4.1`) |
 | S10 | `loaded_config_version` | `7.2` |
 | S4 | nearby cities | identical to step 3's capture |
 | S5 | Stripe | `true` |
@@ -600,7 +604,28 @@ A boot failure on any dyno is a rollback. An `ActiveRecord::NotNullViolation` in
 these 30 minutes is a path the slice should have turned into a 422: record it, and roll back if it is
 a daily path.
 
-RECORDED: ___
+RECORDED — Dan, on the host, 2026-11-09 13:29–13:37 UTC, `RELEASE=v671`. **Every check passes.** Every runner printed the
+Active Storage WARN line first (Known):
+
+- **S2:** `backgroundworker.1` up 08:27:50 -0500, `web.1` 08:27:55, `web.2` 08:27:56 — all up;
+  `Booted Rails 8.1.4.1 application in production environment` from `backgroundworker.1` at
+  13:27:54 UTC, one boot (v669 showed two). **Pass.**
+- **S1:** `/up` → `200`; the Honeybadger uptime check reads "Insight API Production is up"
+  (`https://api.insightphotos.net/up`, last checked a minute before the read). **Pass.**
+- **S0:** notice `999db3c3-ea46-4f68-8ccd-e3f7eb8a513a` (`code=201`, 13:29:35 UTC). `UpgradeMarker`
+  (fault 135218267) gains the occurrence at 08:29 -05:00 with context `{"rails" => "8.1.4.1",
+  "release" => "v671"}`; count 5. **Pass.**
+- **S3:** `8.1.4.1`, `false` (13:35:05 UTC). **Pass.**
+- **S10:** `7.2`. **Pass.**
+- **S4:** `["Carlsbad", "Oceanside", "Leucadia"]`, identical to step 3's. **Pass.**
+- **S5:** `true`. **Pass.**
+- **S6:** `SystemError::rails upgrade slice 4` arrived at ops@insightphotos.net at 13:30:39 UTC,
+  body `release v671`. **Pass.**
+- **S12:** `{"errors":["Property must exist"]}` and `422`; then `AreasProperty.unscoped.count` →
+  `17140`, equal to step 3's — nothing written. **Pass; no rollback signal.**
+- **Honeybadger, the 30 minutes:** Errors with `-is:resolved -is:ignored` lists one fault,
+  `UpgradeMarker`, and "1 error notification received in the past hour" — the marker. No
+  `ActiveRecord::NotNullViolation`, nothing new. **Pass.**
 
 ### 6. One hour after the push (S7) and the first import (S9)
 
@@ -787,3 +812,8 @@ written by the slice, and the dangling rows are exactly as they were.
   merged as `316fa0e1` (08:16:15 -0500; tree identical to `6e0e9953`); `2100 examples, 0 failures`,
   0 deprecation lines on it (Claude). Step 3 on v670, 13:17–13:18 UTC: S4, S10 as expected; S12's
   "before" area `1`, `AreasProperty` `17140`; S7's "before" `0` 422s; the S6 email arrived.
+- **2026-11-09 — pushed as v671** (Dan): `Deploy 316fa0e1`, 08:27:45 -0500 (13:27:45 UTC, 05:27
+  PST); dynos up 13:27:50–13:27:56 UTC. Step 5 passes, every check: S2 (`Booted Rails 8.1.4.1`, one
+  boot), S1 and the uptime check, S0 (context `8.1.4.1`, `v671`), S3 (`8.1.4.1`, `false`), S10, S4,
+  S5, S6 and **S12 (`422` `["Property must exist"]`, count unchanged at 17140)**; Honeybadger shows
+  only the marker in the 30 minutes (step 5).
