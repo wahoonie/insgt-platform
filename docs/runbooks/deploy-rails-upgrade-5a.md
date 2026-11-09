@@ -5,10 +5,11 @@
 **Estimated duration:** ~25 min of prerequisite reads and captures; ~30 min for the push and step 5's
 checks; S7 one hour after the push; S9, S9b, S16 and the ops@ inbox at the first import that starts
 after the release; SH 24 h later
-**Status:** Draft — implemented and verified in development 2026-11-09 (step 1); two review rounds
-of `predeploy-review-rails` done the same day (Known), with round 1's finding fixed by amending
-commit 1 and no finding open after round 2. Awaiting Dan's verification gate; `Ready` after the v8
-write-back.
+**Status:** Ready — implemented and verified in development 2026-11-09 (step 1); two review rounds of
+`predeploy-review-rails` done the same day (Known; record `docs/architecture/reviews/2026-11-09-slice-5a-insgt-api.md`),
+with round 1's finding fixed by amending commit 1 and no finding open after round 2. The
+verification gate passed (Dan, 2026-11-09), and the v8 write-back is done. Awaiting slice 4's SH
+read and Dan's merge.
 
 ## Summary
 
@@ -91,7 +92,7 @@ that hour's :30 run is the watched one; a later push moves the reads an hour, no
       Record the last three arrival times; each is expected at about :35–:45 UTC.
 - [x] Review rounds complete (two rounds of `predeploy-review-rails`, Codex included; 2026-11-09,
       Known)
-- [ ] This runbook's Status is `Ready`
+- [x] This runbook's Status is `Ready` (2026-11-09, after the v8 write-back)
 - [ ] Dan has merged `chore/rails-upgrade-slice-5a` into `master`, and `bundle exec rspec` is green
       **on the merge**: expected `2103 examples, 0 failures` and 0 `DEPRECATION WARNING` lines if
       `master` is still `316fa0e1`. A different count is sourced before the push, not recomputed.
@@ -448,7 +449,8 @@ global off is a §7 decision, not an in-window fix (plan, Risks).
 - **5b's prerequisite:** step 6's four-part read passing on the watched run, and SH the next morning.
   The S15 and S17 "before" captures are taken on this release (plan, "Production"; runbook 5b).
 - `rails-upgrade.md` §4.6: 5a's "as deployed" line, and §6's calendar as it went. The v8 amendment
-  itself is written before the push (plan, Open questions 5).
+  itself was written before the push (2026-11-09; plan, Open questions 5). 5b's items go into v9
+  before 5b's push (Dan, 2026-11-09).
 
 ## Deploy log
 
@@ -458,3 +460,6 @@ global off is a §7 decision, not an in-window fix (plan, Risks).
 - **2026-11-09 — reviewed, two rounds** (Known): round 1's finding was fixed by amending commit 1 to
   `c966bb6e`, a spec-only change, and P1 was re-run there in a clean worktree, `2103 examples,
   0 failures` both ways. Round 2 found nothing.
+- **2026-11-09 — verification gate passed; written back** (Dan's approval): `rails-upgrade.md` v8,
+  the codebase notes, and the review record `docs/architecture/reviews/2026-11-09-slice-5a-insgt-api.md`.
+  Status `Ready`.
