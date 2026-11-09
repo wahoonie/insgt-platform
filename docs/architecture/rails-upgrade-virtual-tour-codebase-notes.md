@@ -8,14 +8,18 @@ file, not to distrust it. Gem-source citations name the gem version and file; th
 on 2026-10-31. Extended the same day by the Honeybadger change (v3, tour `chore/honeybadger` at `93f7d30`, off `main`
 `06ae511`) — the "Honeybadger (v3)" section and the render-pages.rb fix. Extended on 2026-11-01 by the §3.4 fixes
 (v4: tour `main` `ad04756`, branch `fix/cross-host-redirects` `156b7d4`) — rows marked "v4" and the "§3.4 fixes (v4)"
-section; every `listings_controller.rb` row was re-read at `156b7d4`.
+section; every `listings_controller.rb` row was re-read at `156b7d4`. Extended on 2026-11-02 by slice 1 (v5: tour
+branch `chore/rails-upgrade-slice-1` at `1f1ab0c`, off `main` `fc42d7a`) — rows marked "v5", the "Slice 1 (v5)" section
+and the appendix additions. The v5 `Gemfile`/`Gemfile.lock`/config line numbers are the branch's; `main` keeps the
+8.0.2 lines until Dan merges it.
 
 ## Gemfile and lockfile
 
 | File | Line | What it is |
 | :-- | :-- | :-- |
 | `Gemfile` | 4 | `ruby "3.4.12"` — unchanged by every slice |
-| `Gemfile` | 7 | `gem 'rails', '~> 8.0.2'` → `'~> 8.1.4'` (slice 1) |
+| `Gemfile` | 7 | `gem 'rails', '~> 8.0.2'` → `'~> 8.1.4'` (slice 1, `747b033`) |
+| `Gemfile.lock` | v5 lines | `action_text-trix (2.1.19)` 4; `actionpack (8.1.4)` 26; `activesupport (8.1.4)` 65; `concurrent-ruby (1.3.5)` 113; `font-awesome-rails` 127; `honeybadger (6.10.1)` 131; **`json (3.1.0)` 142**; `minitest (5.25.5)` 156; `nokogiri (1.18.8)` 168; `puma (6.6.0)` 195; `rack (3.1.15)` 198; `rails (8.1.4)` 206; `rails-html-sanitizer (1.6.2)` 224; `railties (8.1.4)` 227; `selenium-webdriver` 246; **`sprockets (4.4.1)` 250**; `sprockets-rails (3.5.2)` 254; `tailwindcss-rails` 259; `tsort (0.2.0)` 270; `web-console` 275; `webdrivers` 280; `DEPENDENCIES rails (~> 8.1.4)` 316; `RUBY VERSION` 325; `BUNDLED WITH 2.6.9` 328–329. No `CHECKSUMS` block. The rows below are the 8.0.2 lines on `main` |
 | `Gemfile` | 10 | `gem "sprockets-rails"` (unconstrained; sprockets itself is transitive) |
 | `Gemfile` | 13 | `gem "puma", "~> 6.0"` |
 | `Gemfile` | 27 | `gem "bootsnap", require: false` |
@@ -47,7 +51,9 @@ section; every `listings_controller.rb` row was re-read at `156b7d4`.
 | `config/environments/production.rb` | 26, 29 | `assume_ssl = true`, `force_ssl = true` — the 8.1 template comments both out (rejected) |
 | `config/environments/production.rb` | 36, 39 | `config.logger = ActiveSupport::TaggedLogging.logger(STDOUT)`; `log_level` from `RAILS_LOG_LEVEL` |
 | `config/environments/production.rb` | 42 | `silence_healthcheck_path = "/up"` (no `/up` route exists; the health route is `/heartbeat`) |
-| `config/environments/production.rb` | 45 | `active_support.report_deprecations = false` — OD2 flips it |
+| `config/environments/production.rb` | 45 | `active_support.report_deprecations = false` — OD2 flips it. **v5** (`1f1ab0c`): `:44` comment, `:45` `report_deprecations = true`, `:46` `deprecation = :log` → `DEPRECATION WARNING: …` on STDOUT through the tagged logger (activesupport 8.1.4 `railtie.rb:89–107`) |
+| `config/environments/development.rb` | 35 | v5 (`8ef2d8b`): `action_dispatch.verbose_redirect_logs = true` (8.1 template) |
+| `config/initializers/new_framework_defaults_8_1.rb` | 28, 36, 46, 61, 66, 74 | v5 (`8ef2d8b`): the **six** commented 8.1 settings — `escape_json_responses`, `escape_js_separators_in_json`, `raise_on_missing_required_finder_order_columns` (Active Record, not loaded), `action_on_path_relative_redirect`, `render_tracker`, `remove_hidden_field_autocomplete`; 0 live lines. Slice 2 deletes the file |
 | `config/environments/production.rb` | 55 | `# config.hosts = [` — host authorization off |
 | `config/environments/development.rb` | 32, 41 | `deprecation = :log`; `raise_on_missing_callback_actions = true` |
 | `config/environments/test.rb` | 16, 26, 32, 41 | `eager_load = ENV["CI"].present?`; `show_exceptions = :rescuable`; `deprecation = :stderr`; `raise_on_missing_callback_actions = true` |
@@ -56,7 +62,7 @@ section; every `listings_controller.rb` row was re-read at `156b7d4`.
 | `config/initializers/assets.rb` | 4 | `assets.version = "1.0"` |
 | `config/initializers/filter_parameter_logging.rb` | 6–8 | the stock list |
 | `config/routes.rb` | 1–27 | 15 routes: `:address/b/:id`, `:address/ub/:id`, `/s/:id`, `/su/:id` (redirect: true), `/r/:account_slug`, two pano routes (`api_subdomain: 'insgtapi'`), `/qb/:id`, `/qu/:id`, `/404`, `/500`, `/heartbeat`, `/` (all `via: :all`), and `root` under `constraints CustomDomainConstraint` |
-| `config/puma.rb` | 31–35 | threads from `RAILS_MAX_THREADS` (3), port from `PORT`, `plugin :tmp_restart`; **no `workers` line** (`WEB_CONCURRENCY` only in the comment at `:8`) → one Puma process |
+| `config/puma.rb` | 31–35 | threads from `RAILS_MAX_THREADS` (3), port from `PORT`, `plugin :tmp_restart`; **no `workers` line** (`WEB_CONCURRENCY` only in the comment at `:8`) → one Puma process. v5 (`8ef2d8b`, one comment line added at `:10–11`): threads `:28–29`, port `:32`, plugin `:35` |
 | `config/boot.rb` | 3–4 | bundler/setup, bootsnap/setup |
 
 ## Controllers, helpers, views, lib
@@ -64,17 +70,18 @@ section; every `listings_controller.rb` row was re-read at `156b7d4`.
 | File | Line | What it is |
 | :-- | :-- | :-- |
 | `app/controllers/application_controller.rb` | 1, 3 | `< ActionController::Base`; `protect_from_forgery with: :exception` |
-| `app/controllers/application_controller.rb` | 5–6, 10–21 | `before_action :set_locale` (subdomain → `I18n.locale`), `after_action :set_response_locale` (`Content-Language`) |
+| `app/controllers/application_controller.rb` | 5–6, 10–21 | `before_action :set_locale` (subdomain → `I18n.locale`), `after_action :set_response_locale` (`Content-Language`). v5 lines (`fc42d7a`): `:8`, `:9`, `:17–27` |
+| `app/controllers/application_controller.rb` | 7, 13–15 | v5 (`fc42d7a`, Dan): `before_action :render_html_for_any_accept` → `request.format = :html` on every request, so an `Accept: application/json` client gets HTML instead of a `MissingTemplate` 500. `/heartbeat` still answers `application/json` (`render json:` sets the type; P5 headers identical) |
 | `app/controllers/listings_controller.rb` | 4–5 | `before_action :find_listing, except: [:account, :redirect]`; `:ensure_correct_language, except: [:redirect]` — `@listing` is never set for `account` |
 | `app/controllers/listings_controller.rb` | 9, 50 (v4; was 49) | `redirect_to canonical_uri, status: :moved_permanently` — the API's `propertyWebsiteUrl*`/`customDomainUrl*` (insgt-api `app/models/listing.rb:524` builds it from `PROPERTY_WEBSITE_HOST`). v4 branch `156b7d4`: `, allow_other_host: true` |
-| `app/controllers/listings_controller.rb` | 43 (v4; was 42) | `redirect_to "#{ENV['LISTING_DOMAIN']}#{request.original_fullpath}"` — cross-host from `es.`; raised under the 7.0 defaults (§3.4 item 2). v4 branch `156b7d4`: `, allow_other_host: true` |
+| `app/controllers/listings_controller.rb` | 43 (v4; was 42) | `redirect_to "#{ENV['LISTING_DOMAIN']}#{request.original_fullpath}"` — cross-host from `es.`; raised under the 7.0 defaults (§3.4 item 2). v4 branch `156b7d4`: `, allow_other_host: true` — v5: merged into `main` at `b0ba43f`; `:9, 43, 50` unchanged at `fc42d7a` |
 | `app/controllers/listings_controller.rb` | 11, 57 (v4; was 56) | `render 'errors/not_found', layout: 'application'` |
 | `app/controllers/listings_controller.rb` | 18–29 (v4; was 17–28) | `account`: `InsightPhoto.find_for_account`; v4 `:22` `organizations = Array(@account[:organizations])` (`fc28ea9`), then `@brokerage`/`@team` from it; `render layout: 'account'` |
 | `app/controllers/listings_controller.rb` | 34, 38 (v4; was 33, 37) | `params.permit(:account_slug)`, `params.permit(:page)` |
 | `app/controllers/panos_controller.rb` | 2, 5, 8, 19 | `content_security_policy false, only: :show`; `before_action :find_pano, except: [:account]` (no `account` action); `redirect_to '/'`; `render action: :error` — no `panos/error` template (§3.4 item 3) |
 | `app/controllers/heartbeat_controller.rb` | 3 | `render json: { 'lub': 'dub' }, head: :ok` — the only `render json:` |
 | `app/controllers/errors_controller.rb` | 3, 7 | `render status: 404` / `500` |
-| `app/helpers/application_helper.rb` | 27, 58, 83, 192, 267 | `gsub` with string arguments — no regex literal anywhere in `app/`, `lib/`, `config/` |
+| `app/helpers/application_helper.rb` | 27, 58, 83, 192, 267 | `gsub` with string arguments — no regex literal anywhere in `app/`, `lib/`, `config/` (v5: until `5e1d381`, see `lib/insight_photo.rb:110`). v5 lines: `:29, 60, 85, 194, 269`, plus `:328` `gsub('#', '%23')` |
 | `app/helpers/application_helper.rb` | 131–138 | `description_for_locale` → `object[:description]` or `[:descriptionEs]` |
 | `app/helpers/application_helper.rb` | 181–188 | `account_url_link` builds HTML by string and returns `raw html` — the one `raw`; no `html_safe`, no `SafeBuffer#%` |
 | `app/helpers/application_helper.rb` | 204–210 | `branded?` — `params[:branded] == true` (route default) or `params[:ub] != 'true'` on a custom domain |
@@ -92,6 +99,7 @@ section; every `listings_controller.rb` row was re-read at `156b7d4`.
 | `app/views/listings/account.html.erb` | 5, 18, 68 | renders `agent_detail`; iterates `@response[:data]`; `@response[:metadata][:pageCount]` |
 | `app/views/components/_photo_grid.html.erb` | 5 | the AB 723 disclosure link (present on the `1qY5VLqV` render) |
 | `lib/insight_photo.rb` | 1 | `require 'net/http'` — the only `require` in app code |
+| `lib/insight_photo.rb` | 50, 88, 109–111 | v5 (`5e1d381`, Dan): `escape_token` — `ERB::Util.url_encode(token.to_s.gsub(/\s+/, ''))` on the listing id and the pano ids. **The first regex literal in `app/`/`lib/`** (design doc §4.3 row 9) |
 | `lib/insight_photo.rb` | 54, 73, 89, 99 | `Net::HTTP.get_response(URI.parse(url))` to `INSIGHT_API_ENDPOINT` |
 | `lib/insight_photo.rb` | 57, 76, 91 | `ActiveSupport::HashWithIndifferentAccess.new(JSON.parse(data))` |
 | `lib/image_handler.rb` | 74 | `Base64.strict_encode64(cloudfront_options.to_json)` — the only `to_json` |
@@ -110,7 +118,7 @@ section; every `listings_controller.rb` row was re-read at `156b7d4`.
 | `Procfile.dev` | 1–2 | `web: bin/rails server -p 3000`; `css: bin/rails tailwindcss:watch` |
 | `bin/render-build.sh` | 6, 15, 21–23 | `bundle lock --add-platform x86_64-linux`; the Tailwind 3.3.4 binary download; `tailwindcss:build`, `assets:precompile`, `assets:clean` under `set -o errexit` (`:3`) |
 | `render.yaml` | 3, 5, 6 | service `insgt-virtual-tour`; `buildCommand: "./bin/render-build.sh"`; `startCommand: "bundle exec puma -C config/puma.rb"` |
-| `public/400.html, 404.html, 406-unsupported-browser.html, 422.html, 500.html` | — | stock Rails 8.0 pages, last touched by `1ed6f91` (2025-06-02); never customised |
+| `public/400.html, 404.html, 406-unsupported-browser.html, 422.html, 500.html` | — | stock Rails 8.0 pages, last touched by `1ed6f91` (2025-06-02); never customised. v5 (`8ef2d8b`): the stock 8.1 pages (OD4); `404.html` 4,836 → 5,201 bytes, `500.html` 7,918 → 8,283 — what P5 and slice 0 see for `/404` and `/500` from slice 1 on |
 | `public/favicon.ico`, `apple-touch-icon*.png` | — | the icons that serve; no layout references `icon.svg`/`icon.png` |
 | `CLAUDE.md` | 3 | "Stateless Rails 8.0 app" — update after slice 1 |
 | `insgt-platform/CLAUDE.md` | 33 | the table row "Rails 8.0, Tailwind — 3002" — update after slice 1 |
@@ -143,7 +151,11 @@ section; every `listings_controller.rb` row was re-read at `156b7d4`.
 | rubygems.org/gems/rails/versions | 8.1.4 2026-09-24; 8.1.3.1 and 8.0.5.1 2026-07-29; 8.1.3 and 8.0.5 2026-03-24; 8.1.2.1 and 8.0.4.1 2026-03-23; 8.1.2 2026-01-08; 8.1.1 and 8.0.4 2025-10-28; 8.1.0 2025-10-22; 8.0.3 2025-09-22; 8.0.2 2025-03-12; nothing newer than 8.1.4 |
 | rubyonrails.org/maintenance | 8.1.x security until 2027-10-10 (bug fixes until 2026-10-10); 8.0.x security until 2026-11-07 (bug fixes until 2026-05-07); "security fixes for two years after the first release in its series" |
 | guides.rubyonrails.org/upgrading_ruby_on_rails.html | `app:update`, the shim mechanism, `load_defaults` stays until changed; Rails 8.0 and 8.1 need Ruby ≥ 3.2.0 |
-| railties 8.1.4 `new_framework_defaults_8_1.rb.tt` | the seven commented settings (`escape_json_responses`, `escape_js_separators_in_json`, `raise_on_missing_required_finder_order_columns`, `action_on_path_relative_redirect`, `render_tracker`, `remove_hidden_field_autocomplete`) |
+| railties 8.1.4 `new_framework_defaults_8_1.rb.tt` | the six commented settings (`escape_json_responses`, `escape_js_separators_in_json`, `raise_on_missing_required_finder_order_columns`, `action_on_path_relative_redirect`, `render_tracker`, `remove_hidden_field_autocomplete`) — v5 count corrected from "seven" |
+| railties 8.0.2 / 8.1.4 `lib/rails/application/default_middleware_stack.rb` | `:86` — 8.0.2 `middleware.use ::ActionDispatch::PermissionsPolicy::Middleware`; 8.1.4 the same `if config.permissions_policy`. The cause of the 28 → 27 middleware difference (v5) |
+| activesupport 8.1.4 `lib/active_support/railtie.rb` | `:89–107` `active_support.deprecation_behavior`: `report_deprecations == false` silences every deprecator; otherwise `config.active_support.deprecation` sets the behavior |
+| activesupport 8.1.4 `lib/active_support.rb` | `:124–129` the `to_time_preserves_timezone` getter warns (deprecated, removed in 8.2) — why the probe silences it (v5) |
+| sprockets-rails 3.5.2 `lib/sprockets/railtie.rb` | `:134–136` `debug = false`, `compile = true`, `digest = true`; `:231–234` `resolve_with` = `[:manifest, :environment]` when not debug — a `public/assets` manifest wins in development and test (v5, design doc §4.0) |
 
 ---
 
@@ -386,6 +398,64 @@ S-ENV gate (row 11) is unaffected by v4.
 
 ---
 
+## Slice 1 (v5, 2026-11-02)
+
+Tour branch `chore/rails-upgrade-slice-1` off `main` `fc42d7a`: `65e341b`, `747b033`, `8ef2d8b`, `1f1ab0c` (design doc
+§4.2 implementation record). The real tree was only committed to; every check ran on an rsync copy of a commit
+(`rsync -a --exclude .git --exclude node_modules --exclude tmp --exclude log --exclude coverage --exclude .ruby-lsp
+--exclude public/assets`) through `pchecks.sh`, and was compared with `compare.sh` (appendix). insgt-api ran on port 3000
+for P4b and P5. Stopping the platform `bin/dev` stops the API too; it was restarted alone with the `Procfile.dev` `api:`
+command.
+
+Re-survey on `fc42d7a` (copies `survey`, `upd`):
+- `bundle lock --update rails sprockets --conservative` → the §3.1 diff plus `action_text-trix`; `honeybadger`,
+  `ostruct`, `PLATFORMS` untouched. The branch's `Gemfile.lock` is byte-identical to that copy's (`cmp`).
+- `app:update --force` → the §4.2 table's set: `create` ci.rb, the 8.1 shim, bin/ci, icon.png, icon.svg; `force`
+  puma.rb, development.rb, production.rb, content_security_policy.rb, bin/dev, the five public pages; cors.rb created and
+  removed. production.rb's hunks: `:19` dropped, `:26` and `:29` commented out, one comment reworded. Public pages 36–44
+  `diff` lines each (`diff | wc -l`).
+- The real tree held `public/assets/.sprockets-manifest-3d7a35ee….json` (2026-10-31 21:26, 42 files), left by an
+  earlier P3 run. It was left in place (gitignored); it is why the checks run on copies.
+
+The baseline on `main` (copy `main`, 8.0.2, sprockets 4.2.2) gave these readings:
+- **P1:** 2.
+- **P2:** clean.
+- **P5 (test env):**
+  - `HOST=www.insightlistings.com`: branded `1qY5VLqV` 200 205,673 bytes; unbranded 200 202,944;
+    `/1120-hunter-san-diego-92123/b/4erZP12X` 200 109,385; `/heartbeat` 200 13; `/404` 200 4,836; `/500` 200 7,918;
+    `/` 404 1,790; `/r/colleen-crane` 200 7,892; `/r/gregory-butler` 200 8,223; `/s/` and `/su/` 301 →
+    `http://localhost:3002/…/b|ub/1qY5VLqV`. That is 301 on this host since `b0ba43f`; the survey saw
+    `UnsafeRedirectError`.
+  - `HOST=localhost`: `/s/`, `/su/` 301, same `Location`.
+  - `HOST=es.insightlistings.com`: the branded tour 302 → `https://insightlistings.com/…`.
+- **P6:** 15 routes; 28 middleware lines.
+- **P3:** green.
+- **P4:** `boot ok 8.0.2 sprockets=4.2.2 json=2.9.1 heartbeat=200`.
+- **P4b:** 194,295 bytes, 8 tags, 4 assets, `missing=[]`.
+
+| After | P1 | P5 vs previous | P6 middleware | P3 | P4 `boot ok` | P4b |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| `65e341b` (sprockets 4.4.1, Rails 8.0.2) | 2 | identical | 28, identical | green | `8.0.2 sprockets=4.4.1 json=2.9.1 heartbeat=200` | identical, `missing=[]` |
+| `747b033` (Rails 8.1.4) | 0 | identical; stderr 0 `DEPRECATION` | 27, `PermissionsPolicy::Middleware` gone | green | `8.1.4 sprockets=4.4.1 json=3.1.0 heartbeat=200` | identical |
+| `8ef2d8b` (`app:update`) | 0 | `/404`, `/500` bodies = the new public files (`cmp`), `content-length`/`last-modified` follow; all else identical | 27, identical | green | same | identical |
+| `1f1ab0c` (deprecation logging) | 0 | identical | 27, identical | green | same; 1 `DEPRECATION` line, from `probe.rb:4` (fixed, appendix) | identical, 0 `DEPRECATION` |
+
+Deliberate break (copy `break` = `747b033` with `sprockets (4.2.2)` / `concurrent-ruby (~> 1.0)` restored in the
+lock): `tailwindcss:build` 0, `assets:precompile` 0, `assets:clean` **1**, `ArgumentError: unknown keyword:
+create_additions`; loaded `sprockets=4.2.2 json=3.1.0`.
+
+Deprecation logging (`deprecation-probe.rb`, production mode):
+- On `8ef2d8b`: `report_deprecations=false deprecation=nil silenced=true`, and no warning line.
+- On `1f1ab0c`: `report_deprecations=true deprecation=:log silenced=nil`, then `DEPRECATION WARNING: slice 1
+  deprecation probe (called from <main> at bin/rails:4)` on STDOUT, with stderr empty.
+
+Review: `codex exec -C <copy> --skip-git-repo-check --model gpt-6-astra --config 'model_reasoning_effort="high"'`
+with the diff, the commit log and the design doc in `<copy>/.review/`. `--sandbox read-only` fails in this container
+(`bwrap: No permissions to create a new namespace`; Codex exits 0 and writes a "review blocked" note), so the second run
+used `--sandbox danger-full-access` on the copy: "No actionable findings", and `diff -rq` against the tree was empty.
+
+---
+
 ## Appendix — verification scripts
 
 Run each with `mise exec -- bundle _2.6.9_ exec rails runner [-e test] <file>` from the repo (or a copy with
@@ -397,7 +467,7 @@ Run each with `mise exec -- bundle _2.6.9_ exec rails runner [-e test] <file>` f
 require "rack/mock"
 configuration = Rails.application.config
 puts "rails=#{Rails.version} defaults=#{configuration.loaded_config_version.inspect}"
-puts "to_time_preserves_timezone=#{ActiveSupport.to_time_preserves_timezone.inspect}"
+puts "to_time_preserves_timezone=#{ActiveSupport.deprecator.silence { ActiveSupport.to_time_preserves_timezone }.inspect}"
 puts "Regexp.timeout=#{Regexp.timeout.inspect}"
 puts "yjit_config=#{configuration.yjit.inspect} yjit_enabled=#{defined?(RubyVM::YJIT) ? RubyVM::YJIT.enabled? : :undefined}"
 puts "default_headers=#{configuration.action_dispatch.default_headers.inspect}"
@@ -415,7 +485,9 @@ puts "boot ok #{Rails.version} sprockets=#{Sprockets::VERSION} json=#{JSON::VERS
 ```
 
 Production form: `RAILS_ENV=production RENDER=1 SECRET_KEY_BASE=dummy … rails runner probe.rb`, **after** P3 so the
-manifest exists.
+manifest exists. v5: line 4 reads the value inside `ActiveSupport.deprecator.silence` — on 8.1 the getter itself is
+deprecated, and once slice 1 turns production deprecation logging on, the bare read printed the probe's own
+`DEPRECATION WARNING` (`probe.rb:4`). Same values on 8.0.2 (`:offset`) and 8.1.4 (`nil`), 0 lines on both.
 
 ### render-pages.rb (P5)
 
@@ -502,4 +574,123 @@ rows.each do |row|
   end
 end
 puts "CHECKED=#{checked} CATEGORIES=#{categories.inspect}"   # 2026-10-31: CHECKED=3352 {"nbsp-serialization-only"=>30, "whitespace-only"=>24}
+```
+
+### pchecks.sh (v5 — P1, P2, P5, P6, P3, P4, P4b on one copy)
+
+Usage: `pchecks.sh <copy> <capture dir>`; expects `probe.rb`, `render-pages.rb`, `render-production-tour.rb` beside it.
+P5 runs before P3 so no manifest is present; it warns if `public/assets` already exists and if a run rewrote the lock.
+
+```bash
+# Slice 1 P-checks on an rsync copy of the tour. Usage: pchecks.sh <copy dir> <capture dir>
+# P1, P2, P5, P6 run first (no manifest in the copy), then P3, P4, P4b (which need one).
+set -u
+copy="$1"
+capture="$2"
+scripts="$(cd "$(dirname "$0")" && pwd)"
+mkdir -p "$capture"
+cd "$copy" || exit 1
+export BUNDLE_GEMFILE="$copy/Gemfile"
+run() { mise exec -- bundle _2.6.9_ exec "$@"; }
+production_env=(env RAILS_ENV=production RENDER=1 SECRET_KEY_BASE=dummy)
+
+lock_before=$(sha256sum Gemfile.lock | cut -d' ' -f1)
+test -e public/assets && echo "WARNING: public/assets present before P3"
+
+echo "== P1"
+run rails runner -e test 'Rails.application.eager_load!; puts "ok rails=#{Rails.version} defaults=#{Rails.application.config.loaded_config_version}"' > "$capture/p1.log" 2>&1
+echo "exit=$? deprecations=$(grep -c DEPRECATION "$capture/p1.log") $(grep -F 'ok rails=' "$capture/p1.log")"
+
+echo "== P2"
+run rails zeitwerk:check 2>&1 | tail -1
+
+echo "== P5"
+www_paths="/30290-red-lure-pl-canyon-lake-92587/b/1qY5VLqV,/30290-red-lure-pl-canyon-lake-92587/ub/1qY5VLqV,/1120-hunter-san-diego-92123/b/4erZP12X,/heartbeat,/404,/500,/,/r/colleen-crane,/r/gregory-butler,/s/1qY5VLqV,/su/1qY5VLqV"
+short_paths="/s/1qY5VLqV,/su/1qY5VLqV"
+es_paths="/30290-red-lure-pl-canyon-lake-92587/b/1qY5VLqV"
+for set in www localhost es; do
+  case $set in
+    www) host=www.insightlistings.com; paths=$www_paths ;;
+    localhost) host=localhost; paths=$short_paths ;;
+    es) host=es.insightlistings.com; paths=$es_paths ;;
+  esac
+  mkdir -p "$capture/p5-$set"
+  PATHS="$paths" HOST="$host" OUTDIR="$capture/p5-$set" run rails runner -e test "$scripts/render-pages.rb" \
+    > "$capture/p5-$set.out" 2> "$capture/p5-$set.err"
+  echo "-- $set (exit=$?, stderr DEPRECATION=$(grep -c DEPRECATION "$capture/p5-$set.err"))"
+  cat "$capture/p5-$set.out"
+done
+
+echo "== P6"
+run rails routes > "$capture/p6-routes.txt" 2>&1
+"${production_env[@]}" mise exec -- bundle _2.6.9_ exec rails middleware > "$capture/p6-middleware.txt" 2>&1
+echo "routes=$(wc -l < "$capture/p6-routes.txt") middleware=$(wc -l < "$capture/p6-middleware.txt")"
+
+echo "== P3"
+for task in tailwindcss:build assets:precompile assets:clean; do
+  "${production_env[@]}" mise exec -- bundle _2.6.9_ exec rake "$task" > "$capture/p3-$task.log" 2>&1
+  echo "$task exit=$? $(grep -m1 -E 'Error|error' "$capture/p3-$task.log")"
+done
+
+echo "== P4"
+"${production_env[@]}" mise exec -- bundle _2.6.9_ exec rails runner "$scripts/probe.rb" > "$capture/p4.log" 2>&1
+echo "exit=$?"; cat "$capture/p4.log"
+
+echo "== P4b"
+"${production_env[@]}" INSIGHT_API_ENDPOINT=http://localhost:3000 LISTING_DOMAIN=https://insightlistings.com \
+  TOUR_PATH=/30290-red-lure-pl-canyon-lake-92587/b/1qY5VLqV OUT="$capture/p4b-tour.html" \
+  mise exec -- bundle _2.6.9_ exec rails runner "$scripts/render-production-tour.rb" > "$capture/p4b.log" 2>&1
+echo "exit=$?"; cat "$capture/p4b.log"
+
+lock_after=$(sha256sum Gemfile.lock | cut -d' ' -f1)
+[ "$lock_before" = "$lock_after" ] && echo "lock unchanged by the runs" || echo "WARNING: the runs rewrote Gemfile.lock"
+```
+
+### compare.sh (v5)
+
+Usage: `compare.sh <before captures> <after captures>`. Bodies compared with the csrf token stripped, headers without
+`x-request-id`/`x-runtime`, P4b tags with the digests stripped.
+
+```bash
+# Compare two pchecks.sh capture dirs. Usage: compare.sh <before> <after>
+set -u
+before="$1"
+after="$2"
+strip_csrf() { sed -E 's/name="csrf-token" content="[^"]*"/X/' "$1"; }
+strip_volatile_headers() { grep -v -E '^(x-request-id|x-runtime): ' "$1"; }
+strip_digests() { sed -E 's/-[0-9a-f]{64}\././g' "$1"; }
+
+echo "== P5 bodies and headers"
+for set in www localhost es; do
+  for page in "$before/p5-$set"/page-*.html; do
+    name=$(basename "$page" .html)
+    body_lines=$(diff <(strip_csrf "$page") <(strip_csrf "$after/p5-$set/$name.html") | wc -l)
+    header_diff=$(diff <(strip_volatile_headers "$before/p5-$set/$name.headers") <(strip_volatile_headers "$after/p5-$set/$name.headers"))
+    echo "$set/$name body_diff_lines=$body_lines header_diff=$( [ -z "$header_diff" ] && echo none || echo "$header_diff" | tr '\n' ' ')"
+  done
+  diff -q <(sed -E 's/ bytes=[0-9]+//' "$before/p5-$set.out") <(sed -E 's/ bytes=[0-9]+//' "$after/p5-$set.out") > /dev/null \
+    || { echo "$set status lines differ:"; diff "$before/p5-$set.out" "$after/p5-$set.out"; }
+done
+
+echo "== P6 routes"
+diff "$before/p6-routes.txt" "$after/p6-routes.txt" && echo identical
+echo "== P6 middleware"
+diff "$before/p6-middleware.txt" "$after/p6-middleware.txt" && echo identical
+
+echo "== P4b tags (digests stripped)"
+diff <(strip_digests "$before/p4b-tour.tags") <(strip_digests "$after/p4b-tour.tags") && echo identical
+echo "== P4b body (csrf stripped)"
+echo "diff_lines=$(diff <(strip_csrf "$before/p4b-tour.html") <(strip_csrf "$after/p4b-tour.html") | wc -l)"
+```
+
+### deprecation-probe.rb (v5, OD2)
+
+Run in production mode on a copy: `RAILS_ENV=production RENDER=1 SECRET_KEY_BASE=dummy … rails runner deprecation-probe.rb`.
+With `report_deprecations = false` it prints the settings and nothing else; with OD2 a `DEPRECATION WARNING` line
+follows on STDOUT.
+
+```ruby
+puts "report_deprecations=#{Rails.application.config.active_support.report_deprecations.inspect} deprecation=#{Rails.application.config.active_support.deprecation.inspect} silenced=#{Rails.deprecator.silenced.inspect} behavior=#{Rails.deprecator.behavior.inspect[0, 120]}"
+Rails.deprecator.warn("slice 1 deprecation probe")
+puts "probe done"
 ```

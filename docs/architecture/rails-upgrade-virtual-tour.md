@@ -1,12 +1,12 @@
 # Rails Upgrade — insgt-virtual-tour 8.0.2 → 8.1.4
 
 **Repo:** `insgt-virtual-tour` · **Platform:** Render.com web service `insgt-virtual-tour`, auto-deploy on push to `main`
-**Status:** v4 — survey done 2026-10-31; the plan review of the same day settled the seven decisions (§7) and added
+**Status:** v5 — survey done 2026-10-31; the plan review of the same day settled the seven decisions (§7) and added
 two checks to slice 1 (§4.0 P4b, §3.1 platforms); OD7 reversed the same day, Honeybadger live by 2026-11-01 (§1.1);
-the §3.4 account-page and footer failures fixed on tour `main`, the redirect failures on their own branch (§3.4); no
-slice implemented
-**Version:** 4 · **Last updated:** 2026-11-01
-**Supersedes:** v3 (2026-10-31). See §9.
+the §3.4 account-page, footer and redirect failures fixed on tour `main` (§3.4). **Slice 1 implemented 2026-11-02** on
+tour branch `chore/rails-upgrade-slice-1` (§4.2 "Implementation record"), not pushed; slices 0 and 2 not started
+**Version:** 5 · **Last updated:** 2026-11-02
+**Supersedes:** v4 (2026-11-01). See §9.
 **Companion file:** `rails-upgrade-virtual-tour-codebase-notes.md` — the `file:line` map, the survey record with every
 command and its output, and the three verification scripts. Every repo claim below is sourced there.
 **Pattern:** `rails-upgrade.md` (insgt-api 7.2.3 → 8.1.4). This document reuses its vocabulary — P-checks before the
@@ -60,7 +60,7 @@ stack against the local API on both Rails versions and compared byte for byte. *
 | `json` | 2.9.1, Ruby's default gem — **not in the lock** | `bundle exec ruby -e 'require "json"; puts JSON::VERSION'` → `2.9.1`; `gem list -e json` → `default: 2.9.1` |
 | Assets | sprockets 4.2.2 via sprockets-rails 3.5.2; Tailwind 3 via tailwindcss-rails 3.3.2 | `Gemfile.lock:246, 251`; `app/assets/config/manifest.js` |
 | Deploy | Render, `bin/render-build.sh` (`bundle lock --add-platform x86_64-linux`, `bundle install`, Tailwind 3.3.4 binary download, `tailwindcss:build`, `assets:precompile`, `assets:clean`), start `bundle exec puma -C config/puma.rb` | `render.yaml:3–6`; `bin/render-build.sh:6, 15, 21–23` (`set -o errexit`) |
-| Deploy branch | `main` == `origin/main` at `eee78cf` (2026-10-29, "Ruby 3.4.12"); nothing unpushed | `git rev-list --left-right --count origin/main...main` → `0 0` |
+| Deploy branch | `main` == `origin/main` at `eee78cf` (2026-10-29, "Ruby 3.4.12"); nothing unpushed. **v5:** `fc42d7a` (2026-11-01), which adds `b0ba43f` (merges `fix/cross-host-redirects`), `5e1d381` (whitespace in listing tokens) and `fc42d7a` (every request rendered as HTML) on top of `ad04756`; slice 1 branches from it | `git rev-list --left-right --count origin/main...main` → `0 0`; v5: `main` == `origin/main` by the last fetch |
 | Test suite | Minitest scaffolding, **0 tests**, and the scaffolding cannot run one: `test/test_helper.rb:10` `fixtures :all` has no Active Record to come from | a one-file integration test fails to load with `NoMethodError: undefined method 'fixtures' for class ActiveSupport::TestCase` on 8.0.2 and 8.1.4 (notes, survey record) |
 | Error tracking | **v3:** honeybadger 6.10.1 (`'~> 6.10'`), errors only, production only; a project of its own (not the api's), plus a Honeybadger uptime check on `/heartbeat`. Branch `chore/honeybadger` (`7b8dd80`, `93f7d30`), deployed on its own ahead of slice 1 (OD7). **v4: live** — merged into tour `main` at `ad04756`; the first production notice (`UnsafeRedirectError`, the `es.` tour, `listings_controller.rb:43`) arrived 2026-11-01 11:31 −05:00 from honeybadger-ruby 6.10.1. The key comes only from `HONEYBADGER_API_KEY` in the Render environment. Before v3: none | `Gemfile:17–18`; `config/honeybadger.yml`; `render.yaml:10–11`; notes, "Honeybadger (v3)" |
 | Deprecation baseline | **2** `DEPRECATION WARNING: to_time …` lines at every test-environment boot; silenced in production | `config/environments/production.rb:45` `report_deprecations = false`; the 7.0 defaults chain leaves `to_time_preserves_timezone` at `:offset`, which 8.0 warns about |
@@ -227,7 +227,7 @@ From the 8.1.x CHANGELOG sections of actionpack, actionview, activesupport and r
 | AP 8.1.0 removals: multiple paths per route, `;` query separator, leading-bracket params | `config/routes.rb` has one path per `get`/`match`; routes table identical on 8.1.4 (15 lines) | none |
 | AP 8.1.0 "Add `action_dispatch.verbose_redirect_logs`" | the 8.1 `development.rb` template adds it | accepted in slice 1 (dev only) |
 | AP 8.1.4 "Parse all three HTTP-date formats in `If-Modified-Since`"; AP 8.1.0 RFC 9111 request directives | `Rack::ConditionalGet`/`Rack::ETag` are in the stack; no `fresh_when`/`stale?` in `app/` | conditional GETs on the weak ETag keep working; no app code |
-| AP 8.1.x `ActionDispatch::PermissionsPolicy::Middleware` no longer in the production stack | `config/initializers/permissions_policy.rb` is all comments | the only middleware difference between versions (23 → 22 lines). No `permissions-policy` header is emitted on either version (heartbeat headers identical). Cause inferred (middleware inserted only when a policy is set), UNVERIFIED in source |
+| AP 8.1.x `ActionDispatch::PermissionsPolicy::Middleware` no longer in the production stack | `config/initializers/permissions_policy.rb` is all comments | the only middleware difference between versions (23 → 22 lines; 28 → 27 with Honeybadger). No `permissions-policy` header is emitted on either version (heartbeat headers identical). **v5, verified in source:** railties 8.1.4 `default_middleware_stack.rb:86` inserts it only `if config.permissions_policy`; 8.0.2 inserts it unconditionally |
 | AV 8.1.x — no `simple_format`, `sanitize`, `truncate`, `raw`, asset-helper or `csrf_meta_tags` entries | `_property.html.erb:2`, `_agent_details.html.erb:22`, `layouts/listings.html.erb:26`, `application_helper.rb:187` | none in slice 1; the sanitizer *vendor* changes in slice 2 (§4.3) |
 | AV 8.1.2.1 "Fix possible XSS in DebugExceptions middleware" | DebugExceptions renders only for local requests; production `consider_all_requests_local = false` | closed by the bump regardless |
 | AS 8.1.0 deprecations: `String#mb_chars`, `ActiveSupport::Configurable`, `Benchmark.ms` | none in `app/`, `lib/`, `config/` (grep empty) | none; a gem's use would show as a deprecation line — 0 seen on every exercised path |
@@ -286,6 +286,9 @@ as the control). OD5 puts their fix branch in the same week as slice 1, on its o
    been requested. On the branch the `es.` tour answers **302** → `https://insightlistings.com/…` in test and in
    production mode (`Completed 302 Found`, no notice). The targets come from `LISTING_DOMAIN` and the API, never the
    request; `original_fullpath` always starts with `/`, so only the path can vary.
+   **v5: merged** into tour `main` at `b0ba43f`, on `origin/main` (`fc42d7a`). Whether Render has deployed it is not
+   read from a session (UNVERIFIED). In slice 1's P5 the `es.` tour answers 302 and `/s/`, `/su/` on the `www` host
+   301 to the canonical URL, on `main` and on the branch alike.
 3. **`panos_controller.rb:19` renders `action: :error`**, and `app/views/panos/` holds only `show.html.erb` →
    `ActionView::MissingTemplate` → 500 whenever the API returns no pano. Read, not exercised (no pano order URL was
    requested).
@@ -315,6 +318,13 @@ Gates: slice 0 and slice 1 "after plan; after verification"; slice 2 "all" (it c
 There is no suite (§1.1), so the gate is a boot, a build, and a byte comparison of rendered pages. The scripts are in
 the notes' appendix; `rails middleware` and `rails runner -e` quirks are noted there too.
 
+**v5: run the checks on rsync copies, not in the real tree.** Each check runs on a scratchpad copy of the commit under
+test, with `public/assets` and `tmp` excluded (`pchecks.sh` in the notes runs the whole set). The reason: in development
+and test, sprockets-rails resolves asset paths from a `public/assets` manifest first (sprockets-rails 3.5.2
+`railtie.rb:233`; neither environment overrides it). A P3 run in the real tree leaves one behind, so P5 would render
+against a stale manifest and `bin/dev` would serve the stale build. One from 2026-10-31 21:26 was still in the tour
+tree on 2026-11-02.
+
 **Pre-deploy, on the slice branch (dev container; the API must be up on port 3000 for P5):**
 
 | # | Command | Expected |
@@ -333,11 +343,11 @@ the push so "unchanged" is provable). From the `ruby-version-bump` skill's Rende
 
 | # | Where | Expected |
 | :-- | :-- | :-- |
-| S1 | dashboard → service → Events → the build log | `Ruby version: ruby 3.4.12 …`; `assets:clean` runs without error; build succeeds |
+| S1 | dashboard → service → Events → the build log | the Ruby line names 3.4.12 in either wording Render has printed — `Using Ruby version 3.4.12 via …/Gemfile.lock` (the 11-02 slice 1 build) or `Ruby version: ruby 3.4.12 …` (10-29); `assets:clean` runs without error; build succeeds |
 | S2 | service Shell tab: `bundle exec rails runner 'puts Rails.version; puts Rails.application.config.loaded_config_version'` | the slice's version and defaults |
 | S3 | status Live; Logs show one Puma boot, no repeated boots | — |
 | S4 | `curl -sS https://insightlistings.com/heartbeat` → `{"lub":"dub"}`; a real branded tour URL: `<title>` ends `MLS #<number>`, `#carousel` holds the same N `carousel__slide` divs as before the push, the disclosure link present iff it was before; `curl -sI https://insightlistings.com/s/<token>` → `301` with the same `Location` | identical to the pre-push capture |
-| S5 | Logs tab for ten minutes, then a Logs search for `Completed 5` over the first hour | no 5xx that was not there before the push (v4: the account page and the footer are fixed; the `es.` redirect 500s until `fix/cross-host-redirects` deploys — capture before, and do not count what was already there) |
+| S5 | Logs tab for ten minutes, then a Logs search for `Completed 5` over the first hour | no 5xx that was not there before the push (v4: the account page and the footer are fixed; v5: the `es.` redirect fix is on `main` `b0ba43f` — if the live release predates it, the `es.` 500s are pre-existing; capture before, and do not count what was already there) |
 | S-DEP | Logs search for `DEPRECATION` over the first day (only meaningful after OD2) | none |
 | SH (v3) | the tour's Honeybadger project → Errors, `environment:"production"` since the push, compared **by error** with the first day after the Honeybadger deploy (the baseline); and the `/heartbeat` uptime check | no new error. A new error whose backtrace touches what the slice changed is a finding; an old bug seen for the first time is recorded and fixed on its own branch. The uptime check stays green |
 
@@ -383,7 +393,7 @@ sanitizer vendor and `Regexp.timeout`. If it slips, slice 2 runs on the render s
    | Generated file | Survey result (2026-10-31) | Decision | Why |
    | :-- | :-- | :-- | :-- |
    | `config/boot.rb`, `application.rb`, `environment.rb`, `environments/test.rb`, `initializers/{assets,filter_parameter_logging,inflections}.rb`, `bin/rails`, `bin/rake`, `bin/setup`, `public/robots.txt` | identical | — | nothing to apply |
-   | `config/initializers/new_framework_defaults_8_1.rb` | created, seven settings all commented | **accept** as generated | the slice 2 shim |
+   | `config/initializers/new_framework_defaults_8_1.rb` | created, six settings all commented (v5 correction; v1–v4 said seven) | **accept** as generated | the slice 2 shim |
    | `config/puma.rb` | one comment line (`auto` workers) | **accept** | comment-only |
    | `config/initializers/content_security_policy.rb` | comment block for `content_security_policy_nonce_auto` | **accept** | comment-only |
    | `config/environments/development.rb` | adds `config.action_dispatch.verbose_redirect_logs = true` | **accept** | dev only; 8.1.0 feature |
@@ -425,13 +435,57 @@ running on port 3000 for P4b and P5; `git -C apps/insgt-virtual-tour status` cle
 4. `chore: log deprecations in production` [2] (OD2)
 
 **Post-deploy verification.** P1–P7 (P4b included) with `8.1.4` and `loaded_config_version` `7.0`; S1–S5; S-DEP.
-Expected P6 difference: `ActionDispatch::PermissionsPolicy::Middleware` absent. Expected P5 and P4b differences: none
-(the asset digests did not change in the survey; if they do on the branch, every referenced file must still exist).
+Expected P6 difference: `ActionDispatch::PermissionsPolicy::Middleware` absent. Expected P4b difference: none (the
+asset digests did not change in the survey; if they do on the branch, every referenced file must still exist).
+Expected P5 difference (v5 correction; v1–v4 said none): the `/404` and `/500` bodies, which are the regenerated
+`public/404.html` and `public/500.html` (OD4; §3.4 item 6); every other page byte-identical.
 
 **Rollback.** Render rollback to the previous deploy. Nothing else to undo.
 
 **Gates.** After plan; after verification. **Effort (estimate):** 3 h plus the deploy morning.
 **Deadline (fact):** live before Sat 2026-11-07.
+
+**Implementation record (v5, 2026-11-02).** Tour branch `chore/rails-upgrade-slice-1` off `main` `fc42d7a`, not
+pushed:
+
+| Commit | Subject | Files |
+| :-- | :-- | :-- |
+| `65e341b` | build: upgrade sprockets to 4.4.1 for json 3 | `Gemfile.lock` (two lines) |
+| `747b033` | build: upgrade rails to 8.1.4 | `Gemfile`, `Gemfile.lock` — byte-identical to the survey recipe's lock (§3.1 plus the v3 `action_text-trix` line) |
+| `8ef2d8b` | chore: apply the rails 8.1 app:update files | the shim, `puma.rb`, `content_security_policy.rb`, `development.rb`, the five public pages — the table's "accept" rows; `app:update` re-run on `747b033` produced exactly the table's file set |
+| `1f1ab0c` | chore: log deprecations in production | `production.rb:44–46` — `report_deprecations = true`, `deprecation = :log` |
+
+Both gaps resolved as follows:
+- *sprockets 4.4.1 on 8.0.2:* works. After `65e341b`: P1 2, P3 green, P4 `boot ok 8.0.2 sprockets=4.4.1 json=2.9.1
+  heartbeat=200`, P4b and P5 identical to `main` → two commits.
+- *The `app:update` diff shape:* matched the table.
+
+Results, `main` → branch tip (each check run on an rsync copy, §4.0 v5):
+- **P1:** 2 → 0.
+- **P2:** clean.
+- **P3:** green at every commit.
+- **P4:** `rails=8.1.4 defaults=7.0`, `to_time_preserves_timezone` `:offset` → `nil`, `path_relative_redirect`
+  `nil` → `:log`, every other flag unchanged, `boot ok 8.1.4 sprockets=4.4.1 json=3.1.0 heartbeat=200`.
+- **P4b:** 200, 194,295 bytes, the same four digests, `missing=[]`, body diff 0.
+- **P5:** 14 requests on three hosts. Byte-identical except `/404` and `/500` (the new public pages); 0 `DEPRECATION`
+  lines on stderr.
+- **P6:** routes identical (15); production middleware 28 → 27, only `PermissionsPolicy::Middleware`.
+- **P7:** the 12 named files.
+
+**Deliberate break:** a copy of `747b033` with sprockets put back to 4.2.2 fails P3 at `assets:clean` (exit 1,
+`ArgumentError: unknown keyword: create_additions`).
+
+**OD2 proof:** in production mode, `Rails.deprecator.warn` printed nothing before `1f1ab0c` (`silenced=true`). After
+it, the warning reached STDOUT as `DEPRECATION WARNING: …` and nothing reached stderr. The production boot, build and
+tour render log none. The one production deprecation P4 now prints comes from the probe script itself
+(`ActiveSupport.to_time_preserves_timezone`, deprecated in 8.1; the notes' probe now silences it).
+
+**Review:** `codex-review`, high effort (production configuration and the Render build path), on an rsync copy of the
+branch tip given the diff, the commits and this document: **no actionable findings**. The read-only sandbox cannot start
+in the dev container (`bwrap: No permissions to create a new namespace`), so it ran with full access on the copy; the
+copy was unchanged afterwards. Claude's own pass against the out-of-scope list found nothing either: the shim has 0 live
+lines, `load_defaults` is still `7.0`, no file falls outside the 12, only the rails family, its new dependencies and
+sprockets moved in the lock, and no `icon.*` is referenced.
 
 ### 4.3 Slice 2 — framework defaults, then `config.load_defaults 8.1`
 
@@ -449,7 +503,7 @@ on 2026-10-31. Rows marked *inert* have no caller in `app/`, `lib/` or `config/`
 | 6 | `precompile_filter_parameters`, `dom_testing_default_html_version`, `log_file_size`, `debug_exception_log_level` (7.1) | — | logging/test-only | inert |
 | 7 | `yjit = true` (7.2), then `yjit = !Rails.env.local?` (8.1) | `false` → production `true` | Ruby 3.4.12 here enables YJIT (`RubyVM::YJIT.enabled?` → `true` after `enable`); Render's build of 3.4.12 UNVERIFIED → S-YJIT. Rails guards the call, so an interpreter without YJIT boots unchanged | safe; memory compared against a baseline captured **before** the push (S-MEM) |
 | 8 | `action_dispatch.strict_freshness = true` (8.0) | `false` → `true` | no `fresh_when`/`stale?` (grep empty) | inert |
-| 9 | `Regexp.timeout \|\|= 1` (8.0) | `nil` → `1` | no regex literal or `Regexp.new` in `app/`/`lib/`; the eight `gsub`/`include?` sites take string arguments. Gems: the sanitizer (Loofah/Nokogiri), I18n, Rack, URI, Net::HTTP. An overrun raises `Regexp::TimeoutError` → 500 on that page | low; S5 watches |
+| 9 | `Regexp.timeout \|\|= 1` (8.0) | `nil` → `1` | no regex literal or `Regexp.new` in `app/`/`lib/` as of the survey; the eight `gsub`/`include?` sites take string arguments. **v5:** `5e1d381` adds one, `lib/insight_photo.rb:110` `token.to_s.gsub(/\s+/, '')` on a listing or pano token from the URL — a single character class with no nesting, linear in the token length, so the verdict stands. Gems: the sanitizer (Loofah/Nokogiri), I18n, Rack, URI, Net::HTTP. An overrun raises `Regexp::TimeoutError` → 500 on that page | low; S5 watches |
 | 10 | `action_controller.escape_json_responses = false` (8.1) | `nil` → `false` | `heartbeat_controller.rb:3` — body has no `<>&`, no U+2028/9 | inert |
 | 11 | **`action_controller.action_on_path_relative_redirect = :raise`** (8.1) | `:log` → `:raise` | the four `redirect_to` sites (v4 lines: `listings_controller.rb:9, 50, 43`; v4's `allow_other_host: true` does not touch this check — actionpack 8.1.4 `redirecting.rb:158` handles path-relative URLs inside `_compute_redirect_to_location`, before the open-redirect check at `:161`): `panos_controller.rb:8` (`'/'`, absolute path, fine); `listings_controller.rb:9, 49` (canonical URL from the API: `PROPERTY_WEBSITE_HOST`-prefixed, insgt-api `listing.rb:524`; dev value carries a scheme, seen as `http://localhost:3002/…`; production UNVERIFIED); `listings_controller.rb:42` (`LISTING_DOMAIN` + path; dev value carries a scheme — boolean probe, value not printed; production UNVERIFIED). A scheme-less value becomes `PathRelativeRedirectError` → 500 where today the browser resolves it | **gated by S-ENV before the flip** |
 | 12 | `active_support.escape_js_separators_in_json = false` (8.1) | — | `image_handler.rb:74` `to_json` of bucket/key/edits; no U+2028/9 in S3 keys | inert |
@@ -536,7 +590,7 @@ slice 3 is pencilled for Mon 11-02, slices 4, 5a, 5b for 11-09, 11-10, 11-11). T
 | :-- | :-- | :-- |
 | Sat 10-31 – Sun 11-01 (v3–v4) | **Honeybadger deployed** (`chore/honeybadger`, OD7) — live by 11-01 on tour `main` `ad04756`, which also carries the account-page and footer fixes; the first day's inbox becomes SH's baseline | 0.5 |
 | **Mon 11-02, first thing** | the §3.4 production curls from the Mac — `/r/<slug>` ×2, the `es.` tour, `/s/<token>` for a custom-domain listing; their status lines set the fix branch's priority (OD5) | 0.25 |
-| **Mon 11-02** | merge `docs/rails-upgrade-virtual-tour`; implement slice 1 (afternoon, after the api's morning deploy) | 3 |
+| **Mon 11-02** | merge `docs/rails-upgrade-virtual-tour`; implement slice 1 (afternoon, after the api's morning deploy). **v5: implemented**, branch `chore/rails-upgrade-slice-1` (§4.2 implementation record) | 3 |
 | **Tue 11-03, 09:30 PT** | **deploy slice 1 (8.1.4)** — four days before 8.0's security end | 1 |
 | Wed 11-04, 09:30 PT | **deploy the §3.4 fix branch** (OD5) — its own branch and morning, if slice 1's S5 was clean. **v4: mostly done early** — items 1 and 7 live on `main` `ad04756`; item 2 on `fix/cross-host-redirects`, Dan's push; item 3 (pano) remains | 1 (+2 to build it Tue) |
 | Wed 11-04 – Fri 11-06 | slice 0 (OD3); S-ENV from the Mac; implement slice 2 (no deploy); start the insgt-galleries survey (OD6) | 3 + 2 + 2 |
@@ -581,6 +635,7 @@ Not in any slice. Candidates for their own small changes.
 2. **§3.4 item 2** — `allow_other_host: true` at `listings_controller.rb:9, 42, 49` (the targets are the API's
    own canonical URLs and the tour's own domain); the `es.` shape answers HTTP 500 in production today (§3.4); the custom-domain `/s/<token>` shape is still
    to be requested on Monday. **v4: on `fix/cross-host-redirects` (`156b7d4`, `:9, 43, 50`), awaiting Dan's push.**
+   **v5: done** — merged at `b0ba43f`, on `origin/main`.
 3. **§3.4 item 3** — `panos_controller.rb:19`: render `errors/not_found` like `listings_controller.rb:57` does, or
    add the template.
 4. `webdrivers` 5.3.1 (abandoned; pins selenium-webdriver `< 4.11`): remove it and let selenium-webdriver 4.x
@@ -617,3 +672,4 @@ Not in any slice. Candidates for their own small changes.
 | 2 | 2026-10-31 | The plan review's calls recorded as decisions (§7, OD1 A, OD2 yes, OD3 yes timed Wed–Fri, OD4 accept pages / reject icons, OD5 own branch this week, OD6 pulled forward, OD7 not now). Review point 1 closed with evidence: P4b, a production-mode render of the branded tour against the compiled manifest — identical on 8.0.2/sprockets 4.2.2 and 8.1.4/sprockets 4.4.1 (194,295 bytes, the same four digests, no missing asset). Point 2: `x86_64-linux` already in `PLATFORMS`; `json` 3.1.0 has no platform gem and compiles on Render (§3.1, R1). Point 3 answered early: production fetches show `/r/nora-nido`, `/r/logan-banta` and the `es.` tour at HTTP 500 with `/heartbeat` as the control (§3.4); the fix branch joins the calendar (§6). Calibration: the deadline marked soft, the slippage rule reworded without the Thursday exception, the 2027-10-10 forward anchor added (§1.3). Smaller points: S-MEM memory baseline before the slice 2 push with the one-process Puma fact (§4.3), the Auto-Deploy check after a rollback (§4.0), slice 0 timed off Monday (§4.1), OD6's garbled clause replaced by the galleries lock facts. |
 | 3 | 2026-10-31 | OD7 reversed: Honeybadger 6.10.1, errors only, on its own tour branch `chore/honeybadger` (`7b8dd80`, `93f7d30`), deployed ahead of slice 1 (§1.1, §6, §7). Verified on the branch: P1 2 (unchanged), zeitwerk clean, the build green, routes identical, middleware +4 Honeybadger entries (§4.0 v3 note), P5 byte-identical on nine pages. Production boots without a key; with a key from the environment it reports through a stubbed backend. SH added to §4.0; §5's detection gains Honeybadger. §3.1 corrected: the slice 1 lock diff also adds `action_text-trix`; the Bundler 2.6.9 `ruby`-platform trap recorded. §3.4 item 1 marked partly fixed (`9dbf6d1`, `06ae511`; two partials remain). §8 item 14 added. |
 | 4 | 2026-11-01 | Honeybadger live (tour `main` `ad04756`; first production notice 11:31 −05:00, the `es.` redirect) (§1.1, §6). §3.4 item 1 fixed (`9dbf6d1`, `06ae511`, `79d5f11`, `fc28ea9`), including a third crash the survey missed (no `organizations` in the account JSON); **v3's `_team_logo` claim corrected** — its caller guards it. §3.4 item 2 fixed on `fix/cross-host-redirects` (`156b7d4`, all three sites), the short-URL raise reproduced. §3.4 item 7 added and fixed (`23f1b0e`, the footer's MLS name). Slice 2 row 11: `allow_other_host` does not affect the path-relative check (actionpack source). §4.0 S5, §5 R2, §6, OD5, §8 items 1–3 brought up to date; §8 item 15 added. |
+| 5 | 2026-11-02 | Slice 1 implemented on tour `chore/rails-upgrade-slice-1` (`65e341b`, `747b033`, `8ef2d8b`, `1f1ab0c`), off `main` `fc42d7a`; §4.2 implementation record. Gap pins: sprockets 4.4.1 works on 8.0.2 (two commits); the `app:update` set matched the table. Corrections: the 8.1 shim holds six settings, not seven; P5's `/404` and `/500` change with the accepted public pages (§4.2 had said no P5 difference). §4.0: P-checks run on rsync copies because a `public/assets` manifest left in the real tree is read first in development and test. §3.3: the `PermissionsPolicy` cause verified in railties source. Three tour commits since v4 recorded (§1.1); `fix/cross-host-redirects` merged (§3.4 item 2, §4.0 S5, §8 item 2); `5e1d381` adds the first regex literal in app code (§4.3 row 9, verdict unchanged). Codex review at high effort: no actionable findings. The notes' P4 probe silences its own 8.1 deprecation; `pchecks.sh`, `compare.sh` and `deprecation-probe.rb` added to the notes' appendix. §4.0 S1: the expected Ruby line accepts both wordings — the slice 1 build log printed `Using Ruby version 3.4.12 via …/Gemfile.lock`, not the `Ruby version: ruby` form S1 named. |

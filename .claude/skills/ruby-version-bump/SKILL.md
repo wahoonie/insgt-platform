@@ -61,7 +61,7 @@ Then `predeploy-review-rails` with `<prod-ref>` = `origin/<deploy branch>`. For 
 Branch, commit SHA, `git diff <deploy branch> --stat`, then the host runbook.
 
 **Render (insgt-galleries, insgt-virtual-tour):** fast-forward the deploy branch, `git push origin main`.
-- S1 build log (dashboard → service → Events) shows the `Ruby version: ruby <target> …` line.
+- S1 build log (dashboard → service → Events) names the target version in either wording Render has printed: `Using Ruby version <target> via …/Gemfile.lock` or `Ruby version: ruby <target> …`.
 - S2 service Shell tab: `ruby -v`.
 - S3 status Live, one Puma boot in Logs, no repeated boots.
 - S4 one real public URL and its signature beyond a 200. Galleries: `https://gallery.insightphotos.net/i/<order token>` — first GET is the locked state (`<title>` is the short address, password form); POST `password=photos` renders the grid, N `.lozad` tiles with `data-fancybox="gallery"`. Virtual-tour: `https://insightlistings.com/<address-slug>/b/<order token>` — `<title>` ends `MLS #<number>`, `#carousel` holds N `carousel__slide` divs; `/heartbeat` returns `{"lub":"dub"}`. Galleries has no heartbeat route.
