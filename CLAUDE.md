@@ -2,7 +2,7 @@
 
 Keep replies concise. Lead with the key information, skip the preamble, and don't paste long code blocks the user can already read in the file.
 
-When working with a third-party library, look up its official documentation rather than working from memory. Versions here span Angular 19–21 and Rails 7.1–8.0, so a recalled default is often wrong for the repo you are actually in.
+When working with a third-party library, look up its official documentation rather than working from memory. Versions here span Angular 19–21 and Rails 7.1–8.1, so a recalled default is often wrong for the repo you are actually in.
 
 Do not shorten variable names — `description` not `desc`, `listing` not `lst`. Applies to every variable, parameter, and property in every language here. Readability over brevity.
 
@@ -30,7 +30,7 @@ The container is capped at 20 GB in `.devcontainer/docker-compose.yml`. Servers,
 | `apps/insgt-photographers` | Angular 20, NgRx, Material, Tailwind | 4400 |
 | `apps/insgt-disclosure-gallery` | Angular 21, DaisyUI, Tailwind 4 | 4500 |
 | `apps/insgt-galleries` | Rails 7.1, Tailwind | 3001 |
-| `apps/insgt-virtual-tour` | Rails 8.0, Tailwind | 3002 |
+| `apps/insgt-virtual-tour` | Rails 8.1, Tailwind | 3002 |
 | `lib/insgt-ui` | Angular 21, Spartan NG, Tailwind — shared component library | — |
 | `functions/*` | AWS Lambda — photo import, archiving, upload, download, marketing site | — |
 
