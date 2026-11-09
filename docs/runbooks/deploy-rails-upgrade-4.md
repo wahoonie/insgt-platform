@@ -179,7 +179,8 @@ make the window.**
       `master` added, whose dry run is `1 example`; re-run by Claude, 67.9 s: the same count,
       0 `DEPRECATION WARNING` lines, the 24 `:unprocessable_entity` warnings unchanged); a different
       count is sourced before the push, not recomputed
-- [ ] The production-config probe (step 1, P-PROD) printed the expected lines on the merge
+- [x] The production-config probe (step 1, P-PROD) printed the expected lines on the merge
+      (`6e0e9953`, 2026-11-09 13:05 UTC)
 - [ ] Pre-push captures (step 3) recorded below, on the release that is live at that moment
 
 ## Pre-deploy
@@ -237,7 +238,26 @@ Re-run 2026-11-05, after v669, on the merge `3f67af13` (`master` `24cd8180`, Rai
 `"8.1.4.1"` and every other line the same, `DEPRECATION` count `0`. On the same tree: P1
 `2099 examples, 0 failures`, 0 deprecation lines (65.6 s); routes 583.
 
-RESULTS (on the merge, before the push): ___
+RESULTS (on the merge, before the push): 2026-11-09 13:05:42 UTC, by Claude in the dev container, on
+the merge `6e0e9953` (`master` `ff4b3353`, v670). While `master` stays at `ff4b3353`, merging the branch
+into it carries this same tree, because `ff4b3353` is its ancestor. Every line as expected, `DEPRECATION`
+count `0`:
+
+```
+W, [2026-11-09T13:05:42.287780 #27138]  WARN -- : Generating image variants require the image_processing gem. Please add `gem "image_processing", "~> 1.2"` to your Gemfile or set `config.active_storage.variant_processor = :disabled`.
+"8.1.4.1"
+true
+true
+[["Rails", [:notify]], ["GlobalID", [:notify]], ["Lograge", [:notify]]]
+I, [2026-11-09T13:05:42.338714 #27138]  INFO -- honeybadger: ** [Honeybadger] Reporting error id=61e61dbd-bad3-40a7-bbce-dc6f33006f53 level=1 pid=27138
+true
+false
+7.2
+583
+false
+true
+0
+```
 
 Per-commit loop records (red, green, deliberate break) are in the plan's implementation record. No
 scratch Heroku app exists for `insgtapi`, so the build is proved by the release itself (§2.5).
@@ -745,4 +765,5 @@ written by the slice, and the dangling rows are exactly as they were.
   (2026-11-06 07:59:16 -0500), now the rollback target and step 3's "before". On `6e0e9953`:
   `2100 examples, 0 failures` (72.1 s; +1, `forwarded_header_spec.rb`), re-run by Claude with
   0 `DEPRECATION WARNING` lines; `bin/rails routes` byte-identical to `master` `ff4b3353`'s (583
-  lines, from a scratch worktree), `active_storage` `0`. Still to record there: P-PROD: ___
+  lines, from a scratch worktree), `active_storage` `0`; P-PROD every line as expected with
+  `"8.1.4.1"`, `DEPRECATION` `0` (step 1).
