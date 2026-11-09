@@ -5,8 +5,10 @@
 **Estimated duration:** ~25 min of prerequisite reads and captures; ~30 min for the push and step 5's
 checks; S7 one hour after the push; S9, S9b, S16 and the ops@ inbox at the first import that starts
 after the release; SH 24 h later
-**Status:** Draft — implemented and verified in development 2026-11-09 (step 1). Review rounds
-pending.
+**Status:** Draft — implemented and verified in development 2026-11-09 (step 1); two review rounds
+of `predeploy-review-rails` done the same day (Known), with round 1's finding fixed by amending
+commit 1 and no finding open after round 2. Awaiting Dan's verification gate; `Ready` after the v8
+write-back.
 
 ## Summary
 
@@ -16,7 +18,7 @@ holds every decision and deviation. Branch `chore/rails-upgrade-slice-5a`, one c
 before 5a was cut, so Decisions 1's rebase never arose. Fact 16's boot check was re-run on the new
 base and reproduced line for line (step 1).
 
-1. `3ca24647` chore: enable the rails 8.0 request freshness and regexp timeout defaults —
+1. `c966bb6e` (pre-review `3ca24647`) chore: enable the rails 8.0 request freshness and regexp timeout defaults —
    `config/initializers/new_framework_defaults_8_0.rb:25` and `:30` uncommented. `:18`, the `to_time`
    line, stays a comment (v6). The contract block `the 8.0 defaults are on; the 8.1 defaults stay off
    until slice 5b` replaces slice 3's one example with three. `spec/lib/crmls_login_timeout_spec.rb`
@@ -87,8 +89,9 @@ that hour's :30 run is the watched one; a later push moves the reads an hour, no
 - [ ] **Slice 4's S13** recorded (runbook 4 step 7).
 - [ ] **`import_listings` check-in history** (Honeybadger → Check-Ins): hourly arrivals since v671.
       Record the last three arrival times; each is expected at about :35–:45 UTC.
-- [ ] Review rounds complete (two rounds of `predeploy-review-rails`, Codex included); this runbook's
-      Status is `Ready`.
+- [x] Review rounds complete (two rounds of `predeploy-review-rails`, Codex included; 2026-11-09,
+      Known)
+- [ ] This runbook's Status is `Ready`
 - [ ] Dan has merged `chore/rails-upgrade-slice-5a` into `master`, and `bundle exec rspec` is green
       **on the merge**: expected `2103 examples, 0 failures` and 0 `DEPRECATION WARNING` lines if
       `master` is still `316fa0e1`. A different count is sourced before the push, not recomputed.
@@ -99,7 +102,9 @@ that hour's :30 run is the watched one; a later push moves the reads an hour, no
 
 ### 1. Development verification — done 2026-11-09
 
-On the branch at `3ca24647`, in the dev container with Ruby 3.4.12 and Rails 8.1.4.1. **The
+On the branch at `3ca24647`, the same application tree as `c966bb6e`: review round 1's amend changed
+only `spec/lib/crmls_login_timeout_spec.rb`, and P1 was re-run on `c966bb6e` in a clean worktree (the
+P1 row). The dev container ran Ruby 3.4.12 and Rails 8.1.4.1. **The
 development database is a production restore newer than the plan's**: its data runs to about
 2026-11-09 12:31 UTC (the latest `mls_imports` row is 11:35:07 UTC; `mls_listings` were updated to
 12:31:37 UTC), and it was loaded after Postgres started at 10:55 UTC that day. The dump is not
@@ -109,7 +114,7 @@ import row.
 
 | # | Result |
 | :-- | :-- |
-| P1 | `2103 examples, 0 failures` (63.8 s); `CI=1`: `2103 examples, 0 failures` (63.7 s); `0` `DEPRECATION WARNING` lines in each; the 24 rspec-rails `:unprocessable_entity` warnings unchanged. Baseline on `master` `316fa0e1`: 2,100 (runbook 4), so +3 — contract 16 → 18 (one example became three) and the login spec 1. The plan's ESTIMATE of 2,102 counted from `3f67af13` (2,099); the extra one is `spec/requests/forwarded_header_spec.rb` (`77fcef70`, on `master` since 2026-11-06), sourced from a `--dry-run --format json` grouped by file |
+| P1 | `2103 examples, 0 failures` (63.8 s); `CI=1`: `2103 examples, 0 failures` (63.7 s); `0` `DEPRECATION WARNING` lines in each; the 24 rspec-rails `:unprocessable_entity` warnings unchanged. Baseline on `master` `316fa0e1`: 2,100 (runbook 4), so +3 — contract 16 → 18 (one example became three) and the login spec 1. The plan's ESTIMATE of 2,102 counted from `3f67af13` (2,099); the extra one is `spec/requests/forwarded_header_spec.rb` (`77fcef70`, on `master` since 2026-11-06), sourced from a `--dry-run --format json` grouped by file. On `c966bb6e`, in a clean worktree at that commit with `.env` copied in and removed afterwards, and with `tmp/` created (without it, 33 report-writing examples fail with `Errno::ENOENT` — a worktree artifact): `2103 examples, 0 failures` plain (54.0 s) and `CI=1` (55.3 s), the same deprecation and warning counts |
 | P2 | `zeitwerk:check` → "all is good" (the `lib/` notice as on `master`) |
 | P3 | `slice5a_p3` queue: `Booted Rails 8.1.4.1 application in development environment`, `start`, `[PropertyDataLookupWorker] Property#1964 already has property data, skipping`, `done` (`elapsed=0.24`); `Sidekiq::Status::status(jid)` → `nil` (§8 item 10) |
 | P4 | `4 examples, 0 failures` |
@@ -203,8 +208,8 @@ off); `true` (`escape_json_responses`, 5b's); then the new eight — **`1.0`** (
 (`belongs_to_required_validates_foreign_key`, a 7.1 default no slice moves); and a `DEPRECATION`
 count of `0`.
 
-RESULTS (2026-11-09 15:45:14 UTC, branch `3ca24647`, dev container — the merge with `master`
-`316fa0e1` carries the same tree). Every line as expected:
+RESULTS (2026-11-09 15:45:14 UTC, branch `3ca24647`, dev container — the same application tree as
+`c966bb6e`, and as its merge into `master` `316fa0e1`). Every line as expected:
 
 ```
 exit 0
@@ -424,7 +429,18 @@ global off is a §7 decision, not an in-window fix (plan, Risks).
 - **One-off dynos overlap a release** (plan P8): an import in flight at the push finishes on slice 4's
   slug, which is why the watched run is the first one that starts after the release.
 - **The 24 rspec-rails `:unprocessable_entity` warnings** (rack 3.2 renamed the status), unchanged.
-- **Review rounds:** ___
+- **Review rounds** (2026-11-09, `predeploy-review-rails`; Codex `gpt-6-astra` at effort `max` — the
+  regexp timeout is production configuration with a process-wide blast radius — in detached git
+  worktrees at the reviewed commit, so no `.env` or `config/master.key`; both left their worktree and
+  the real tree untouched). Round 1, at `3ca24647`: Codex found that the login spec's
+  `and_call_original` rendered the real mail, so the example needed `ZONE_EMAIL_SENDER` from `.env`.
+  Claude found it read `ActionMailer::Base.deliveries.last` from an array the suite never clears.
+  Both were confirmed, and Codex's should-fix was regraded to a nit: no spec runs without `.env` (the
+  test database's credentials come from it too), and 16 existing examples need the same sender. Both
+  were fixed by returning to the plan's delivery double (Decisions 10), amending commit 1 to
+  `c966bb6e`. Round 2: "The round 1 fix is sufficient … No actionable findings survived the full-diff
+  review." Neither model found a production input that takes a regexp past one second. The watched
+  import is the probe for that (step 6).
 
 ## After the deploy — write-back (platform repo)
 
@@ -439,3 +455,6 @@ global off is a §7 decision, not an in-window fix (plan, Risks).
 - **2026-11-09 — implemented and verified in development** (branch `chore/rails-upgrade-slice-5a`,
   `3ca24647` off `master` `316fa0e1`, which is production's code as v671): step 1's table, fact 16
   re-run on the new base, P-5a (655 replayed, 0 timeouts), and P-PROD as step 2's RESULTS.
+- **2026-11-09 — reviewed, two rounds** (Known): round 1's finding was fixed by amending commit 1 to
+  `c966bb6e`, a spec-only change, and P1 was re-run there in a clean worktree, `2103 examples,
+  0 failures` both ways. Round 2 found nothing.
