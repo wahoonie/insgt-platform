@@ -1,11 +1,12 @@
 # Rails Upgrade — insgt-api 7.2.3 → 8.1.4
 
 **Repo:** `insgt-api` · **Platform:** Heroku app `insgtapi` (Render.com cutover follows, §2)
-**Status:** v6 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
+**Status:** v7 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
 S7, S9 and SH pass); slice 2 deployed (v663, 2026-10-28 08:53 -0400; S7, S9 and SH pass); slice 3
-deployed (v666, 2026-11-02 08:12 -0500; S7, S9 and SH pass); OD10 open
-**Version:** 6 · **Last updated:** 2026-11-03
-**Supersedes:** v5 (2026-10-29). See §9.
+deployed (v666, 2026-11-02 08:12 -0500; S7, S9 and SH pass); slice 4 implemented, verified and
+reviewed, push Mon 2026-11-09; OD10 settled
+**Version:** 7 · **Last updated:** 2026-11-09
+**Supersedes:** v6 (2026-11-03). See §9.
 **Companion files:** `rails-upgrade-codebase-notes.md` (the `file:line` map; every repo claim below
 is sourced there), `rails-upgrade-slices/slice-{0,1,2,3,4,5}.md` (the slice prompts), and the
 contract spec `insgt-api/spec/architecture/rails_upgrade_spec.rb` (created by slice 1; later slices
@@ -14,7 +15,7 @@ append to it).
 **How to read this document.** Facts are stated with their source (a `file:line`, a rubygems
 dependency line, a Rails branch file, a dated page). Assumptions and estimates are labelled as
 such. `UNVERIFIED` marks a claim no source settled. Decided questions are recorded in §7 with the
-section that carries them; the two still-open ones are marked. Slice prompts cite section numbers;
+section that carries them; none is still open (v7: OD10 settled at slice 4's plan gate). Slice prompts cite section numbers;
 they do not restate rules.
 
 ---
@@ -1036,6 +1037,7 @@ slice 5, and no `DoubleRenderError`. Runbook: `docs/runbooks/deploy-rails-upgrad
 
 Decided 2026-10-23 (OD4, rule D′). Replaces v1's plan to relocate the Rails 5.0 shim's global
 `belongs_to_required_by_default = false` (`config/initializers/new_framework_defaults.rb:20`).
+**v7:** the line is `:16` and its comment `:15` (as built, below).
 
 **The rule.** Each `belongs_to`'s `optional:` matches its foreign-key column's nullability in
 `db/schema.rb`: a `NOT NULL` column → required (no `optional:`); a nullable column → `optional: true`.
@@ -1057,7 +1059,8 @@ The global `false` is **removed, not relocated**; the Rails ≥ 5.0 default (`tr
   `ResourceType` pattern). Under the rule as written both would become required and **every**
   `TagsResource` save would fail, since exactly one of the two targets exists per row.
 
-**Gaps pinned (OD10 — open, with the recommendation):**
+**Gaps pinned (OD10 — the recommendation; v7: decided as recommended, with the validation keyed on
+`resource_type` — as built, below):**
 - *The shared-column pair.* Recommended rule, structural rather than a name list (honouring "no
   allowlist"): a foreign-key column that more than one `belongs_to` on the same model points at is
   a hand-rolled polymorphic column; each of those associations is `optional: true` and the
@@ -1073,16 +1076,26 @@ The global `false` is **removed, not relocated**; the Rails ≥ 5.0 default (`tr
 - 47 associations start validating presence (49 minus the `TagsResource` pair). A save that today
   fails with `PG::NotNullViolation` (a 500 through `ActiveRecord::NotNullViolation`) now fails as a
   validation error: `render_errors` 422 with "`<Association> must exist`". Client-visible shape
-  changes from 500 to 422 on those paths — an improvement, but a change.
+  changes from 500 to 422 on those paths — an improvement, but a change. **v7:** 17 of the 47 have no
+  column presence validator and move from 500 to 422; the other 30 already answered 422 (`can't be
+  blank`) and gain a `must exist` line (§8 item 27).
 - Presence validation of a `belongs_to` checks that the **associated record exists**, not merely
   that the key is set. A row whose `NOT NULL` key points at a missing row (hard deletes are not the
   convention — `CLAUDE.md` "Nothing is hard-deleted" — but `db/schema.rb` declares few foreign-key
   constraints, so dangling keys are possible; UNVERIFIED) becomes unsaveable until repaired. The
-  pre-deploy report below counts them; any non-zero count is a STOP.
+  pre-deploy report below counts them; any non-zero count is a STOP. **v7: too wide.** `load_defaults
+  7.1` sets `belongs_to_required_validates_foreign_key` to `false` (`railties-8.1.4
+  configuration.rb:285`; nothing later flips it back), so the validator runs only on a new row or a
+  changed key (`activerecord-8.1.4 builder/belongs_to.rb:148–163`). A dangling row saves, updates
+  and soft-deletes; it fails only when its key is reassigned to another missing row. The STOP became
+  decision 5's rule (scope 5, as built).
 - Each presence validation loads the associated record unless already loaded: about one extra
   `SELECT` per required association per save (ESTIMATE; e.g. `Order` → `account`, `order_type`: +2
   per `Order` save). The plan measures it with `spec/support/sql_helpers.rb#sql_for` on an `Order`
-  save before and after.
+  save before and after. **v7, measured:** by id 12 → 15 SELECTs (+2 from `Order#account`'s
+  eager-load scope, `order.rb:90`; +1 `OrderLog#order`), by object 10 → 11; `POST /orders` as
+  insgt-ops sends it 51 → 62 (each child is built by id, and its own `INSERT` clears the query cache);
+  a `TagsResource` create 1 → 3; an update whose keys do not change +0.
 
 **Scope.**
 1. Contract spec first (red): for every non-polymorphic `belongs_to` reflection on every model,
@@ -1092,7 +1105,9 @@ The global `false` is **removed, not relocated**; the Rails ≥ 5.0 default (`tr
 3. Add `optional: true` to the three nullable-column associations.
 4. Delete `new_framework_defaults.rb:18–20` (the comment and the global `false`); fix the specs
    that hand-build records without their required association by supplying it (per `CLAUDE.md`,
-   never by converting a hand-built record to a factory).
+   never by converting a hand-built record to a factory). **v7:** lines 14–16 (the blank separator,
+   the comment, the line), so the file ends at 13 lines on the second CSRF line; the spec-fix list is
+   empty — the suite was green with the line gone.
 5. **Pre-deploy STOP, read-only against production** (decided): `heroku pg:psql --app insgtapi`
    `SELECT table_name, column_name, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND column_name LIKE '%\_id' ORDER BY 1, 2`
    compared with `db/schema.rb` by a script in the plan; **any mismatch is a STOP** before the
@@ -1102,6 +1117,9 @@ The global `false` is **removed, not relocated**; the Rails ≥ 5.0 default (`tr
    and (ADDED, this document's recommendation) for each `NOT NULL` FK column behind a required
    association, the count of rows whose referenced row does not exist (`LEFT JOIN … WHERE target.id IS NULL`),
    expected `0` for all — any non-zero is a STOP, because those rows fail validation after the deploy.
+   **v7:** a null-count candidate is `nulls = 0` *on a table with rows* (an empty table's `0` says
+   nothing); the dangling STOP became decision 5's rule — STOP on a non-zero column outside the ones a
+   recent restore predicts, or a count above the restore's; at or below, record and proceed.
 
 **Out of scope.** Flipping any framework default (slice 5); the CSRF lines of the 5.0 shim (inert,
 deleted with the file in 5b); converting `TagsResource` to Rails polymorphism; adding `NOT NULL`
@@ -1115,7 +1133,11 @@ break is to re-add the global `false` — then the 47 required associations repo
 and the block goes red); one request spec per visible path: a create that omits a required
 association returns 422 with "must exist" (the plan names the endpoint — candidate: an
 `OrdersUser` create without `user_id`); the `TagsResource` exactly-one validation; `Area` saves
-without `state`; the `sql_for` measurement on an `Order` save.
+without `state`; the `sql_for` measurement on an `Order` save. **v7:** the endpoint is `POST
+/areas_properties` without `propertyId` — `OrdersUser` already validates `user_id` presence and
+answers 422 (`orders_user.rb:13`); a reflection has no `optional?`, so the break reads as
+`belongs_to_required_by_default` → `false` and the presence validators gone; the `sql_for`
+measurement stayed in the plan (decision 8).
 
 **Commit sketch.**
 1. `test: pin belongs_to optionality to column nullability` [2: the structural rule for shared columns]
@@ -1130,10 +1152,69 @@ without its association → 422 and a JSON `errors` array containing "must exist
 the same request returned 500); S13 the dangling-key query from the pre-deploy report re-run → still
 `0` everywhere; SH specifically: no new `ActiveRecord::RecordInvalid` occurrences whose message
 contains "must exist" from paths that call `save!`, and no `ActiveRecord::NotNullViolation` at all.
+**v7:** S13 is diffed against the push morning's read — D29, D39 and D50 at their counts, every
+other row `0`.
 
 **Rollback.** `heroku rollback` to the slice 3 release. No schema change.
 
-**Gates.** All. **Effort (estimate):** 6 h plus the deploy morning (Mon 2026-11-09).
+**v7, as built** (insgt-api `chore/rails-upgrade-slice-4`, five commits off `master` `8b726308` =
+v667; `master` merged in twice — `3f67af13` at v669, `6e0e9953` at v670 — and the slice's own diff is
+byte-identical after each; plan `docs/plans/rails-upgrade-slice-4.md`, which records every deviation;
+runbook `docs/runbooks/deploy-rails-upgrade-4.md`). Source citations are the installed 8.1.4 gems.
+
+- *The survey's counts held exactly:* 89 reflections over 43 models; 49 `NOT NULL`, 39 nullable,
+  1 columnless, 1 shared column. No `NOT NULL` foreign-key column behind a `belongs_to` has a default
+  (modification B), so no required association can be satisfied by a default-filled key.
+- *OD10, decided.* The pair keeps the `optional: true` it already had (`tags_resource.rb:6–7`). The
+  model validates instead that `resource_id` names a row of the class `resource_type` picks — `User`
+  (1), `Property` (3) or `Photo` (7) (`RESOURCE_CLASSES`, `:20–24`; `resource_must_exist`,
+  `:103–108`) — under the condition the framework gives a required `belongs_to`: a new row, or a
+  changed `resource_id` or `resource_type` (`:26`). "Exactly one of the two targets" could not hold:
+  99.4% of the rows are photo-typed, and photo has no association. An unknown type resolves nothing
+  and is invalid. `errors.add(:resource_id, :required)` reads `Resource must exist`; `unscoped`
+  because the targets' default scopes only order. Real polymorphism stays a data migration.
+- *The contract block* (`spec/architecture/rails_upgrade_spec.rb:134`, five examples): a floor of
+  88 reflections (the 89 surveyed, less `Area#state`); a column behind every reflection; `optional: true` exactly where the column is
+  nullable or shared, the shared column found structurally (reflections grouped by model and foreign
+  key) with no model named; every `NOT NULL` association required through the framework default;
+  every shared column `NOT NULL`. Red 3 → 2 → 1 → 0 across commits 1–4, by design (decision 6).
+- *Commits, in this order* (`39b213f3`, `1b4be3c8`, `0baa6b4b`, `c055b8ed`, `bd0859b8`): `test: pin
+  belongs_to optionality to column nullability` · `fix: drop the dead Area#state association` ·
+  `refactor: mark the nullable belongs_to associations optional` · `fix: validate presence of
+  belongs_to on NOT NULL columns` (the shim's lines 14–16 and the OD10 validation) · `fix: refuse a
+  floorplan bulk create whose order token resolves nothing` — the fifth is outside the sketch (below).
+- *Save-and-ignore call sites.* Where the key names nothing, a site that ignores `save`'s result now
+  skips the write silently: `OrdersUser`'s contractor helpers (`orders_user.rb:102–114`),
+  `TagsResource.update_user_tags` (`tags_resource.rb:68–74`) and `Photo.tag` (`photo.rb:300`) wrote a
+  dangling row before (no foreign key on those columns) and write nothing after (§8 item 30).
+  `FloorplansController#create_bulk` would have turned a `500` into a `200` listing unsaved rows when
+  the batch's `order_token` resolves no active order (`find_by_token` answers active orders only,
+  `token.rb:23–25`), so commit 5 refuses it first with `422` `["Order must exist"]`
+  (`floorplans_controller.rb:26`). Review round 2's finding, fixed in the slice on Dan's decision.
+- *Spec plan as built.* The contract block (5); `spec/models/area_spec.rb` (1);
+  `spec/models/tags_resource_spec.rb` (9: each dirty-field half of the condition, each type's
+  mapping, the unsupported type, a row whose user is gone still soft-deletes);
+  `spec/requests/areas_properties_create_spec.rb` (3; S12's camelCase body, `:unprocessable_content`);
+  `spec/requests/floorplans_create_bulk_spec.rb` (1). Deliberate breaks seen red for each; no existing
+  spec changed. The suite: **2,099 examples, 0 failures, 0 deprecation lines**, plain and with `CI=1`
+  (2,080 on `8b726308` + 19); **2,100** on `6e0e9953`, where `master` added one.
+- *Production, read twice before the push* (Thu 11-05 and Mon 11-09, the runbook's step 2):
+  nullability `OK`, 219 columns on each side; `nulls = 0` on a table with rows for five columns (§8
+  item 15); dangling keys on three columns only, each at the development restore's count —
+  `orders.account_id` 2, `orders_users.user_id` 27, photo-typed `tags_resources.resource_id` 32 —
+  with the named rows identical both mornings, so no live writer. Honeybadger: no
+  `ActiveRecord::NotNullViolation` since 2026-10-26, so the 17 are unexercised in production.
+  **Disposition (decision 5, Dan): proceed** — the three sets stay, as §8 item 26; no migration.
+- *Review.* Two rounds of `predeploy-review-rails` with Codex (2026-11-03): round 1's should-fix
+  findings fixed in commit 4 (five more model examples) or regraded to Known with reasons; round 2
+  agreed and asked for `create_bulk` in the slice (commit 5); no third round.
+- *Unchanged:* `belongs_to_required_validates_foreign_key` stays `false` through slice 5; it is not
+  among 5a's or 5b's flags (§4.6).
+
+**Gates.** All. **Effort (estimate):** 6 h plus the deploy morning (Mon 2026-11-09). **v7:** 7 h,
+accepted at the plan gate — the hour over is OD10's photo type (decision 9). Plan approved Mon
+11-02; implementation, verification and two review rounds Tue 11-03; production read Thu 11-05 and
+Mon 11-09; push Mon 11-09.
 
 ### 4.6 Slice 5 — framework defaults, then `config.load_defaults 8.1`
 
@@ -1217,7 +1298,7 @@ Honeybadger error that was not in the slice 0 baseline, compared by error (v5).*
 | Rank | Failure | Where | Detection signal |
 | :-- | :-- | :-- | :-- |
 | R1 | A gem that hooks Rails fails to load or misbehaves at a major bump — `string_utils`' `active_support/core_ext/string/multibyte` require, the sidekiq-status middleware, Oj, sidekiq 7.3.10's railtie (§3, UNVERIFIED by changelog), **or the honeybadger railtie itself** (the signal must survive each slice) | slices 2–3, at boot or first job | Heroku release fails to boot (`heroku releases` state, `heroku logs --tail` showing `NameError`/`LoadError`/`NoMethodError` with a gem path); `/up` → 5xx (S1) and the uptime monitor; `heroku ps` shows `backgroundworker.1 crashed` and the Sidekiq "Booted Rails" line missing (S2); lograge lines with `status=500` (S7); **S0's `UpgradeMarker` fails to arrive** (the gem did not load) — a silent Honeybadger is itself the alarm |
-| R2 | Slice 4's presence validation on 47 associations changes a save's outcome: a path that raised `PG::NotNullViolation` now returns 422, or a row with a dangling `NOT NULL` key becomes unsaveable | slice 4 | Honeybadger: new `ActiveRecord::RecordInvalid` occurrences with "must exist" from `save!` paths, or `ActiveRecord::NotNullViolation` disappearing from a path that used to raise it; lograge 422 counts on create endpoints; the pre-deploy dangling-key report (STOP on non-zero) |
+| R2 | Slice 4's presence validation on 47 associations changes a save's outcome: a path that raised `PG::NotNullViolation` now returns 422, or a new row or key reassignment that names a missing row is refused (**v7:** an existing dangling row still saves — the validator runs only on a new row or a changed key, §4.5); a site that ignores `save`'s result skips the write silently | slice 4 | Honeybadger: new `ActiveRecord::RecordInvalid` occurrences with "must exist" from `save!` paths, or `ActiveRecord::NotNullViolation` disappearing from a path that used to raise it; lograge 422 counts on create endpoints; the pre-deploy dangling-key report (**v7:** STOP on a non-zero column outside the restore's prediction, or a count above it) and S13 diffed against it |
 | R3 | The two `to_time` steps (offset in slice 1, zone in slice 2) move a date boundary for a Pacific user — `search_time_params` (`lib/app_param.rb:28–34`) consumers, report dates, `strftime` on derived `Time`s | slices 1–2 | pre-deploy: the time-zone request specs by name (§4.2); post-deploy: S8's offset print, and a date-filtered orders count for a Pacific day compared before/after the push; symptom in the wild: an order "missing" from or "extra" on a day's list in insgt-ops (no exception — the one risk Honeybadger cannot see) |
 
 **v6, R1 at 8.1.4 (slice 3), as verified in development:** Sidekiq 7.3.10 boots and runs a job
@@ -1297,7 +1378,7 @@ to the next Monday or Tuesday; Thanksgiving week (Mon 11-23, Tue 11-24) counts a
 
 Nine questions were open in v1; the engineer settled all nine on 2026-10-23. Two new ones arose
 from the facts those decisions surfaced (OD10, OD11). OD11 was settled at the slice 0 plan gate on
-2026-10-26; OD10 is **open**.
+2026-10-26; OD10 at the slice 4 plan gate on 2026-11-02 (v7).
 
 | ID | Question | Decision (2026-10-23) | Carried by |
 | :-- | :-- | :-- | :-- |
@@ -1310,7 +1391,7 @@ from the facts those decisions surfaced (OD10, OD11). OD11 was settled at the sl
 | OD7 | `db/schema.rb` re-dump | Yes, from a clean test database loaded from the committed file, never from development; header-only → commit, else STOP. **v6 (slice 3):** the rule became "the header and the `pg_catalog.plpgsql` extension hunk" — 8.0's dumper schema-qualifies `plpgsql`, proven by a control dump on 8.0.5.1 before the branch; a round-trip load of the committed file must dump identically | §4.4 step 4 |
 | OD8 | Gem-originated deprecations | STOP, as written; the fallback is a callable behaviour (raise by default; log only for a listed gem path **and** message pattern, each pair recorded here with its §8 removal item); slice 1 keeps plain `:raise` and turns production deprecation reporting on through Honeybadger | §4.2 |
 | OD9 | Documents branch | `docs/rails-upgrade` stays; verified based on the platform repo's `main` (not insgt-api's `master`, which never carries these files); merges into `main` before slice 0 | §2.7 |
-| **OD10 (open)** | Rule D′ meets `TagsResource#user`/`#property` (two `belongs_to` on one `NOT NULL` column) and `Area#state` (no column) | **Recommendation:** the structural shared-column rule (both `optional: true`, spec asserts exactly-one) and deleting `Area#state`. **Against:** the structural rule is a rule the spec must encode, not a plain equality; the alternative (real polymorphism) is a data migration | §4.5 — blocks slice 4's plan |
+| OD10 | Rule D′ meets `TagsResource#user`/`#property` (two `belongs_to` on one `NOT NULL` column) and `Area#state` (no column) | **Settled 2026-11-02 at the slice 4 plan gate (v7).** The structural shared-column rule: both `optional: true`; the contract spec finds the shared column by grouping reflections, names no model, and asserts it `NOT NULL`; the model validates that `resource_id` names a row of the class `resource_type` picks (user, property or photo), under the framework's new-row-or-changed-key condition — "exactly one of the two targets" could not hold for photo-typed rows. `Area#state` deleted. **Against:** the structural rule is a rule the spec must encode, not a plain equality; the alternative (real polymorphism) is a data migration | §4.5 (as built) |
 | OD11 | The decided "check-in on one recurring Sidekiq job" has no such job to attach to | **Settled 2026-10-26 at the slice 0 plan gate, as recommended.** Recommendation: check in from the `import_listings` rake task (the regex-dense path 5a watches; reveals the scheduler cadence); Sidekiq liveness stays with S2 and automatic failure reporting. **Against:** a rake check-in says nothing about Sidekiq throughput; the only continuous Sidekiq signal is its error stream | §4.1 (v3: implemented; the cadence is hourly) |
 
 Deprecation exemptions recorded under OD8: none.
@@ -1331,6 +1412,18 @@ the dump sequencing; S-404 included; build now, push Mon 11-02. Additions: **A**
 made exhaustive (no sixth site) with unauthenticated examples; **B** a control dump before and a
 round-trip load after the 8.1 dump (three `db:*` sequences, Dan's); **C** `find_instance`'s contract
 to §8 (item 21) so the guard does not become the fix. Recorded in `docs/plans/rails-upgrade-slice-3.md`.
+
+**Slice 4 plan gate (2026-11-02), nine questions answered as recommended:** the plan in the platform
+repo beside slices 1–3's; OD10 as above, on two conditions (the contract names no model; the
+validation runs under the framework's condition), both met; commit 4's premise corrected (the pair's
+`optional: true` already exists on `master`); S12 on `POST /areas_properties`, and no deliberate 500
+against production before the push; dangling keys recorded, and the push proceeds when production
+is at or below the restore's counts (decision 5); red HEADs at commits 1–3 accepted; the doubled
+message on 30 models accepted (§8 item 27); the `sql_for` measurement in the plan only; build Tue
+11-03, review Thu 11-05, push Mon 11-09. Modifications A–H (the exact shim lines, column defaults, the
+dangling sets' provenance, the production reads twice, the Honeybadger baseline for the 17, the
+`TagsResource` creation cost, the frontend string grep, this write-back list) are recorded in
+`docs/plans/rails-upgrade-slice-4.md`.
 
 ---
 
@@ -1384,7 +1477,11 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 14. zipline's `actionpack < 8.2` cap (or the `zip_tricks` TODO at `Gemfile:39`) — before any 8.2 bump.
 15. **`NOT NULL` migration candidates from slice 4's null-count report**: nullable FK columns that
     are always populated get the four-step `NOT NULL` sequence (`README.md` §Migrations) after the
-    Render cutover — no slice carries a migration.
+    Render cutover — no slice carries a migration. **v7, from slice 4's production reads (2026-11-05,
+    2026-11-09):** five candidates, `nulls = 0` on a table with rows — `areas.city_id`,
+    `areas.area_type_id`, `notifications.order_event_id`, `order_url_groups.order_id`,
+    `photos.order_id` (`headshots.user_id`'s `0` is an empty table). None has a default to drop
+    (modification B).
 16. ~~The three `t.float` columns — confirm `double precision` vs `real` so a future dump has no
     surprise.~~ **Closed (v6, slice 3):** all three are `double precision`; the 8.1 dump added no `limit:`.
 17. Honeybadger Insights (off in slice 0) and the uptime/check-in set — decide after the trial
@@ -1420,6 +1517,30 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 25. **`/up.json` is not exempt from the SSL redirect or host authorization** (v6): `production.rb:48` and
     `:101` match `request.path == '/up'` only. Irrelevant today (the uptime check hits `/up` over HTTPS
     on a listed host); revisit with the Render cutover's health-check path.
+26. **Slice 4's dangling rows, as one cleanup** (v7; decision 5). Three historical sets, named in
+    `docs/runbooks/deploy-rails-upgrade-4.md` step 2 and unchanged on both pre-push reads:
+    `orders.account_id` (orders 2827 and 4302; accounts 873 and 1190 hard-deleted in 2016–2017),
+    `orders_users.user_id = 0` (27 `system_processor` rows, 2017-07-07 … 2019-05-02, the pre-2019
+    processor assignment; 24 active), photo-typed `tags_resources.resource_id` (32 zip-code tags on
+    photo ids 549637–549668, 2025-06-17). No column default produced any of them (modification B), and
+    no hard-delete path for accounts or photos exists in `app/` or `lib/`. They save unless their key is
+    reassigned to another missing row (§4.5). Repair or soft-delete them in one change; no migration.
+27. **The 30 redundant column presence validators** (v7; decision 7). Where a required `belongs_to`'s
+    key also has a presence validator, an omitted key answers `["User must exist", "User can't be
+    blank"]`. Remove the column validators on their own branch after slice 5 closes; no client
+    matches either string (modification G).
+28. **`Order#account`'s eager-load scope** (`order.rb:90`, `-> { eager_load(accounts_users: :user) }`)
+    makes the required check two statements on an `Order` saved by id (v7, §4.5). `POST /orders`
+    does not pay it — the account is already loaded there. A note, not a change.
+29. **The `tag` load on every `TagsResource` create** (v7; modification F). The required `belongs_to
+    :tag` reads the tag by id and the OD10 validation reads the target: 1 → 3 SELECTs per row, paid
+    per photo by bulk tagging (`photo.rb:300`) and by `tag_with_zip` on every photo create. Assigning
+    the tag by object saves one.
+30. **Save-and-ignore sites skip a refused write silently** (v7): `OrdersUser`'s contractor helpers
+    (`orders_user.rb:102–114`), `TagsResource.update_user_tags` (`tags_resource.rb:68–74`,
+    delete-then-insert with no transaction) and `Photo.tag` (`photo.rb:300`). A key that names nothing
+    wrote a dangling row before slice 4 and writes nothing after; the caller hears of neither.
+    Reporting the failure changes the call sites, outside the upgrade.
 
 ---
 
@@ -1433,3 +1554,4 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 | 4 | 2026-10-26 | Slice 1 implemented and verified in development (insgt-api `chore/rails-upgrade-slice-1`, eight commits `5c9446da`…`a5d9b001`, two review rounds); slice 0 deployed as v659; production now v661 (v660 and v661 are listing fixes from `master`, outside the upgrade). §4.0: P3's id-0 assumption falsified (the worker re-raises) — P3 runs an already-fetched property on its own queue and asserts the log lines; P4 is 4 examples (`:110–148`), not 3. §4.2 item 1: `Gemfile:29`; the lock diff's two `activesupport` constraint lines and minitest's `prism` line named. Item 4: the log-history reach (Heroku 1,500 lines; Papertrail `fixa`, about fourteen days, 0 hits) and the code/database URL audit. Item 5 as built: scope stated (every registered deprecator; not unregistered gem deprecators or `Kernel#warn`); `to_prepare` wiring (a bare initializer reference fails the boot); dedupe key and fingerprint `"<gem_name>: <message>"` (Honeybadger groups on the fingerprint alone; the message carries the call site but not the deprecator); raw `backtrace:`; the subscriber never raises (log line and failure notice, rescued separately; key claimed before notify); `received?` for the deploy probe; the boot window it cannot cover. Spec plan as built (the behavioural gate example; `have_received` for the dedupe). Verification: the pre-push production-config probe, v661 as the "before" and rollback release, the suite on the merge into `master` (2,040 expected), the baseline spanning v659, v660 and v661. §4.3: the 8.0 `to_time` semantics revisited there. §5 R3 step one's evidence. §8 item 19 (the gate sees only loaded classes). Runbook `docs/runbooks/deploy-rails-upgrade-1.md`. |
 | 5 | 2026-10-27 | Slice 1 deployed as v662 (2026-10-27 08:15 -0400; S7 and S9 pass; SH pending), with its owed amendments: §2.2 and §5 "quiet" by Honeybadger error; §4.0 S4 `map`, S7 (saved buffer, Papertrail hour, exception classes), SH (two searches, triage rule), S0 (release variable), P-PROD, P1 twice; §4.1 item 7. Slice 2 implemented, verified and reviewed (insgt-api `chore/rails-upgrade-slice-2`, five commits `671c3c6b`…`4b464230`; 2,045 examples; two review rounds, no blocker): §4.3 as built — `:zone` in `config/application.rb` because `set_configs` forwards the `load_defaults` value before `config/initializers` (the shim cannot do it under `:raise`); the routes `only:` validation found and fixed; the three Active Storage migrations pre-existing and kept; `puma.rb` and `bin/setup` rejected; `Time#zone` is a `TimeZone` object; the autosave and `#merge`/`#or` fixes are 7.2.3's, not this slice's; `racc` stays in the lock; the `transform_keys` claim corrected; the commit order (routes, `:zone`, bump, binstubs, shim). §4.4 reworded: slice 3's survey decides the `application.rb` line's fate; the migrations are not re-copied. §6 the calendar as it went; §7 the slice 2 plan-gate decisions; §8 items 10, 19, 20. Slice prompts 2 and 3 annotated; notes extended. Runbook `docs/runbooks/deploy-rails-upgrade-2.md` (`Ready`); plan `docs/plans/rails-upgrade-slice-2.md`. |
 | 6 | 2026-10-30 | Slice 3 implemented, verified and reviewed (insgt-api `chore/rails-upgrade-slice-3`, five commits `a5bfab70`…`5ffe92c4` off v665; 2,059 examples; two review rounds, no blocker); push planned Mon 2026-11-02. §4.4 as built: the `to_time` line **deleted inside the bump commit** (8.1 deprecates the key for any value, reader and writer; 8.0 cannot boot without it), so the planned separate commit is gone; **five setters headed twice on a miss** — a 500 on 8.1 — fixed first with `return if performed?` after an exhaustive head-producer walk; `action_text-trix` enters the lock (§1.2, §2.6, §3.1); the `app:update` deltas (`bin/rubocop` accepted, the CSP comment lines rejected); the three floats are `double precision`; the dump's extension hunk is 8.0's dumper, bracketed by a control dump and a round-trip load (OD7 amended); `/up.json`, `remote_ip` and the 8.1 defaults under 7.2 as found; a new Active Storage boot WARN. §4.0 S3 and P-PROD read `config.active_support.key?` — the reader deprecates on 8.1. §4.3: v664 (the `orders#show` fix) and v665 (Ruby 3.4.12) recorded. §4.6: the 8.0 shim's `to_time` line is never uncommented; the 8.1 shim has no `yjit` row. §5 R1 at 8.1.4; §6 as it went; §7 OD7 and the slice 3 plan gate; §8 items 2, 7, 10, 16 (closed), 20 (done), 21–25 new. Slice prompts 4 and 5 annotated; notes extended. Runbook `docs/runbooks/deploy-rails-upgrade-3.md` (`Ready`); plan `docs/plans/rails-upgrade-slice-3.md`. |
+| 7 | 2026-11-09 | Slice 4 implemented, verified and reviewed (insgt-api `chore/rails-upgrade-slice-4`, five commits `39b213f3`…`bd0859b8` off v667 `8b726308`, `master` merged in at v669 and v670; 2,099 examples, 2,100 on the v670 merge; two review rounds, round 2's finding fixed as commit 5); production read twice before the push (Thu 11-05, Mon 11-09), no STOP; push Mon 11-09. §4.5 as built: OD10 settled — the validation keyed on `resource_type` over user, property and photo, under the framework's condition; the shim's lines 14–16; the spec-fix list empty; S12 on `POST /areas_properties`; "unsaveable until repaired" narrowed to the new-row-or-changed-key semantics of `belongs_to_required_validates_foreign_key = false`; decision 5's dangling rule and its disposition; the null-count rule "on a table with rows"; the measured SELECT cost (+3 by id, +1 by object, `POST /orders` +11); the save-and-ignore sites and the `create_bulk` guard; the effort 7 h. §5 R2 narrowed. §7 OD10 settled; the slice 4 plan gate. §8 item 15's five candidates; items 26–30 new. Runbook `docs/runbooks/deploy-rails-upgrade-4.md` (`Ready`); plan `docs/plans/rails-upgrade-slice-4.md`. |
