@@ -5,7 +5,10 @@
 **Estimated duration:** ~25 min of prerequisite reads and captures; ~35 min for the push and step 5's
 checks (S15, S15b and S17 included); S7 one hour after the push; S9, S9b, S16 and the ops@ inbox at
 the first import that starts after the release; SH and S18 24 h later
-**Status:** Draft — implemented and verified in development 2026-11-10 (step 1); review rounds pending.
+**Status:** Ready — implemented and verified in development 2026-11-10 (step 1); two review rounds of
+`predeploy-review-rails` done the same day (Known; record `docs/architecture/reviews/2026-11-10-slice-5b-insgt-api.md`),
+neither raising a finding. The v9 write-back is done. 5a's watched import passed (Prerequisites);
+awaiting 5a's SH read at about 14:48 UTC on 2026-11-11, then Dan's merge.
 
 ## Summary
 
@@ -92,18 +95,21 @@ moves to **Mon 11-16** (Thu and Fri are never deploy days), and the quiet week m
 
 ## Prerequisites
 
-- [ ] **5a's watched import passed on all four signals** (`deploy-rails-upgrade-5a.md` step 6): the
+- [x] **5a's watched import passed on all four signals** (`deploy-rails-upgrade-5a.md` step 6): the
       15:30 UTC run of 2026-11-10 — S9 (the check-in), S9b (a new `mls_imports` row whose start follows
       14:48:26 UTC, `total_listings` 654–659, `duration` 270–420 s), S16 (`0` `Regexp::TimeoutError` in
       the buffer and in Papertrail) and the ops@ inbox (no `SystemError::` from the import since the
       push; the baseline is the 2021-08-31 `Crmls Login Failure`). Pass on S9 alone, or on S9 and SH,
-      is not a pass (the login-swallow path passes both).
+      is not a pass (the login-swallow path passes both). **Passes** (Dan, 2026-11-10 15:39–15:41 UTC):
+      S9b a new row, start 15:30:17 UTC, `created_at` 15:35:25, `total_listings` 655, `duration` 308 s;
+      S9 "is reporting", last seen about 15:36 UTC; S16 `0` in the buffer (14:48:32 → 15:40:39 UTC) and
+      "No matching events" in Papertrail; the inbox quiet since 14:48 UTC; S7 `status=5` `0`.
 - [ ] **5a's SH passes** (runbook 5a step 7, at about 14:48 UTC on 2026-11-11, before this window
       opens): no `Regexp::TimeoutError`; no new error touching the 8.0 shim, the import files, the
       `rets` gem or `http/cache.rb`; no new `RailsDeprecation`; the inbox still quiet. An
       `IpSpoofAttackError` is the Client-IP fix's finding, not 5a's, and does not block 5b.
-- [ ] Review rounds complete (two rounds of `predeploy-review-rails`, Codex included; Known)
-- [ ] This runbook's Status is `Ready` (after the v9 write-back)
+- [x] Review rounds complete (two rounds of `predeploy-review-rails`, Codex included; 2026-11-10, Known)
+- [x] This runbook's Status is `Ready` (2026-11-10, after the v9 write-back)
 - [ ] Dan has merged `chore/rails-upgrade-slice-5b` into `master`, and `bundle exec rspec` is green
       **on the merge**. Expected with `master` still at `808d383f`: `2117 examples, 0 failures`, 0
       `DEPRECATION WARNING` lines, the 24 rack warnings — the branch's own count, since the branch is
@@ -513,3 +519,6 @@ a rollback.
   table, P-S17 and the S15/S15b rehearsals, and P-PROD as step 2's RESULTS.
 - **2026-11-10 — reviewed, two rounds** (Known): neither round raised a finding, so no commit changed;
   the suite at `27e45f1b` stands at `2117 examples, 0 failures` both ways.
+- **2026-11-10 — written back:** `rails-upgrade.md` v9, the codebase notes, the plan's implementation
+  record and the review record `docs/architecture/reviews/2026-11-10-slice-5b-insgt-api.md`. Status
+  `Ready`; the merge and the push wait on 5a's watched import and SH (Prerequisites).
