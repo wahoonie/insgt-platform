@@ -490,7 +490,14 @@ a rollback.
   slug, which is why the watched run is the first one that starts after the release.
 - **The 24 rspec-rails `:unprocessable_entity` warnings** (rack 3.2 renamed the status), unchanged;
   `json_escaping_spec.rb` uses `:unprocessable_content` and adds none.
-- **Review rounds:** pending (Status).
+- **Review rounds** (2026-11-10, `predeploy-review-rails`; Codex `gpt-6-astra` at effort `max` — a
+  `load_defaults` bump and a JSON renderer change reach every response — in a detached git worktree at
+  `27e45f1b`, so no `.env` or `config/master.key`; both rounds left the worktree and the real tree
+  untouched). Round 1 (16:30–16:38 UTC): "No actionable findings survived this review." Round 2, the
+  same HEAD with a fresh-eyes brief (18:20–18:28 UTC): "No actionable findings survived the independent
+  review." Claude's own pass raised nothing (the review record). Both rounds name the same residue —
+  Honeybadger receipt from a Scheduler one-off and the live S15/S15b/S17 reads — which this runbook's
+  production steps cover.
 
 ## After the deploy — write-back (platform repo)
 
@@ -504,3 +511,5 @@ a rollback.
 - **2026-11-10 — implemented and verified in development** (branch `chore/rails-upgrade-slice-5b`,
   four commits `4d5eef28`…`27e45f1b` off `master` `808d383f`, production's code as v672): step 1's
   table, P-S17 and the S15/S15b rehearsals, and P-PROD as step 2's RESULTS.
+- **2026-11-10 — reviewed, two rounds** (Known): neither round raised a finding, so no commit changed;
+  the suite at `27e45f1b` stands at `2117 examples, 0 failures` both ways.
