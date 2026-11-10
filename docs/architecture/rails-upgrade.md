@@ -1,13 +1,14 @@
 # Rails Upgrade — insgt-api 7.2.3 → 8.1.4
 
 **Repo:** `insgt-api` · **Platform:** Heroku app `insgtapi` (Render.com cutover follows, §2)
-**Status:** v8 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
+**Status:** v9 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
 S7, S9 and SH pass); slice 2 deployed (v663, 2026-10-28 08:53 -0400; S7, S9 and SH pass); slice 3
 deployed (v666, 2026-11-02 08:12 -0500; S7, S9 and SH pass); slice 4 deployed (v671, 2026-11-09
 08:27:45 -0500; S7, S9, SH and S13 pass); slice 5a deployed (v672, 2026-11-10 09:48:26 -0500; S7 and
-the watched import's four signals pass, SH pending); OD10 settled
-**Version:** 8 · **Last updated:** 2026-11-10
-**Supersedes:** v7 (2026-11-09). See §9.
+the watched import's four signals pass, SH pending); slice 5b implemented, verified and reviewed
+(2026-11-10, four commits off v672's `master`; push Wed 11-11 after 5a's SH); OD10 settled
+**Version:** 9 · **Last updated:** 2026-11-10
+**Supersedes:** v8 (2026-11-10). See §9.
 **Companion files:** `rails-upgrade-codebase-notes.md` (the `file:line` map; every repo claim below
 is sourced there), `rails-upgrade-slices/slice-{0,1,2,3,4,5}.md` (the slice prompts), and the
 contract spec `insgt-api/spec/architecture/rails_upgrade_spec.rb` (created by slice 1; later slices
@@ -235,7 +236,7 @@ any code exists.
 | P6 | `bin/rails runner 'puts Notifier.send_error_email("rails upgrade", "render check").message.subject'` | `SystemError::rails upgrade` (both ERB templates render; nothing is delivered) |
 | P7 | `bundle exec rspec spec/requests/users_directory_spec.rb spec/requests/orders_processing_parent_pays_spec.rb spec/workers` | 0 failures (JWT request path; raw `select_all` through `OrderSql`; Sidekiq fake queue) |
 | P8 | `bin/rails runner 'p = Photo.unscoped.where(status_type: 1).order(:id).last; puts p.thumb_url'` then `curl -sS -o /dev/null -w "%{http_code}\n" "<url>"` | a URL built by `S3ImageHandler`; `200` (an S3/CloudFront read of a real object — ASSUMPTION: `thumb_url` is the generated reader's name per `CLAUDE.md`; the slice plan pins it) |
-| P-PROD | **v5.** The production-config probe (slice 1's runbook step 2: `RAILS_ENV=production HONEYBADGER_REPORT_DATA=false bundle exec dotenv sh -c '… exec bin/rails runner "$1"' _ '…'` against the dev restore), from slice 2 extended with `p ActiveSupport.to_time_preserves_timezone`, `p Rails.application.config.loaded_config_version` and `p Rails.application.routes.routes.count`, its whole output grepped for `DEPRECATION` | every registered deprecator maps to `[:notify]`, `report_deprecations` not `false`, `received?` `true`, the slice's expected values, `0` `DEPRECATION` lines — the only production-mode boot (eager load, routes drawn) before the push. `HONEYBADGER_REPORT_DATA=false` keeps the probe's own deprecation out of production's Honeybadger and the SH baseline. **v6, from slice 3:** `p ActiveSupport.to_time_preserves_timezone` is **replaced** by `p Rails.application.config.active_support.key?(:to_time_preserves_timezone)` (expected `false`) — on 8.1 the reader deprecates — and `p Rails.version` (first) and `p ActionController::Base.escape_json_responses` (last, `true` until 5b) are added; the output starts with the Active Storage WARN line. **v8, from slice 5a:** eight lines follow `escape_json_responses` — `Regexp.timeout`, the `strict_freshness` config and its applied value (`ActionDispatch::Http::Cache::Request.strict_freshness`), `config.yjit`, `ActiveSupport::JSON::Encoding.escape_js_separators_in_json`, `ActiveRecord.raise_on_missing_required_finder_order_columns`, `ActionController::Base.action_on_path_relative_redirect` and `ActiveRecord.belongs_to_required_validates_foreign_key` (on the module: `ActiveRecord::Base` has no such reader and raises `NoMethodError`) — and the probe's exit status is recorded with its output. 5a's expected tail: `1.0`, `true`, `false`, `true`, `true`, `false`, `:log`, `false` (§4.6 as built) |
+| P-PROD | **v5.** The production-config probe (slice 1's runbook step 2: `RAILS_ENV=production HONEYBADGER_REPORT_DATA=false bundle exec dotenv sh -c '… exec bin/rails runner "$1"' _ '…'` against the dev restore), from slice 2 extended with `p ActiveSupport.to_time_preserves_timezone`, `p Rails.application.config.loaded_config_version` and `p Rails.application.routes.routes.count`, its whole output grepped for `DEPRECATION` | every registered deprecator maps to `[:notify]`, `report_deprecations` not `false`, `received?` `true`, the slice's expected values, `0` `DEPRECATION` lines — the only production-mode boot (eager load, routes drawn) before the push. `HONEYBADGER_REPORT_DATA=false` keeps the probe's own deprecation out of production's Honeybadger and the SH baseline. **v6, from slice 3:** `p ActiveSupport.to_time_preserves_timezone` is **replaced** by `p Rails.application.config.active_support.key?(:to_time_preserves_timezone)` (expected `false`) — on 8.1 the reader deprecates — and `p Rails.version` (first) and `p ActionController::Base.escape_json_responses` (last, `true` until 5b) are added; the output starts with the Active Storage WARN line. **v8, from slice 5a:** eight lines follow `escape_json_responses` — `Regexp.timeout`, the `strict_freshness` config and its applied value (`ActionDispatch::Http::Cache::Request.strict_freshness`), `config.yjit`, `ActiveSupport::JSON::Encoding.escape_js_separators_in_json`, `ActiveRecord.raise_on_missing_required_finder_order_columns`, `ActionController::Base.action_on_path_relative_redirect` and `ActiveRecord.belongs_to_required_validates_foreign_key` (on the module: `ActiveRecord::Base` has no such reader and raises `NoMethodError`) — and the probe's exit status is recorded with its output. 5a's expected tail: `1.0`, `true`, `false`, `true`, `true`, `false`, `:log`, `false` (§4.6 as built). **v9, from slice 5b:** `loaded_config_version` `8.1`; the route count `582` in production mode since `073ebe2f` unmounted `/cable` (v672; `bin/rails routes` in development stays 583); `escape_json_responses` `false`; the tail `1.0`, `true`, `true`, `true`, `false`, `true`, `:raise`, `false` |
 
 **Production spot checks, from the Mac, within 30 minutes of the push** (capture S4's and S6's
 answers *before* the push on the previous release, so "unchanged" is provable):
@@ -246,7 +247,7 @@ answers *before* the push on the previous release, so "unchanged" is provable):
 | SH | Honeybadger → Errors, filtered to the window since the push, compared with the slice 0 baseline (§4.1) **by error, not by class** (v5, slice 1's amendment). Two searches: `environment:"production" created.after:"<push time>"`, and `environment:"production" class:"NoMethodError" occurred.after:"<push time>"` (the baseline's three `NoMethodError`s were fixed by v661, so a recurrence is a finding even though the error is old) | **no new error**. Triage every error the first search returns: does its backtrace touch what the slice changed? Yes is a finding, resolved before the slice is called deployed; no is an old bug seen for the first time, or an old error regrouped because a line moved — recorded, fixed on its own branch, not blocking. From slice 1 on, also: no new `RailsDeprecation` beyond S-DEP's (§4.2) — one is a deprecation on a path the suite does not reach, a STOP for the next slice under OD8 — and no `DeprecationReporter` failure notice |
 | S1 | `curl -sS -o /dev/null -w "%{http_code}\n" https://api.insightphotos.net/up` | `200` (from slice 3, `/up.json` → `{"status":"up",...}`); the Honeybadger uptime monitor (slice 0) stays green |
 | S2 | `heroku ps --app insgtapi`; `heroku logs --ps backgroundworker.1 -n 300 --app insgtapi \| grep Booted` | `web.1 up`, `backgroundworker.1 up`; `Booted Rails <version> application in production environment` |
-| S3 | `heroku run --app insgtapi rails runner 'puts Rails.version'` | the slice's version. **v6, from slice 3:** also `p Rails.application.config.active_support.key?(:to_time_preserves_timezone)` → `false`. **No command on 8.1 calls `ActiveSupport.to_time_preserves_timezone`**: the reader itself deprecates (`activesupport-8.1.4/lib/active_support.rb:124–129`), which in production is a `RailsDeprecation` notice. From 8.1.4 every `heroku run … rails runner` prints Active Storage's `image_processing` WARN line before its output (§4.4 as built, §8 item 7). **v8, from slice 5a:** S3 also prints `loaded_config_version`, `config.yjit` and `RubyVM::YJIT.enabled?` — expected `7.2`, `true`, `true` on 5a's release; YJIT is already on in production under 7.2 (`configuration.rb:325`), and §4.6 row 4 changes it only for local environments |
+| S3 | `heroku run --app insgtapi rails runner 'puts Rails.version'` | the slice's version. **v6, from slice 3:** also `p Rails.application.config.active_support.key?(:to_time_preserves_timezone)` → `false`. **No command on 8.1 calls `ActiveSupport.to_time_preserves_timezone`**: the reader itself deprecates (`activesupport-8.1.4/lib/active_support.rb:124–129`), which in production is a `RailsDeprecation` notice. From 8.1.4 every `heroku run … rails runner` prints Active Storage's `image_processing` WARN line before its output (§4.4 as built, §8 item 7). **v8, from slice 5a:** S3 also prints `loaded_config_version`, `config.yjit` and `RubyVM::YJIT.enabled?` — expected `7.2`, `true`, `true` on 5a's release; YJIT is already on in production under 7.2 (`configuration.rb:325`), and §4.6 row 4 changes it only for local environments. **v9, from slice 5b:** S3 also prints `ActionController::Base.escape_json_responses` (`false` from 5b's release), and its `loaded_config_version` line is S10 (`8.1`) |
 | S4 | `heroku run --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).map(&:name).inspect'` | identical to the pre-push capture — `["Carlsbad", "Oceanside", "Leucadia"]` on v661 and v662 (the ASSUMPTION that 92008 has coordinates held). **v5:** `map`, not `pluck`: `nearby_cities` selects and orders by `distance_in_miles` (`postal_code.rb:131–132`) and `pluck` replaces the select, so the `ORDER BY` raises `PG::UndefinedColumn` (slice 1's probe on v661 did; that notice is excluded from the baseline) |
 | S5 | `heroku run --app insgtapi rails runner 'puts Stripe::Balance.retrieve.livemode'` | `true` (read-only Stripe API call with the production key) |
 | S6 | `heroku run --app insgtapi rails runner "Notifier.send_error_email('rails upgrade slice <N>', 'release <vNNN>').deliver_now"` | ops@insightphotos.net receives `SystemError::rails upgrade slice <N>` within minutes (SendGrid path exercised) |
@@ -1242,7 +1243,7 @@ does not cover it. Runbook: `docs/runbooks/deploy-rails-upgrade-4.md` (`Deployed
 ### 4.6 Slice 5 — framework defaults, then `config.load_defaults 8.1`
 
 Ten flags make up `load_defaults 8.1` beyond 7.2 (`8-0-stable configuration.rb:337–348`,
-`8-1-stable configuration.rb:343–367`). One (`to_time`) is already done. Each row: what it
+`8-1-stable configuration.rb:343–367`). One (`to_time`) is already done (**v9:** all ten are, after 5b). Each row: what it
 changes, blast radius with `file:line`, whether it can flip alone.
 
 | # | Flag (file where it lives) | What it changes | Blast radius | Safe alone? |
@@ -1250,11 +1251,11 @@ changes, blast radius with `file:line`, whether it can flip alone.
 | 1 | `active_support.to_time_preserves_timezone = :zone` (8.0) | `to_time` keeps the receiver's zone | done in slices 1–3. **v6:** on 8.1 the behaviour is unconditional and the key is deprecated for any value, read or written (§4.4 as built); 8.2 removes it. The 8.0 shim's `:18` stays commented — **never uncommented in 5a** — and goes with the file in 5b. **v8:** at 8.1.4.1 the `"8.0"` block (`railties-8.1.4.1 configuration.rb:335–342`) has no `to_time` line at all (8-0-stable's had one), so `load_defaults 8.1` cannot bring the key back | n/a |
 | 2 | `action_dispatch.strict_freshness = true` (8.0) | `ETag` beats `Last-Modified` when a request carries both | affects `fresh_when`/`stale?` only — none in `app/` (grep empty); `Rack::ConditionalGet`/`Rack::ETag` in the stack have their own logic. **v8: the shim line reaches only the config.** `action_dispatch.configure` copies `config.action_dispatch.strict_freshness` to `ActionDispatch::Http::Cache::Request` (`actionpack-8.1.4.1 action_dispatch/railtie.rb:92`), a railtie initializer that runs before the application's `config/initializers` (`rails/application.rb:612–620`), so after 5a the config is `true` and the applied value stays `false`; the applied value arrives with `load_defaults 8.1` in 5b. Row 8's shim line has the same shape through `active_support.set_configs` (upstream rails/rails#59146; fix PR #59147 open, which would make any `config.active_support.*` line in an initializer start applying) — §4.6 as built | yes — inert; **v8:** config-only in 5a, applied in 5b |
 | 3 | `Regexp.timeout = 1` (8.0; applied as `Regexp.timeout \|\|= 1`) | a process-wide 1 s cap on every regex match; overrun raises `Regexp::TimeoutError` | every regex in the process, gems included; the dense sites are `lib/crmls.rb` (560 lines), `lib/sandicor.rb` (473), `app/models/listing.rb` (1083) over MLS payloads, plus `RawSqlSanitizer` and the parameter underscoring. Currently `Regexp.timeout = nil` (runner). **v8, narrowed:** by grep, the regex operations are `lib/crmls.rb` 0, `lib/sandicor.rb` 2, `app/models/crmls_transform.rb` 0 and `app/models/listing.rb` 9, mostly over URLs; the exposure over raw MLS payloads is the `rets` gem's 12 response-parser sites, reachable only through a live login. Ruby 3.4.12's engine memoises the classic catastrophic patterns (six families over 50 M characters, each ≤ 0.01 s), so no bounded in-suite example of the timeout firing exists. `Regexp.timeout = 1` stores the Float `1.0` | yes, **in its own deploy (5a)** — the one flag with a real, if unlikely, runtime failure mode; §5 |
-| 4 | `yjit = !Rails.env.local?` (8.1) | YJIT off in development and test | production unchanged (`yjit=true` today; `RubyVM::YJIT.enabled?` true) | yes |
-| 5 | `action_controller.escape_json_responses = false` (8.1) | `render json:` stops escaping `<`, `>`, `&`, U+2028/9 (`renderers.rb:169–172` passes `escape: false`) | the 49 `render json:` sites (error renderers in `application_controller.rb:219–334`, `site_exports_controller.rb:6,10`, `orders_controller.rb:257`); response bytes change (`<` → `<`), parsed values identical. **JBuilder output is unaffected**: `target!` is `@attributes.to_json` without the option, so Active Support's `escape_html_entities_in_json` default still applies | yes — no client parses bytes; Angular `HttpClient` JSON-parses |
+| 4 | `yjit = !Rails.env.local?` (8.1) | YJIT off in development and test | production unchanged (`yjit=true` today; `RubyVM::YJIT.enabled?` true). **v9:** no shim line — it arrives with `load_defaults 8.1` through the `:enable_yjit` finisher, so after 5b the suite runs without YJIT (P1 66–68 s → 79–86 s) and production keeps it (P-PROD `true` in production mode; S3 reads both halves, S18 reads dyno memory over the soak) | yes |
+| 5 | `action_controller.escape_json_responses = false` (8.1) | `render json:` stops escaping `<`, `>`, `&`, U+2028/9 (`renderers.rb:169–172` passes `escape: false`) | **v9:** 70 `render` calls with `json:` by parser, not 49 grep lines (`orders_controller.rb` 22, among them `:284`'s `deep_camelize` body, `:469` `disclosure_gallery` and `:485` `download_files`; `application_controller.rb` 11, the guard renderers at `:219–334`; `site_exports_controller.rb` 3; the rest one or two each); two pass an already-encoded String (`photos_controller.rb:66, 70`) and are untouched; response bytes change (`<` → `<`), parsed values identical. **JBuilder output keeps its entities escaped**: `target!` is `@attributes.to_json` without the option, so Active Support's `escape_html_entities_in_json` default still applies. **v9:** the renderer's `escape: false` returns before any escaping (`encoding.rb:89`), so row 5 also removes the separators from a `render json:` body and a JBuilder body is row 8's only witness (the plan's Approval A); on the restore no compliant unlocked order's disclosure gallery carries an entity or a separator (1,365 scanned), so the production byte control is S15b — a refused `PUT /order_types/1` — not S17 | yes — no client parses bytes: Angular `HttpClient` JSON-parses, insgt-ops's two text reads `JSON.parse` the error body, the five Lambdas use `axios` (the plan's fact 5) |
 | 6 | `action_controller.action_on_path_relative_redirect = :raise` (8.1) | relative `redirect_to` raises `UnsafeRedirectError` | no `redirect_to` in `app/` (grep empty) | yes — inert |
 | 7 | `active_record.raise_on_missing_required_finder_order_columns = true` (8.1) | `first`/`last` without order on a model with no PK raise | no `id: false` table in `db/schema.rb`, no `primary_key =` override — every model falls back to `id` | yes — inert; the flag itself is removed in 8.2 |
-| 8 | `active_support.escape_js_separators_in_json = false` (8.1) | AS JSON encoding stops escaping U+2028/U+2029 (`encoding.rb:92–98`) | every JSON body including JBuilder, only for content containing those two characters | yes — JSON permits them raw; same clients |
+| 8 | `active_support.escape_js_separators_in_json = false` (8.1) | AS JSON encoding stops escaping U+2028/U+2029 (`encoding.rb:92–98`) | every JSON body including JBuilder, only for content containing those two characters. **v9:** the shim line reached the config alone (`active_support.set_configs` runs before `config/initializers`, as row 2's railtie does), so the applied value flipped only with `load_defaults 8.1` in 5b's second commit; the contract pins config and applied `false`, and `escape_html_entities_in_json` — not a `load_defaults` flag — `true` | yes — JSON permits them raw; same clients |
 | 9 | `action_view.render_tracker = :ruby` (8.1) | template dependency tracking for cache digests uses a Ruby parser | the two mailer layouts and ten `app/views/notifier/*` ERB templates; no fragment caching (`perform_caching = false`, `:null_store`); 8.1.4 fixed the non-ASCII digest bug | yes — inert |
 | 10 | `action_view.remove_hidden_field_autocomplete = true` (8.1) | form helpers drop `autocomplete="off"` on hidden inputs | no forms (API + mailers) | yes — inert |
 
@@ -1277,8 +1278,10 @@ bytes whose parsed value is identical (rows 5 and 8).
   (`new_framework_defaults.rb` — by now only its two inert CSRF lines remain, `:10, :13`, inert
   because `application_controller.rb:3` skips verification; `_6_0.rb`, `_7_2.rb` all comments;
   `_8_0.rb`, `_8_1.rb` now fully applied); set `config.load_defaults 8.1`. **5b does not touch
-  `belongs_to`** (slice 4 did). Contract spec pins `loaded_config_version == "8.1"`,
-  `Regexp.timeout == 1`, and the JSON escaping behaviour (gap below). Deploy.
+  `belongs_to`** (slice 4 did). Contract spec pins `loaded_config_version == 8.1` (**v9:** the Float the
+  literal stores, `eq(8.1)`), `Regexp.timeout == 1.0`, the JSON escaping behaviour (gap below), the
+  finder rule, no shim file and no `active_support.` initializer line. Deploy. **v9, as built:** four
+  commits, the fourth `Honeybadger.notify` in `Crmls#login`'s rescue (§7 scope call D; §8 item 32).
 
 **Out of scope.** `rails/all`; any cleanup in §8; any gem bump; anything `belongs_to`.
 
@@ -1294,7 +1297,14 @@ signals (gap above), then SH.
   `render_errors` model error message to contain `<b>` and asserts the body contains `<b>` raw
   after the flip (and `<b>` before — the deliberate break is to re-set the flag to
   `true`); and a JBuilder request spec (`spec/requests/transactions_last4_spec.rb` already reads
-  raw JSON) asserting its `<` stays escaped. Alternative rejected: no spec, trust the source.
+  raw JSON) asserting its `<` stays escaped. Alternative rejected: no spec, trust the source. **v9, as built:** `spec/requests/json_escaping_spec.rb`
+  (4) on `PUT /order_types/:id`, where `validate_category_type` echoes the submitted value through
+  `render_errors` — no stub — and the same resource's `name` renders through `show.json.jbuilder`; the
+  marker carries the three entities and a LINE SEPARATOR, so rows 5 and 8 are both exercised at the
+  request level. The deliberate break cannot re-set the flag: the `escape_json_responses=` writer
+  deprecates a `true` assignment and the suite raises at boot, so the breaks re-comment the shim line
+  (the first commit) and move `load_defaults` to `8.0` (the bump and the pins).
+  `transactions_last4_spec.rb` reads `parsed_body`, not raw JSON, and was not used.
 - *5a's detection window for row 3.* Rule: one full import cycle before 5b (one day in §6); if the
   cadence is longer, 5b waits and §6 moves. **v8: four signals, not two, because one path hides a
   timeout from both S9 and SH.** A `Regexp::TimeoutError` raised while the `rets` gem parses the
@@ -1321,11 +1331,22 @@ with an empty body, authenticated) still parses as JSON with the same `errors` a
 following import cycle `heroku logs \| grep -c TimeoutError` → `0` and SH shows no `Regexp::TimeoutError`.
 **v8 (5a):** S14 also prints the applied freshness, expected `1.0` and `false` on 5a's release. S9b is
 `MlsImport.order(:created_at).last` and its start, expected `total_listings` 654–659 and `duration`
-270–420 s (as built, below). S16 adds the ops@ inbox.
+270–420 s (as built, below). S16 adds the ops@ inbox. **v9 (5b):** S3 also prints
+`ActionController::Base.escape_json_responses` (`false`), and its `loaded_config_version` line is S10;
+S14 → `1.0`, `true` (the applied freshness arrives with the bump); S15 is `POST /states` with
+`{"state":{"name":""}}`, four messages, byte-identical before and after (no entity in them); **S15b**,
+the byte-change control, is a refused `PUT /order_types/1` with `categoryType` `A <b> & B` — `422` with
+the entities escaped on v672 and raw after, the parsed array identical, nothing written; **S17** is the
+`jq -S` diff of one disclosure gallery (`yqly4v2J`, 76 photos) — empty, the raw `u0026` count `0` → `0`
+because no gallery carries an entity (gap above, as built); SH adds
+`ActiveRecord::MissingRequiredOrderError` and `ActionController::Redirecting::UnsafeRedirectError`, and
+reads the new login-failure notice from `lib/crmls.rb` by its context; **S18** reads dyno memory for
+`web` and `backgroundworker` over the 24 h after the push against the 24 h before.
 
-**Rollback.** `heroku rollback` per deploy (5b reverts to 5a's release, 5a to slice 4's). **v8:** a
-Scheduler one-off started under the rolled-back release keeps `Regexp.timeout = 1` until it exits
-(about seven minutes), so the rollback is verified after it has gone.
+**Rollback.** `heroku rollback` per deploy (5b reverts to 5a's release, v672; 5a to slice 4's, v671).
+**v8:** a Scheduler one-off started under the rolled-back release keeps `Regexp.timeout = 1` until it
+exits (about seven minutes), so the rollback is verified after it has gone. **v9:** for 5b, verified by
+S3 → `7.2` and S14 → `1.0`, `false`; in git, the bump commit alone restores the shims.
 
 **v8, as built — 5a** (insgt-api `chore/rails-upgrade-slice-5a`, one commit `c966bb6e` off `master`
 `316fa0e1` = v671, slice 4 merged; plan `docs/plans/rails-upgrade-slice-5.md`, which records every
@@ -1361,9 +1382,63 @@ deviation; runbook `docs/runbooks/deploy-rails-upgrade-5a.md`). Sources are the 
   `.env`'s sender — was fixed by amending the commit to use the plan's delivery double. Round 2 found
   nothing. Neither model found a production input that takes a regexp past one second.
 
+**v9, as built — 5b** (insgt-api `chore/rails-upgrade-slice-5b`, four commits `4d5eef28`, `72dfaa73`,
+`1671c9c3`, `27e45f1b` off `master` `808d383f` = v672, 5a deployed; plan
+`docs/plans/rails-upgrade-slice-5.md`, whose "5b — amendments" and "Implementation record — 5b" hold
+every deviation; runbook `docs/runbooks/deploy-rails-upgrade-5b.md`; review record
+`docs/architecture/reviews/2026-11-10-slice-5b-insgt-api.md`).
+
+- *The commits.* `chore: enable the rails 8.1 framework defaults` — the six shim lines (rows 5–10),
+  the contract block's value pins and `spec/requests/json_escaping_spec.rb`. `chore: load the rails
+  8.1 defaults and remove the shim files` — `application.rb:12` alone, the five shims deleted, the
+  applied values, the shim glob, the CSRF pair and the initializer example pinned. `test: pin the
+  rails upgrade invariants in the contract spec` — the two encoder pins. `fix: report a swallowed
+  CRMLS login failure to Honeybadger` — scope call D: `rescue => error`, the message, one why-comment
+  and `Honeybadger.notify(error, context: { import_errors: @import_errors })`; the swallow, the email
+  and the early return unchanged; the login spec's second example.
+- *The contract block* (`rails_upgrade_spec.rb:120–226`, eleven examples): the applied ETag preference;
+  the timeout `eq(1.0)`; the renderer flag `false`; the separators raw with the entities escaped,
+  config and applied; the redirect `:raise`; `render_tracker` `:ruby` with the autocomplete attribute
+  dropped; `MissingRequiredOrderError` on a `primary_key = nil` probe over `states` (an
+  `ActiveRecord::Base` subclass named through `stub_const`, outside slice 4's traversal) while
+  `State.unscoped.first` works; `loaded_config_version` `eq(8.1)`, `config.yjit` `false` in test, the
+  shim glob empty, the CSRF pair `true`; no uncommented `active_support.` line under
+  `config/initializers`; the two encoder pins. Every example was seen red before its change and under
+  a deliberate break (a shim line re-commented, `load_defaults` moved to `8.0`, a deleted shim
+  restored, the notify line removed). The initializer example's natural red was the first commit's
+  own uncommented `_8_1.rb:36`, not a comment as the plan expected.
+- *The request spec* proves rows 5 and 8 on one endpoint: the error body carries the entities and the
+  separator raw from the first commit (row 5 masks row 8 there, Approval A); the parsed array is the
+  client contract; the JBuilder body keeps its entities escaped and writes the separator raw only
+  from the bump (the shim's `:36` reached the config alone — fact 16 confirmed live); no credential
+  answers 401 with the record untouched. The separator survives `cleanup_attributes` (`strip` trims
+  the ends only).
+- *The suite:* **2,117 examples, 0 failures, 0 deprecation lines**, plain (83.4 s) and with `CI=1`
+  (82.6 s), from 2,104 on `master`; 2,113 / 1 at the first commit by design. YJIT off in test costs
+  about 16 s. `rails_best_practices` 326 throughout; `zeitwerk:check` clean; routes byte-identical
+  (583 in development).
+- *P-PROD on the branch* (production mode): `8.1`, `582`, `escape_json_responses` `false`, `1.0`, the
+  freshness config and applied `true`, `yjit` `true`, separators `false`, the finder `true`, `:raise`,
+  `belongs_to_required_validates_foreign_key` `false`; exit `0`; `DEPRECATION` `0` — the one
+  eager-loaded production-mode boot before the push.
+- *P-S17 and the rehearsals* (a `master` worktree server and the branch server on the restore): the
+  gallery `yqly4v2J` identical (`jq -S` diff empty, raw files byte-identical, 25,501 bytes, 76
+  photos); S15b `422` with the entities escaped from `master` and raw from the branch, parsed
+  identical, nothing written; S15 four messages, byte-identical.
+- *Review.* Two rounds of `predeploy-review-rails`, Codex `gpt-6-astra` at effort `max` in a detached
+  worktree at `27e45f1b` (2026-11-10): neither round raised a finding, nor did Claude's own pass
+  (the notify cannot raise on its path; row 7 cannot fire on app code; the probe does not leak; CSRF
+  has no reader beyond the skipped verifier). Codex's residue both rounds — live Heroku execution, a
+  real login failure reaching Honeybadger from a Scheduler one-off, the live S15/S15b/S17 reads — is
+  the runbook's.
+- *The tools.* The session's file tools decode a single-backslash unicode escape into the raw
+  character; the spec and doc files carrying such literals were restored by a script and checked by
+  raw-character counts (the notes' "Slice 5b" section).
+
 **Gates.** All. **Effort (estimate):** 6 h plus two deploy mornings; the slice 5 plan's estimate is
 6.25 h (the gate's additions). **v8:** plan approved Fri 11-06; 5a implemented, verified and reviewed
-Mon 11-09, the day slice 4 deployed; push Tue 11-10.
+Mon 11-09, the day slice 4 deployed; push Tue 11-10. **v9:** 5a deployed Tue 11-10 as v672; 5b
+surveyed, implemented, verified and reviewed the same day; push Wed 11-11.
 
 ---
 
@@ -1461,6 +1536,14 @@ implemented Mon 11-09. **5a pushes Tue 11-10, 09:00–11:30 PT, after slice 4's 
 signals (§4.6). The import starts at about :30 UTC, so a push by 10:25 PT makes that hour's run the
 watched one.
 
+**v9, as it went:** 5a **deployed Tue 11-10 at 06:48 PT** as v672 (before the window, as slices 2–4
+were; the release also carried the `/cable` unmount and the Client-IP fix on Dan's decision — runbook
+5a); its watched run, the 15:30 UTC import, passed all four signals at 15:39–15:41 UTC (S9b: start
+15:30:17, 655 listings, 308 s). 5b was surveyed, implemented, verified and reviewed
+the same day, four commits off v672's `master`. **5b pushes Wed 11-11, 09:00–11:30 PT**, after 5a's
+watched run passes all four signals and its SH at about 06:48 PT; fallback Mon 11-16, which moves the
+quiet week and the rehearsal with it.
+
 Total ≈ 36 h of implementation plus six deploy mornings. 5a gets one day before 5b; the slice 5
 plan reads `lib/tasks/scheduler.rake` and the `import_listings` check-in history for the import
 cadence — **if it is less than daily, 5b and the rehearsal each slip a week** (§4.6). **v3:** hourly
@@ -1545,6 +1628,16 @@ Spec-plan checks:
 
 Scope call:
 - **D.** `Honeybadger.notify` in `Crmls#login`'s rescue becomes 5b's commit 5 (§8 item 32).
+
+**Slice 5b survey gate (2026-11-10), seven amendments approved (v9):** the base `master` `808d383f`
+(v672) with every cited line re-verified and fact 16's boot check not re-run (the 8.1 shim
+byte-identical since `316fa0e1`); the counts sourced per HEAD (2,104 on `master`); P-PROD's route count
+`582`; S17's runner names `street1`/`full_address` but matches nothing; the initializer example's glob;
+the runbook values from 5a as deployed; and **S17's byte control moved to S15b** — no compliant unlocked
+order's gallery carries an entity or a separator (1,365 scanned on the restore), so S17 stays the
+parsed-value diff on `yqly4v2J` and a refused `PUT /order_types/1` with an entity in `categoryType` is
+the control that bytes changed. Dan committed the 5a deploy-log edits before the 5b docs commits, and
+P-S17 ran as two servers in the container.
 
 Recorded in `docs/plans/rails-upgrade-slice-5.md`.
 
@@ -1668,7 +1761,10 @@ Not in any slice. Each is a candidate for its own small change after the Render 
     and `download_files` are `render json:` sites whose bytes change in 5b, and no spec in the repo
     mentions `disclosure`, `download_files`, `zip_file_data`, `UnalteredPhoto` or `watermark`. 5b proves
     the parsed values unchanged with S17 on production and P-S17 in development. Building the canonical
-    altered/unaltered fixture and its request specs is the `ab-723-compliance` skill's work.
+    altered/unaltered fixture and its request specs is the `ab-723-compliance` skill's work. **v9:**
+    S17 has no byte control — on the restore no gallery carries an entity (1,365 compliant unlocked
+    orders) — so it is the parsed-value diff alone, with S15b as the byte control; P-S17 passed in
+    development (the gallery identical across the flip, raw files byte-identical).
 32. **`Crmls#login`'s bare `rescue` swallows every login failure** (v8; §4.6 gap, §5).
     `lib/crmls.rb:442–447` records the error, emails ops@ and lets `Crmls.import` carry on. The
     check-in arrives and Honeybadger sees nothing. `Regexp::TimeoutError` is one such failure; so is an
@@ -1679,7 +1775,11 @@ Not in any slice. Each is a candidate for its own small change after the Render 
     That was either a swallowed login (an ops@ email that night) or a Scheduler skip; UNVERIFIED.
     **2026-11-10:** the newest import email in ops@ is a `Crmls Login Failure` dated 2021-08-31
     (runbook 5a step 3). So no login was swallowed that night, unless its email was lost. That
-    leaves a Scheduler skip, or another cause that sends no email; still UNVERIFIED.
+    leaves a Scheduler skip, or another cause that sends no email; still UNVERIFIED. **v9:** 5b's
+    fourth commit (`27e45f1b`) adds the `Honeybadger.notify` inside the rescue, with the import errors
+    as context; the swallow, the email and the early return stay. The item closes when 5b deploys; SH
+    reads the new notice by its context (a `regexp match timeout` message is 5b's finding, anything
+    else an ordinary login failure seen by Honeybadger for the first time).
 33. **`/cable` is mounted in production with nothing using it** (v8, after slice 4; v669's exposure
     read, §4.4). `rails/all` loads Action Cable, so `ActionCable.server.config.mount_path` →
     `"/cable"`, but insgt-api has no `app/channels` and no channel code. That route is
@@ -1702,3 +1802,4 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 | 6 | 2026-10-30 | Slice 3 implemented, verified and reviewed (insgt-api `chore/rails-upgrade-slice-3`, five commits `a5bfab70`…`5ffe92c4` off v665; 2,059 examples; two review rounds, no blocker); push planned Mon 2026-11-02. §4.4 as built: the `to_time` line **deleted inside the bump commit** (8.1 deprecates the key for any value, reader and writer; 8.0 cannot boot without it), so the planned separate commit is gone; **five setters headed twice on a miss** — a 500 on 8.1 — fixed first with `return if performed?` after an exhaustive head-producer walk; `action_text-trix` enters the lock (§1.2, §2.6, §3.1); the `app:update` deltas (`bin/rubocop` accepted, the CSP comment lines rejected); the three floats are `double precision`; the dump's extension hunk is 8.0's dumper, bracketed by a control dump and a round-trip load (OD7 amended); `/up.json`, `remote_ip` and the 8.1 defaults under 7.2 as found; a new Active Storage boot WARN. §4.0 S3 and P-PROD read `config.active_support.key?` — the reader deprecates on 8.1. §4.3: v664 (the `orders#show` fix) and v665 (Ruby 3.4.12) recorded. §4.6: the 8.0 shim's `to_time` line is never uncommented; the 8.1 shim has no `yjit` row. §5 R1 at 8.1.4; §6 as it went; §7 OD7 and the slice 3 plan gate; §8 items 2, 7, 10, 16 (closed), 20 (done), 21–25 new. Slice prompts 4 and 5 annotated; notes extended. Runbook `docs/runbooks/deploy-rails-upgrade-3.md` (`Ready`); plan `docs/plans/rails-upgrade-slice-3.md`. |
 | 7 | 2026-11-09 | Slice 4 implemented, verified and reviewed (insgt-api `chore/rails-upgrade-slice-4`, five commits `39b213f3`…`bd0859b8` off v667 `8b726308`, `master` merged in at v669 and v670; 2,099 examples, 2,100 on the v670 merge; two review rounds, round 2's finding fixed as commit 5); production read twice before the push (Thu 11-05, Mon 11-09), no STOP; push Mon 11-09. §4.5 as built: OD10 settled — the validation keyed on `resource_type` over user, property and photo, under the framework's condition; the shim's lines 14–16; the spec-fix list empty; S12 on `POST /areas_properties`; "unsaveable until repaired" narrowed to the new-row-or-changed-key semantics of `belongs_to_required_validates_foreign_key = false`; decision 5's dangling rule and its disposition; the null-count rule "on a table with rows"; the measured SELECT cost (+3 by id, +1 by object, `POST /orders` +11); the save-and-ignore sites and the `create_bulk` guard; the effort 7 h. §5 R2 narrowed. §7 OD10 settled; the slice 4 plan gate. §8 item 15's five candidates; items 26–30 new. Runbook `docs/runbooks/deploy-rails-upgrade-4.md` (`Ready`); plan `docs/plans/rails-upgrade-slice-4.md`. |
 | 8 | 2026-11-09 | Slice 5a implemented, verified and reviewed (insgt-api `chore/rails-upgrade-slice-5a`, one commit `c966bb6e` off `master` `316fa0e1` = v671, slice 4 merged; 2,103 examples; two review rounds, round 1's finding fixed by amending the commit); slice 4 deployed as v671 (S7 and S9 pass, SH pending); push Tue 11-10. The slice 5 plan gate (2026-11-06) recorded in §7; 5b's items wait for v9. §4.6: row 1 has no line in 8.1.4.1's 8.0 block; **row 2 is config-only in 5a** (the action_dispatch railtie copies the value before `config/initializers`; applied in 5b with `load_defaults 8.1`; row 8's line has the same shape, upstream rails/rails#59146 and #59147); row 3 narrowed (regex sites by file, the `rets` gem, Ruby 3.4.12's memoisation, the Float `1.0`); the 5a detection window becomes four signals (S9, S9b, S16 and the ops@ inbox), because a timeout in the CRMLS login is swallowed, and the watched run is the first that starts after the release; prerequisites at `8.1.4.1`; S14's applied freshness; the one-off-dyno rollback note; 5a as built, including the development replay (655 listings, 0 timeouts) and the import's production profile. §4.0 S3 reads YJIT; P-PROD gains eight lines and its exit status. §5's `Regexp.timeout` row narrowed. §6 as it went. §8 items 31 (AB 723 manifest coverage) and 32 (`Crmls#login`'s swallow; the 10-31 missed hour). Runbook `docs/runbooks/deploy-rails-upgrade-5a.md`; plan `docs/plans/rails-upgrade-slice-5.md`; review record `docs/architecture/reviews/2026-11-09-slice-5a-insgt-api.md`. |
+| 9 | 2026-11-10 | Slice 5a deployed as v672 (06:48 PT; S0–S6 and S14 pass; the watched import and SH pending), the release also carrying `/cable` unmounted and the Client-IP fix (§8 item 33). Slice 5b implemented, verified and reviewed (insgt-api `chore/rails-upgrade-slice-5b`, four commits `4d5eef28`…`27e45f1b` off `master` `808d383f`; 2,117 examples; two review rounds, no finding); push Wed 11-11. §4.6: row 4 (no shim line; YJIT off in test, kept in production), row 5 (70 renderer calls, `:284`, the consumers; row 5 masks row 8 on `render json:`; the deliberate break re-comments the shim line, since the writer deprecates), row 8 (config at the first commit, applied at the bump), the 5b scope as built (the Float `8.1`, four commits, scope call D), the row 5 proof as built, S3/S10/S14/S15/S15b/S17/S18 for 5b, the rollback to v672, 5b as built. §4.0 P-PROD's 5b tail and `582`; S3's renderer line. §6 as it went. §7 the 5b survey gate's seven amendments. §8 items 31 (S17 has no byte control; S15b) and 32 (the notify ships with 5b). Runbook `docs/runbooks/deploy-rails-upgrade-5b.md`; plan `docs/plans/rails-upgrade-slice-5.md` ("5b — amendments", "Implementation record — 5b"); review record `docs/architecture/reviews/2026-11-10-slice-5b-insgt-api.md`; the codebase notes' "Slice 5b" section. |
