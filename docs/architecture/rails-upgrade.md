@@ -4,8 +4,8 @@
 **Status:** v8 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
 S7, S9 and SH pass); slice 2 deployed (v663, 2026-10-28 08:53 -0400; S7, S9 and SH pass); slice 3
 deployed (v666, 2026-11-02 08:12 -0500; S7, S9 and SH pass); slice 4 deployed (v671, 2026-11-09
-08:27:45 -0500; S7, S9, SH and S13 pass); slice 5a implemented, verified and reviewed, push Tue
-2026-11-10; OD10 settled
+08:27:45 -0500; S7, S9, SH and S13 pass); slice 5a deployed (v672, 2026-11-10 09:48:26 -0500; S7 and
+the watched import's four signals pass, SH pending); OD10 settled
 **Version:** 8 · **Last updated:** 2026-11-10
 **Supersedes:** v7 (2026-11-09). See §9.
 **Companion files:** `rails-upgrade-codebase-notes.md` (the `file:line` map; every repo claim below
@@ -1677,12 +1677,16 @@ Not in any slice. Each is a candidate for its own small change after the Render 
     (`lib/sandicor.rb:414`) has the same shape, unscheduled. **One unexplained missed hour:** the
     restore holds no `mls_imports` row for the run that would have finished about 10-31 22:35 UTC.
     That was either a swallowed login (an ops@ email that night) or a Scheduler skip; UNVERIFIED.
+    **2026-11-10:** the newest import email in ops@ is a `Crmls Login Failure` dated 2021-08-31
+    (runbook 5a step 3). So no login was swallowed that night, unless its email was lost. That
+    leaves a Scheduler skip, or another cause that sends no email; still UNVERIFIED.
 33. **`/cable` is mounted in production with nothing using it** (v8, after slice 4; v669's exposure
     read, §4.4). `rails/all` loads Action Cable, so `ActionCable.server.config.mount_path` →
     `"/cable"`, but insgt-api has no `app/channels` and no channel code. That route is
     GHSA-8474-xrp6-wh69's reachable surface. The advisory's own mitigation,
     `config.action_cable.mount_path = nil`, is already in `production.rb:36` as a comment, so the
-    cleanup is uncommenting one line. Item 7 removes Action Cable altogether, later.
+    cleanup is uncommenting one line. Item 7 removes Action Cable altogether, later. **Ships with
+    5a** as `073ebe2f` (Dan, 2026-11-10; runbook 5a). The item closes when 5a deploys.
 
 ---
 
