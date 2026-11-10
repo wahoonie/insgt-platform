@@ -4,9 +4,9 @@
 **Status:** v8 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
 S7, S9 and SH pass); slice 2 deployed (v663, 2026-10-28 08:53 -0400; S7, S9 and SH pass); slice 3
 deployed (v666, 2026-11-02 08:12 -0500; S7, S9 and SH pass); slice 4 deployed (v671, 2026-11-09
-08:27:45 -0500; S7 and S9 pass, SH pending); slice 5a implemented, verified and reviewed, push Tue
+08:27:45 -0500; S7, S9, SH and S13 pass); slice 5a implemented, verified and reviewed, push Tue
 2026-11-10; OD10 settled
-**Version:** 8 · **Last updated:** 2026-11-09
+**Version:** 8 · **Last updated:** 2026-11-10
 **Supersedes:** v7 (2026-11-09). See §9.
 **Companion files:** `rails-upgrade-codebase-notes.md` (the `file:line` map; every repo claim below
 is sourced there), `rails-upgrade-slices/slice-{0,1,2,3,4,5}.md` (the slice prompts), and the
@@ -49,7 +49,10 @@ they do not restate rules.
 | Slice 5 | — | — | the 8.0 and 8.1 framework defaults, then `config.load_defaults 8.1` | §4.6 |
 
 Rails **8.2 does not exist** as a release (rubygems lists no 8.2.x; only edge guides mention it), so
-8.1.4 is the landing target and 8.0 is the single intermediate minor.
+8.1.4 is the landing target and 8.0 is the single intermediate minor. **v8, after slice 3:**
+production has run **8.1.4.1** since v669 (2026-11-05). That is the 2026-11-04 security release (21
+advisories; rubyonrails.org/2026/11/4), shipped outside the slices (§4.4). The target is unchanged;
+8.1.4.1 is its patch release.
 
 **Ruby requirements** (rubygems compact index): 7.2.4 `>= 3.1.0`; 8.0.5.1 and 8.1.4 `>= 3.2.0`;
 honeybadger 6.10.0 `>= 3.0.0`. 3.4.12 satisfies all (3.4.10 until 2026-10-29, when the patch bump to
@@ -1034,6 +1037,18 @@ same 20 ids on 8.0.5.1 and 8.1.4 in development. S7 and S9 pass. **SH passes (Da
 at about 22½ h): no new error in Honeybadger** — no new `RailsDeprecation`, so nothing under OD8 stops
 slice 5, and no `DoubleRenderError`. Runbook: `docs/runbooks/deploy-rails-upgrade-3.md` (`Deployed`).
 
+**v8, after slice 3:** the Rails 8.1.4.1 security bump deployed as **v669** (`24cd8180`, 2026-11-05
+12:30:35 -0500). The branch was `chore/rails-8-1-4-1`, one commit `40fb2672`, `Gemfile.lock` only:
+the 13 Rails gems and, forced by actionpack's new floor, `rails-html-sanitizer` 1.7.2, `loofah`
+2.25.3 and `nokogiri` 1.19.7. It shipped on a Thursday, an exception to §2.4 taken for a security
+release (Dan, 2026-11-05). Before the push: 2,080 examples, 0 failures, 0 deprecation lines;
+`zeitwerk:check` clean; routes 583, byte-identical to `master`'s; P-PROD as slice 3 expects, with
+`"8.1.4.1"`. Of the advisories, GHSA-8474-xrp6-wh69 (an unauthenticated ReDoS through
+`safe_constantize`) is reachable here, at `/cable` (§8 item 33). The Active Storage advisories need an
+attachment, and none exist. The Forwarded-header fix followed as **v670** (`ff4b3353`, 2026-11-06
+07:59:16 -0500). Neither is a slice; v670 is slice 4's "before" release and rollback target. Runbook
+4's Deploy log carries the full record.
+
 ### 4.5 Slice 4 — `belongs_to` optionality follows column nullability
 
 Decided 2026-10-23 (OD4, rule D′). Replaces v1's plan to relocate the Rails 5.0 shim's global
@@ -1215,7 +1230,14 @@ runbook `docs/runbooks/deploy-rails-upgrade-4.md`). Source citations are the ins
 **Gates.** All. **Effort (estimate):** 6 h plus the deploy morning (Mon 2026-11-09). **v7:** 7 h,
 accepted at the plan gate — the hour over is OD10's photo type (decision 9). Plan approved Mon
 11-02; implementation, verification and two review rounds Tue 11-03; production read Thu 11-05 and
-Mon 11-09; push Mon 11-09.
+Mon 11-09; push Mon 11-09. **Deployed Mon 2026-11-09** as v671 (`316fa0e1`, 08:27:45 -0500 =
+05:27:45 PST, before the 09:00 window as slices 2 and 3 were). S0–S6 and S10 as expected; **S12
+`422` `["Property must exist"]`**, with `AreasProperty` unchanged at 17,140. S7 and S9 pass. **SH
+passes (Dan, 2026-11-10): no new error in Honeybadger.** There is no `RecordInvalid`, no
+`ActiveRecord::NotNullViolation` and no `RailsDeprecation`. **S13 passes** at about 24¾ h: D29 2,
+D39 27 and D50 32, every other dangling row `0`. The diff's one line is D52, the type-7 row count
+(+439, live tagging). D52 is a count by type, not a dangling count, so "every other row `0`" above
+does not cover it. Runbook: `docs/runbooks/deploy-rails-upgrade-4.md` (`Deployed`).
 
 ### 4.6 Slice 5 — framework defaults, then `config.load_defaults 8.1`
 
@@ -1431,8 +1453,8 @@ of the table stands: slice 4 Mon 11-09 (after two quiet weekdays, §4.5), 5a Tue
 the quiet week to Wed 11-18, then the rehearsal.
 
 **v8, as it went:** slice 4 implemented Tue 11-03 (not Thu–Fri), read in production Thu 11-05 and
-Mon 11-09, and **deployed Mon 11-09 at 05:27 PT** as v671 (S7 and S9 pass; SH due Tue 11-10 about
-05:30 PT). The Rails 8.1.4.1 security bump shipped Thu 11-05 as v669, and the Forwarded-header fix
+Mon 11-09, and **deployed Mon 11-09 at 05:27 PT** as v671 (S7 and S9 pass; SH and S13 pass Tue 11-10,
+S13 read at 06:09 PT, about 24¾ h). The Rails 8.1.4.1 security bump shipped Thu 11-05 as v669, and the Forwarded-header fix
 Fri 11-06 as v670, both outside the slices. The slice 5 plan was approved Fri 11-06, and 5a was
 implemented Mon 11-09. **5a pushes Tue 11-10, 09:00–11:30 PT, after slice 4's SH read** (fallback Wed
 11-11, which moves 5b to Mon 11-16). 5b follows Wed 11-11 if 5a's watched run passes all four
@@ -1655,6 +1677,12 @@ Not in any slice. Each is a candidate for its own small change after the Render 
     (`lib/sandicor.rb:414`) has the same shape, unscheduled. **One unexplained missed hour:** the
     restore holds no `mls_imports` row for the run that would have finished about 10-31 22:35 UTC.
     That was either a swallowed login (an ops@ email that night) or a Scheduler skip; UNVERIFIED.
+33. **`/cable` is mounted in production with nothing using it** (v8, after slice 4; v669's exposure
+    read, §4.4). `rails/all` loads Action Cable, so `ActionCable.server.config.mount_path` →
+    `"/cable"`, but insgt-api has no `app/channels` and no channel code. That route is
+    GHSA-8474-xrp6-wh69's reachable surface. The advisory's own mitigation,
+    `config.action_cable.mount_path = nil`, is already in `production.rb:36` as a comment, so the
+    cleanup is uncommenting one line. Item 7 removes Action Cable altogether, later.
 
 ---
 

@@ -88,11 +88,14 @@ that hour's :30 run is the watched one; a later push moves the reads an hour, no
 
 ## Prerequisites
 
-- [ ] **Slice 4's SH passes** (`deploy-rails-upgrade-4.md` step 7, at about 24 h): no new error
+- [x] **Slice 4's SH passes** (`deploy-rails-upgrade-4.md` step 7, at about 24 h): no new error
       since v671; no `RecordInvalid` with `must exist` from a `save!` path; no
       `ActiveRecord::NotNullViolation`; no new `RailsDeprecation`. A slice 4 finding blocks 5a (§4.5's
-      SH rule).
-- [ ] **Slice 4's S13** recorded (runbook 4 step 7).
+      SH rule). **Passes** (Dan, 2026-11-10): all four searches return No Results, resolved and
+      unresolved, from 2026-11-09 08:30 -0500.
+- [x] **Slice 4's S13** recorded (runbook 4 step 7). **Passes** (Dan, 2026-11-10 14:09 UTC): D29,
+      D39 and D50 are unchanged at `2`, `27` and `32`; the only diff line is D52's type-7 count
+      (+439, live tagging).
 - [ ] **`import_listings` check-in history** (Honeybadger → Check-Ins): hourly arrivals since v671.
       Record the last three arrival times; each is expected at about :35–:45 UTC.
 - [x] Review rounds complete (two rounds of `predeploy-review-rails`, Codex included; 2026-11-09,

@@ -1,14 +1,15 @@
 # Runbook: Rails Upgrade Slice 4 — `belongs_to` optionality follows column nullability
 
-**Last updated:** 2026-11-09
+**Last updated:** 2026-11-10
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~45 min of read-only production reports at Thursday's review and again on the
 morning; ~30 min for the push and step 5's checks; S7 one hour after the push; S9 at the first hourly
 import; SH and S13 24 h later
-**Status:** Ready — implemented and verified in development 2026-11-03 (step 1); two review rounds of
-`predeploy-review-rails` done 2026-11-03; round 2's finding fixed as commit 5, no third round (Dan's
-decision); the slice's diff on the merge `6e0e9953` is identical to the reviewed one. Monday's
-prerequisite reads pass (2026-11-09). Awaiting Dan's merge.
+**Status:** Deployed — v671, `316fa0e1`, 2026-11-09 08:27:45 -0500. Every post-deploy check passes:
+step 5, S9 and S7 on 2026-11-09, SH and S13 on 2026-11-10 (step 7). Implemented and verified in
+development 2026-11-03 (step 1); two review rounds of `predeploy-review-rails` done 2026-11-03; round
+2's finding fixed as commit 5, no third round (Dan's decision); merged as `316fa0e1`, whose tree is
+identical to the reviewed merge `6e0e9953`. Write-back done.
 
 ## Summary
 
@@ -686,10 +687,10 @@ RECORDED:
 the push):
 
 ```
-environment:"production" created.after:"<push>"
-environment:"production" class:"ActiveRecord::RecordInvalid" occurred.after:"<push>"
-environment:"production" class:"ActiveRecord::NotNullViolation" occurred.after:"<push>"
-environment:"production" class:"RailsDeprecation" occurred.after:"<push>"
+environment:"production" created.after:"2026-11-09 08:30 UTC-5"
+environment:"production" class:"ActiveRecord::RecordInvalid" occurred.after:"2026-11-09 08:30 UTC-5"
+environment:"production" class:"ActiveRecord::NotNullViolation" occurred.after:"2026-11-09 08:30 UTC-5"
+environment:"production" class:"RailsDeprecation" occurred.after:"2026-11-09 08:30 UTC-5"
 ```
 
 **Pass condition:**
@@ -713,10 +714,28 @@ heroku pg:psql --app insgtapi --file tmp/dangling.sql > tmp/dangling-after.txt
 diff tmp/dangling-2026-11-09.txt tmp/dangling-after.txt
 ```
 
-Expected: empty — D29, D39 and D50 equal to the pre-push counts (decision 5c), every other row `0`.
-A new non-zero row, or a higher count, is a finding: a writer the slice should have refused.
+Expected: D29, D39 and D50 equal to the pre-push counts (decision 5c), every other row of D1–D51
+`0`, and D52 listing only `1:`, `3:` and `7:` entries. A new non-zero row, or a higher count, is a
+finding: a writer the slice should have refused. (Corrected 2026-11-10, after the read. This said
+"empty", but D52 counts every row by type and is not a dangling count. Live tagging moves it daily, as
+step 2 recorded between Thursday and Monday, so the diff always carries D52's line.)
 
-RECORDED: ___
+RECORDED — Dan, 2026-11-10. **SH and S13 pass.**
+
+- **SH** (Honeybadger → Errors). All four searches return No Results, each run twice, once with
+  `-is:resolved` and once with `is:resolved`, both with `-is:ignored`. The window opens
+  `"2026-11-09 08:30 UTC-5"`, 2¼ minutes after the push. Step 5's Honeybadger read covers those
+  minutes: one error notification in the hour, the marker. So there is no new error since v671 and
+  no `RecordInvalid` at all, so none with `must exist` from a `save!` path. There is no
+  `ActiveRecord::NotNullViolation` and no `RailsDeprecation`, and no new error to triage by backtrace.
+  **Pass.**
+- **S13** (`tmp/dangling-after.txt`, 2026-11-10 14:09:46 UTC, 24 h 42 min after the push; 52 result
+  sets, 0 errors). Dan's diff against `tmp/dangling-2026-11-09.txt` is one line, D52:
+  `1:4660, 7:730010` → `1:4660, 7:730449`. D29 is `2`, D39 `27` and D50 `32`, equal to Monday's.
+  Every other row of D1–D51 is `0`, D51 included. D52 still lists only `1:` and `7:`. Type 1 is
+  unchanged; type 7 is net +439, live photo tagging on v671. Each new row passed `TagsResource`'s new-row
+  check (`resource_must_exist` and the required `belongs_to :tag`; no writer in `app/`, `lib/` or
+  `functions/` inserts around it), and D50 did not move. **Pass.**
 
 ## Rollback
 
@@ -851,3 +870,11 @@ written by the slice, and the dangling rows are exactly as they were.
   slot after the push. The buffer 13:40–15:11 UTC holds no `status=5`, no exception class, no 422 and
   no `NotNullViolation`; Papertrail has no `status=5` since Nov 02 and no `NotNullViolation` back to
   Oct 29 (step 6).
+- **2026-11-10 — SH and S13 pass** (Dan): Honeybadger from 08:30 -0500 on 11-09, resolved and
+  unresolved, holds no new error, no `RecordInvalid`, no `NotNullViolation` and no
+  `RailsDeprecation`. S13 at 14:09 UTC: D29 `2`, D39 `27` and D50 `32` are unchanged and every other
+  dangling row is `0`. The diff's only line is D52's type-7 count, +439 live photo tags. S13's
+  "Expected: empty" is corrected to leave D52 out (step 7). Write-back done: this runbook
+  `Deployed`; `docs/plans/rails-upgrade-slice-4.md` `Deployed`; in `rails-upgrade.md`, §4.5's
+  as-deployed line, §6 as it went, the status header, v669 in §1.2 and §4.4, and §8 item 33
+  (`/cable`). Still v8, with no version bump, as slices 2 and 3 closed.
