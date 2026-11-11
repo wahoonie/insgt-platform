@@ -1,14 +1,15 @@
 # Runbook: Rails Upgrade Slice 5b — the 8.1 framework defaults, then `config.load_defaults 8.1`
 
-**Last updated:** 2026-11-10
+**Last updated:** 2026-11-11
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~25 min of prerequisite reads and captures; ~35 min for the push and step 5's
 checks (S15, S15b and S17 included); S7 one hour after the push; S9, S9b, S16 and the ops@ inbox at
 the first import that starts after the release; SH and S18 24 h later
 **Status:** Ready — implemented and verified in development 2026-11-10 (step 1); two review rounds of
 `predeploy-review-rails` done the same day (Known; record `docs/architecture/reviews/2026-11-10-slice-5b-insgt-api.md`),
-neither raising a finding. The v9 write-back is done. 5a's watched import passed (Prerequisites);
-awaiting 5a's SH read at about 14:48 UTC on 2026-11-11, then Dan's merge.
+neither raising a finding. The v9 write-back is done. 5a's watched import and its SH passed;
+merged as `24309546`, probed, and step 3 captured on v674 (Prerequisites, all done 2026-11-11);
+awaiting the push.
 
 ## Summary
 
@@ -104,21 +105,31 @@ moves to **Mon 11-16** (Thu and Fri are never deploy days), and the quiet week m
       S9b a new row, start 15:30:17 UTC, `created_at` 15:35:25, `total_listings` 655, `duration` 308 s;
       S9 "is reporting", last seen about 15:36 UTC; S16 `0` in the buffer (14:48:32 → 15:40:39 UTC) and
       "No matching events" in Papertrail; the inbox quiet since 14:48 UTC; S7 `status=5` `0`.
-- [ ] **5a's SH passes** (runbook 5a step 7, at about 14:48 UTC on 2026-11-11, before this window
+- [x] **5a's SH passes** (runbook 5a step 7, at about 14:48 UTC on 2026-11-11, before this window
       opens): no `Regexp::TimeoutError`; no new error touching the 8.0 shim, the import files, the
       `rets` gem or `http/cache.rb`; no new `RailsDeprecation`; the inbox still quiet. An
       `IpSpoofAttackError` is the Client-IP fix's finding, not 5a's, and does not block 5b.
+      **Passes** (Dan, 2026-11-11, read by 15:54 UTC, about 25 h after the push): every search No
+      Results under both resolved states, with the date filter proven by an `UpgradeMarker` search;
+      no new fault, so nothing to triage; a manual import at 10:54 UTC wrote its row (652, 277 s);
+      no `SystemError::` email of any kind at 25 h.
 - [x] Review rounds complete (two rounds of `predeploy-review-rails`, Codex included; 2026-11-10, Known)
 - [x] This runbook's Status is `Ready` (2026-11-10, after the v9 write-back)
-- [ ] Dan has merged `chore/rails-upgrade-slice-5b` into `master`, and `bundle exec rspec` is green
+- [x] Dan has merged `chore/rails-upgrade-slice-5b` into `master`, and `bundle exec rspec` is green
       **on the merge**. Expected with `master` still at `808d383f`: `2117 examples, 0 failures`, 0
       `DEPRECATION WARNING` lines, the 24 rack warnings — the branch's own count, since the branch is
       four commits on top of `master` and the merge tree is the branch tree. If `master` has moved, the
       count is sourced on the merge from `rspec --dry-run --format json`, not recomputed, and
-      `git log origin/master..master` is read for what else ships.
-- [ ] The production-config probe (step 2) printed the expected lines on the merge, `582` among them.
-- [ ] Pre-push captures (step 3) recorded on v672: the release runner, S4, S6, the S9b and S16
-      baselines, **S15, S15b and S17 "before"**.
+      `git log origin/master..master` is read for what else ships. **Done** (2026-11-11): Dan merged
+      as `24309546`, whose tree is `27e45f1b`'s (`git diff` empty), so nothing else ships. Dan's run
+      on the merge: `2117 examples, 0 failures` (82.2 s). Claude's run on the same commit, in the dev
+      container: `2117 examples, 0 failures` (76.3 s), `0` `DEPRECATION WARNING` lines, the 24
+      `:unprocessable_entity` warnings.
+- [x] The production-config probe (step 2) printed the expected lines on the merge, `582` among them
+      (Dan, 2026-11-11 16:05 UTC, on `24309546`).
+- [x] Pre-push captures (step 3) recorded on the live release, **v674** (v673–v674 only set config
+      vars; step 3): the release runner, S4, S6, the S9b and S16 baselines, **S15, S15b and S17
+      "before"**, and S18's "before" (Dan, 2026-11-11 16:06–16:25 UTC).
 
 ## Pre-deploy
 
@@ -243,7 +254,13 @@ false
 --- DEPRECATION lines: 0
 ```
 
-RESULTS (on the merge, before the push): ___
+RESULTS (on the merge, before the push) — Dan, 2026-11-11 16:05:46 UTC, `master` at `24309546`, the
+merge, whose tree is `27e45f1b`'s (`git diff` empty). Every line as expected: `exit 0`; the WARN line;
+`"8.1.4.1"`; `true`; `true`; `[["Rails", [:notify]], ["GlobalID", [:notify]], ["Lograge", [:notify]]]`;
+the `Reporting error` line; `true`; `false`; **`8.1`**; **`582`**; `false`; **`false`**; `1.0`;
+`true`; **`true`**; `true`; **`false`**; **`true`**; **`:raise`**; `false`; and a `DEPRECATION`
+count of `0`. The terminal garbled the pasted command's echo; the output carries all 18 values, in
+order.
 
 ### 3. Pre-push captures (on the host, on the release that is live)
 
@@ -251,7 +268,7 @@ RESULTS (on the merge, before the push): ___
 heroku releases -n 3 --app insgtapi
 heroku run --no-tty --app insgtapi rails runner 'puts Rails.version; p Rails.application.config.loaded_config_version; p Regexp.timeout; p ActionDispatch::Http::Cache::Request.strict_freshness; p ActionController::Base.escape_json_responses'
 heroku run --no-tty --app insgtapi rails runner 'puts PostalCode.find_by(zip: "92008").nearby_cities.limit(3).map(&:name).inspect'
-heroku run --no-tty --app insgtapi rails runner 'r = MlsImport.order(:created_at).last; p r.slice("created_at", "total_listings", "total_updated", "duration"); p r.created_at - r.duration'
+heroku run --no-tty --app insgtapi rails runner 'mls_import = MlsImport.where("total_listings > 1").order(:created_at).last; p mls_import.slice("created_at", "total_listings", "total_updated", "duration"); p mls_import.created_at - mls_import.duration'
 heroku logs -n 1500 --app insgtapi > tmp/s16-before.log
 grep -c "Regexp::TimeoutError" tmp/s16-before.log
 head -1 tmp/s16-before.log | cut -c1-32
@@ -308,7 +325,55 @@ Expected before:
   photo count recorded.
 - S6: the email arrives.
 
-RECORDED (before): ___
+The import runner skips rows with `total_listings` `1` (amended 2026-11-11, here and in step 6).
+`Crmls.extract_and_load_listing` writes one such row whenever a user syncs a single listing
+(`lib/crmls.rb:79`), so `.last` alone can return that sync instead of the hourly run, as it did at
+the first capture below.
+
+RECORDED (before) — Dan, on the host, 2026-11-11 16:06–16:11 UTC, on **v674**:
+
+- **Releases:** `v674` (Set `AWS_BACKUP_SECRET_ACCESS_KEY`, 2026-11-10 16:41:43 UTC) and `v673` (Set
+  `AWS_BACKUP_ACCESS_KEY_ID`, 16:41:22 UTC) are on top of `v672`. Both only set a config var, for
+  Dan's canarytoken setup, so the slug is still `808d383f`, and no code in insgt-api reads either
+  var. **v674 is the "before" and the rollback target** (Rollback); 5b's push is expected as v675.
+- **The release runner:** `8.1.4.1`, `7.2`, `1.0`, `false`, `true` (16:06:32 UTC). As expected.
+- **S4:** `["Carlsbad", "Oceanside", "Leucadia"]`. As expected.
+- **The import row.** The first runner returned a single-listing sync, not the hourly run:
+  `created_at` 15:55:20 UTC, `total_listings` 1, `total_updated` 1, `duration` 6 s (the note
+  above). The amended runner (16:18:46 UTC) returned the 15:30 run: start 15:30:17 UTC, `created_at`
+  15:35:39, `total_listings` 652, `total_updated` 0, `duration` 322 s. **This is S9b's baseline.**
+  652 is under the 654–659 band of 11-10, as in 5a's SH: `total_listings` is Insight's own
+  active-import count (`lib/crmls.rb:315–316`), and it drifts as listings leave that set, so
+  step 6 compares against 652, not the band.
+- **S16's buffer:** `Regexp::TimeoutError` `0` in 1,500 lines, `2026-11-11T14:42:27` …
+  `2026-11-11T16:07:00` UTC. Honeybadger: No Results, both resolved states (5a's SH, read by
+  15:54 UTC). Papertrail (Dan, about 16:20 UTC): "No matching events", searched back to Oct 29 at
+  07:00 PM, more than the seven days.
+- **The inbox:** no `SystemError::` email of any kind since 5a's push (Dan, 15:59 UTC), so the last
+  import email is still the 2021-08-31 `Crmls Login Failure`.
+- **S6:** the runner printed nothing after the WARN line (16:08:00 UTC). `SystemError::rails upgrade
+  slice 5b` arrived at ops@insightphotos.net (`Date:` 16:08:00 UTC; Gmail received it 16:08:02
+  UTC), from team@insightphotos.net through SendGrid, body `release v674`. As expected.
+- **S15:** `422`, and the four-message `errors` array, as expected.
+- **S15b:** `422`, and the body is the expected line above byte for byte, entities escaped: the
+  "before".
+- **S17:** the runner printed `yqly4v2J` and `76` (16:10:49 UTC); `200`; `u0026` count `0`;
+  `.data | length` `76`. As expected; `TOKEN=yqly4v2J` for step 5.
+- **S18 "before", `web`** (Dan, Heroku Metrics, the 24 h to about 16:20 UTC): max 797.2 MB
+  (77.9 % of the 1,024 MB quota), average 665.6 MB, latest 738.3 MB; swap up to 35 MB. The memory
+  climbs after each reset and resets about every 12 h: from the 16:41 UTC restart (v673–v674) to a
+  peak of about 800 MB, reset at about 04:47 UTC, then to about 700 MB by 15:45. The 12 h reset fits
+  `PumaWorkerKiller.enable_rolling_restart(12 * 3600)` (`config/initializers/puma_worker_killer.rb:1`);
+  the boot log shows Puma in cluster mode with 2 workers. `web.2` restarted twice more, at
+  15:45:55 and 16:01:49 UTC, each "Relocating dyno to a new server": Heroku's, not the app's
+  (`tmp/s16-before.log`). So S18 compares the peak each cycle reaches, not the 24 h max, which
+  depends on where the resets fall.
+- **S18 "before", `backgroundworker`** (Dan, Heroku Metrics, 1 Standard-2X dyno, the 24 h to the
+  read): max 713.9 MB (69.7 % of 1,024 MB), average 536.7 MB, latest 689.1 MB; swap up to 18 MB.
+  It has not restarted since the 16:41 UTC config change, so the window is one climb: about 250 MB
+  at boot, about 500 MB within 2 h, steps to about 690 MB by about 05:30 UTC, then flat at about
+  690–714 MB. Sidekiq has no rolling restart. 5b's push restarts it, so S18 compares the climb from
+  that boot with this one, hour for hour.
 
 ## Deploy
 
@@ -321,7 +386,12 @@ heroku releases -n 1 -a insgtapi          # record the release (vNNN) and its ti
 
 No gem change, so the build installs nothing new. A failed build is not a release; the live one stays.
 
-RECORDED: ___
+RECORDED: **v675**, `git push heroku master` of `24309546` (Dan, 2026-11-11). The local reflog has
+`heroku/master` updated by push to `24309546` at 11:26:27 -0500 (16:26:27 UTC, 08:26 PST); the
+dynos restarted 16:26:26–16:26:38 UTC. That is before the 09:00 PT window, by Dan's decision, and
+26 minutes into the 08:00 PT delivery window (Deploy log). `heroku releases -n 1`'s line was not
+pasted; the release falls just before 16:26:26 UTC. The 15:30 UTC import finished at 15:35:39, and
+the 16:30 run starts after the release, so **the watched import is the 16:30 UTC run**.
 
 ### 5. Within 30 minutes
 
@@ -329,7 +399,7 @@ Set `RELEASE` and `JWT` first. Every `heroku run … rails runner` prints the Ac
 before its own output (Known); it is not a failure.
 
 ```bash
-RELEASE=vNNN   # the release `heroku releases -n 1` printed
+RELEASE=v675   # the release `heroku releases -n 1` printed
 heroku ps --app insgtapi
 heroku logs --ps backgroundworker.1 -n 300 --app insgtapi | grep Booted
 curl -sS -o /dev/null -w "%{http_code}\n" https://api.insightphotos.net/up
@@ -374,7 +444,39 @@ Then Honeybadger over the 30 minutes: Errors with `-is:resolved -is:ignored` lis
 nothing new. A `MissingRequiredOrderError`, an `UnsafeRedirectError` or a `Regexp::TimeoutError` here
 is read at once (Rollback).
 
-RECORDED: ___
+RECORDED — Dan, on the host, 2026-11-11 16:27–16:30 UTC, `RELEASE=v675`. Every runner printed the
+Active Storage WARN line first (Known):
+
+- **S2:** `backgroundworker.1` and `web.1` up 16:26:26 UTC, `web.2` 16:26:38; `Booted Rails 8.1.4.1
+  application in production environment` from `backgroundworker.1` at 16:26:37 UTC, one boot.
+  **Pass.**
+- **S1:** `/up` → `200`. **Pass.** The Honeybadger uptime check was not read.
+- **S0:** notice `46a3e669-7ebb-4e25-9340-610e36ebf222` (`code=201`, 16:27:42 UTC). `UpgradeMarker`
+  (fault 135218267) gains the occurrence with context `{"rails" => "8.1.4.1", "release" => "v675"}`;
+  Honeybadger's notification email arrived at 11:27 -05:00. **Pass.**
+- **S3 / S10:** `8.1.4.1`, `false`, **`8.1`**, `true`, `true`, **`false`** (16:27:55 UTC). The bump
+  took, YJIT stays on in production, and `render json:` no longer escapes. **Pass.**
+- **S14:** `1.0`, **`true`** (16:28:07 UTC). The applied freshness arrived with `load_defaults 8.1`.
+  **Pass; no rollback signal.**
+- **S4:** `["Carlsbad", "Oceanside", "Leucadia"]`, identical to step 3's. **Pass.**
+- **S5:** `true`. **Pass.**
+- **S6:** the runner printed nothing after the WARN line (16:28:47 UTC). `SystemError::rails upgrade
+  slice 5b` arrived at ops@insightphotos.net (`Date:` 16:28:48 UTC; Gmail received it 16:28:49
+  UTC), from team@insightphotos.net through SendGrid, body `release v675`. **Pass: row 9's mailer
+  path works in production on 8.1.**
+- **S15:** `422`; "S15 identical" and "S15 bytes identical". **Pass.**
+- **S15b:** `422`; the body reads `{"errors":["Category type A <b> & B is not a valid category"]}`,
+  raw `<b> &` where step 3's "before" had the escaped entities; "S15b parsed identical". Nothing is
+  written (the validation answers before `update`). **Pass: the byte control shows row 5 is live,
+  and the decoded value is unchanged.**
+- **S17:** `200`; "S17 identical" (the `jq -S` diff is empty); `u0026` `0` → `0`. **Pass.**
+- **Honeybadger, the 30 minutes:** read late, after 17:27 UTC (the marker shows Last `1h` and `0` in
+  the 1 Hour column), so it covers about the first hour. Errors with `-is:resolved -is:ignored`, all
+  environments, newest first: `UpgradeMarker` (`rails upgrade slice 5b marker`, production) and
+  nothing else. No `MissingRequiredOrderError`, `UnsafeRedirectError` or `Regexp::TimeoutError`,
+  and no notice from commit 4's login path. **Pass.**
+
+**Step 5 passes.**
 
 ### 6. One hour after the push (S7), and the watched import (S9, S9b, S16, the inbox)
 
@@ -398,7 +500,7 @@ Read all four once it has finished, at about :35–:45 UTC — the same four-par
 step 6, because `Regexp.timeout` is still live and `load_defaults 8.0` sets it again (`||= 1`):
 
 ```bash
-heroku run --no-tty --app insgtapi rails runner 'r = MlsImport.order(:created_at).last; p r.slice("created_at", "total_listings", "total_updated", "duration"); p r.created_at - r.duration'
+heroku run --no-tty --app insgtapi rails runner 'mls_import = MlsImport.where("total_listings > 1").order(:created_at).last; p mls_import.slice("created_at", "total_listings", "total_updated", "duration"); p mls_import.created_at - mls_import.duration'
 heroku logs -n 1500 --app insgtapi > tmp/s16.log
 head -1 tmp/s16.log | cut -c1-32
 tail -1 tmp/s16.log | cut -c1-32
@@ -408,10 +510,24 @@ grep -c "Regexp::TimeoutError" tmp/s16.log
 | # | Check | Expected |
 | :-- | :-- | :-- |
 | S9 | Honeybadger → Check-Ins, `import_listings` | checked in at about :35–:45 UTC for the watched hour, judged in UTC |
-| S9b | the `MlsImport` runner | a new row for the watched hour: its start after the release time, `created_at` at about :34–:37; `total_listings` 654–659; `duration` 270–420 s. **No new row while S9 passed is the login path:** from this release a login failure is also a Honeybadger error (commit 4), so read SH and the ops@ email together |
+| S9b | the `MlsImport` runner | a new row for the watched hour: its start after the release time, `created_at` at about :34–:37; `total_listings` within a few of step 3's baseline, 652 (the 654–659 band of 11-10 drifted; step 3); `duration` 270–420 s. **No new row while S9 passed is the login path:** from this release a login failure is also a Honeybadger error (commit 4), so read SH and the ops@ email together. The runner skips single-listing syncs (`total_listings` `1`; step 3's note) |
 | S16 | the buffer grep; Papertrail `Regexp::TimeoutError` since the push; the ops@ inbox | `0`; `0`; no `SystemError::` email from the import since the push |
 
-RECORDED: ___
+RECORDED — in progress (Dan, on the host, from 17:42 UTC):
+
+- **S9b:** the runner ran at 17:42:05 UTC, an hour after the watched run, so `.last` returned the
+  **17:30 UTC run**, the second after the release and also on v675: start 17:30:32 UTC,
+  `created_at` 17:35:33, `total_listings` 653, `total_updated` 0, `duration` 301 s. Every bound
+  holds (start after 16:26:27, `created_at` in :34–:37, 653 against 652, 301 s in 270–420 s).
+  **The watched 16:30 run's row:** ___
+- **S16:** `Regexp::TimeoutError` `0` in the buffer's 1,500 lines, `2026-11-11T16:45:00` …
+  `2026-11-11T17:42:18` UTC. That covers the 17:30 run but starts after the 16:30 run would have
+  finished, so Papertrail since the push carries the watched run: ___
+- **S9:** ___
+- **The inbox:** ___
+- **Honeybadger:** at about 1 h, only the marker (step 5), so neither run reported a login failure
+  through commit 4's path or raised anything else.
+- **S7:** ___
 
 ### 7. 24 hours after the push (SH, S18)
 
@@ -454,8 +570,14 @@ RECORDED: ___
 heroku rollback --app insgtapi
 ```
 
-Back to **v672** (5a), or to the release step 3 recorded if `master` moved. Nothing to undo: no
-migration, no ENV change, no data written by the slice. In git, revert the four commits (the bump
+Back to **v674**, the release step 3 recorded: 5a's slug `808d383f` plus the two config vars set in
+v673–v674 (Dan's canarytoken setup). `heroku rollback` with no version goes back one release, which
+is v674 while 5b's release is the newest. **Never `heroku rollback v672`.** A rollback copies the
+target release's config vars as well as its slug ("This release copies the compiled slug or OCI
+image and config vars … of the release you roll back to", Heroku Dev Center, Releases), so v672
+would drop `AWS_BACKUP_ACCESS_KEY_ID` and `AWS_BACKUP_SECRET_ACCESS_KEY`. If another release lands
+after the push, read `heroku releases` first, because a rollback past it drops its config change
+too. Nothing to undo: no migration, no ENV change, no data written by the slice. In git, revert the four commits (the bump
 commit alone restores the shims).
 
 **A Scheduler one-off started under this release keeps its slug** until it exits, up to about seven
@@ -522,3 +644,24 @@ a rollback.
 - **2026-11-10 — written back:** `rails-upgrade.md` v9, the codebase notes, the plan's implementation
   record and the review record `docs/architecture/reviews/2026-11-10-slice-5b-insgt-api.md`. Status
   `Ready`; the merge and the push wait on 5a's watched import and SH (Prerequisites).
+- **2026-11-11 — prerequisite read** (Dan): 5a's SH passes at about 25 h (runbook 5a step 7).
+- **2026-11-11 — merged; suite and probe on the merge; step 3 on v674.** Dan merged as `24309546`
+  (the branch's tree). The suite is `2117 examples, 0 failures` both ways, and the probe gave every
+  line as expected (step 2). Releases v673–v674 (2026-11-10 16:41 UTC) only set two config vars for
+  Dan's canarytoken setup, so v674 is the "before" and the rollback target, never v672 (Rollback).
+  Step 3's captures are as expected, except that the import runner caught a single-listing sync; it
+  now skips those, here and in step 6. Its baseline is the 15:30 run (652, 322 s). Papertrail has
+  no `Regexp::TimeoutError` back to Oct 29. S18 `web` peaks at about 800 MB per 12 h cycle; two
+  `web.2` relocations by Heroku at 15:46 and 16:02 UTC. S18 `backgroundworker` climbs from about
+  250 MB to about 690–714 MB with no reset since 16:41 UTC. Every prerequisite is done.
+- **2026-11-11 — Dan's decision, about 16:25 UTC (08:25 PST): push now**, before the 09:00 PT window
+  opens. Slices 2–5a also went out before 09:00, but each before 08:00 PT; this push is the first
+  after a delivery window (08:00 PT, §2.4) has begun. §2.4 does not say how long a window lasts.
+- **2026-11-11 — pushed as v675** (Dan): `24309546`, 16:26:27 UTC (08:26 PST); dynos up
+  16:26:26–16:26:38 UTC. Step 5 so far: S2 (one boot), S1, S0 (`v675`), S3, **S10 (`8.1`)**, **S14
+  (`1.0`, `true`)**, S4, S5, S15, **S15b (raw `<b> &`, parsed identical)** and S17 all pass. S6's
+  arrival and the 30-minute Honeybadger read remain. The watched import is the 16:30 UTC run.
+- **2026-11-11 — step 5 passes** (Dan): S6 arrived 16:28:48 UTC; Honeybadger, read at about 1 h,
+  lists only the marker. Step 6 in progress: the 17:30 run is inside S9b's bounds (653, 301 s) and
+  the buffer has `0` `Regexp::TimeoutError` (16:45–17:42 UTC). The 16:30 run's row, S9, Papertrail,
+  the inbox and S7 remain.
