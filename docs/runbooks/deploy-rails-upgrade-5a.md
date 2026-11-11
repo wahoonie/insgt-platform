@@ -1,13 +1,13 @@
 # Runbook: Rails Upgrade Slice 5a — the 8.0 request-freshness and regexp-timeout defaults
 
-**Last updated:** 2026-11-10
+**Last updated:** 2026-11-11
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~25 min of prerequisite reads and captures; ~30 min for the push and step 5's
 checks; S7 one hour after the push; S9, S9b, S16 and the ops@ inbox at the first import that starts
 after the release; SH 24 h later
 **Status:** Deployed — v672, `808d383f`, 2026-11-10 09:48:26 -0500 (14:48:26 UTC). Step 5 passes; S7
-and the watched 15:30 UTC import pass on all four signals (step 6). SH is due about 2026-11-11 14:48
-UTC. Implemented and verified in development 2026-11-09 (step 1); two review rounds of
+and the watched 15:30 UTC import pass on all four signals (step 6). SH passes at about 25 h
+(2026-11-11, step 7). Implemented and verified in development 2026-11-09 (step 1); two review rounds of
 `predeploy-review-rails` done the same day (Known; record `docs/architecture/reviews/2026-11-09-slice-5a-insgt-api.md`),
 with round 1's finding fixed by amending commit 1 and no finding open after round 2. The
 verification gate passed (Dan, 2026-11-09), and the v8 write-back is done. Slice 4's SH and S13
@@ -531,9 +531,9 @@ Honeybadger → Errors, compared with the slice 0 baseline **by error** (replace
 each search with `-is:resolved` and then `is:resolved`, both with `-is:ignored`:
 
 ```
-environment:"production" created.after:"<push>"
-environment:"production" class:"Regexp::TimeoutError" occurred.after:"<push>"
-environment:"production" class:"RailsDeprecation" occurred.after:"<push>"
+environment:"production" created.after:"2026-11-10 08:00 UTC-5"
+environment:"production" class:"Regexp::TimeoutError" occurred.after:"2026-11-10 08:00 UTC-5"
+environment:"production" class:"RailsDeprecation" occurred.after:"2026-11-10 08:00 UTC-5"
 ```
 
 **Pass condition:**
@@ -552,7 +552,36 @@ environment:"production" class:"RailsDeprecation" occurred.after:"<push>"
 Anything else is an old bug seen for the first time: record it here and fix it on its own branch; it
 does not block 5b.
 
-RECORDED: ___
+RECORDED — Dan, 2026-11-11, read by 15:54 UTC, about 25 h after the push. 5b was not deployed, so
+the whole window ran `808d383f`: v672, then from 16:41 UTC on 11-10 v673–v674, which only set two
+config vars (Dan's canarytoken setup). **SH passes.**
+
+- **SH** (Honeybadger → Errors). The window opens `"2026-11-10 08:00 UTC-5"` (13:00 UTC), 1 h 48 min
+  before the push. All three searches return No Results, each run with `-is:resolved` and with
+  `is:resolved`, both with `-is:ignored`: no fault created since before the push, no
+  `Regexp::TimeoutError`, no `RailsDeprecation`. With no new fault there is no backtrace to triage
+  and no `IpSpoofAttackError`. **Pass.**
+- **The date filter is proven** (no earlier SH had a control). `class:"UpgradeMarker"` over the same
+  window, `-is:resolved`, lists fault 135218267 (count 1, last seen 20 h before the read), step 5's
+  S0 occurrence at 14:50:27 UTC: the window parses and opens before the push. A filter Honeybadger
+  ignored would only widen a search, so it cannot produce a false No Results. The `created.after`
+  search cannot carry its own control, because no fault was created in the window; the window
+  without a class covers it, read at about 20.5 h (Dan, pasted with the 11:11 UTC runner below):
+  `-is:resolved` lists only the marker and `is:resolved` returns No Results, so no fault of any
+  class, old or new, had occurred in production by then.
+- **At about 10:45 UTC (20 h)**, the same three searches plus 5b's two classes,
+  `ActiveRecord::MissingRequiredOrderError` and `ActionController::Redirecting::UnsafeRedirectError`,
+  all returned No Results both ways: the baseline for 5b's SH.
+- **A manual import** (Dan, `import_listings` by hand; runner at 11:11:16 UTC): a new row, start
+  10:54:11 UTC, `created_at` 10:58:48, `total_listings` 652, `total_updated` 0, `duration` 277 s. A
+  row means the CRMLS login succeeded and `extract` returned without raising. 652 is under step 6's
+  654–659 and is not a finding: `total_listings` is Insight's own active-import count
+  (`lib/crmls.rb:315–316`), taken before the MLS is asked, so three listings left that set after
+  the watched run's 655.
+- **The ops@ inbox** (Dan, about 15:59 UTC, 25 h): no `SystemError::` email of any kind since the
+  push, so no `Crmls Login Failure` and no per-listing import error. **Pass.**
+
+**SH passes. 5b's prerequisite from this runbook is met.**
 
 ## Rollback
 
@@ -647,3 +676,7 @@ global off is a §7 decision, not an in-window fix (plan, Risks).
   watched 15:30 UTC import wrote its row (655, 308 s) and checked in at about 15:36. There is no
   `Regexp::TimeoutError` in the buffer, Papertrail or Honeybadger, and no import email in ops@. S7
   has no 5xx since the push. SH is due 2026-11-11.
+- **2026-11-11 — SH passes** (Dan, read by 15:54 UTC, about 25 h after the push, all on `808d383f`): no
+  new fault, no `Regexp::TimeoutError` and no `RailsDeprecation`, under both resolved states; the
+  `UpgradeMarker` search proves the date filter. A manual import at 10:54 UTC wrote its row (652,
+  277 s). 5b's prerequisite from this runbook is met.
