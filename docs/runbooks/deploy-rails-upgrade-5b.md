@@ -1,15 +1,15 @@
 # Runbook: Rails Upgrade Slice 5b — the 8.1 framework defaults, then `config.load_defaults 8.1`
 
-**Last updated:** 2026-11-11
+**Last updated:** 2026-11-18
 **Repos:** insgt-api (one push); platform repo for the write-back
 **Estimated duration:** ~25 min of prerequisite reads and captures; ~35 min for the push and step 5's
 checks (S15, S15b and S17 included); S7 one hour after the push; S9, S9b, S16 and the ops@ inbox at
 the first import that starts after the release; SH and S18 24 h later
-**Status:** Ready — implemented and verified in development 2026-11-10 (step 1); two review rounds of
-`predeploy-review-rails` done the same day (Known; record `docs/architecture/reviews/2026-11-10-slice-5b-insgt-api.md`),
-neither raising a finding. The v9 write-back is done. 5a's watched import and its SH passed;
-merged as `24309546`, probed, and step 3 captured on v674 (Prerequisites, all done 2026-11-11);
-awaiting the push.
+**Status:** Deployed — **v675**, `24309546`, pushed 2026-11-11 16:26:27 UTC (08:26 PST). Step 5
+passes; the watched 16:30 UTC import passes (step 6); SH passes at seven days, which closes the
+quiet week (step 7, read 2026-11-18). S7 and S18 pass, both also read on 11-18. Nothing is open;
+the one observation is the `backgroundworker` cycle of 11-17 (S18). Implemented, verified and reviewed
+2026-11-10 (step 1; Known; record `docs/architecture/reviews/2026-11-10-slice-5b-insgt-api.md`).
 
 ## Summary
 
@@ -513,21 +513,43 @@ grep -c "Regexp::TimeoutError" tmp/s16.log
 | S9b | the `MlsImport` runner | a new row for the watched hour: its start after the release time, `created_at` at about :34–:37; `total_listings` within a few of step 3's baseline, 652 (the 654–659 band of 11-10 drifted; step 3); `duration` 270–420 s. **No new row while S9 passed is the login path:** from this release a login failure is also a Honeybadger error (commit 4), so read SH and the ops@ email together. The runner skips single-listing syncs (`total_listings` `1`; step 3's note) |
 | S16 | the buffer grep; Papertrail `Regexp::TimeoutError` since the push; the ops@ inbox | `0`; `0`; no `SystemError::` email from the import since the push |
 
-RECORDED — in progress (Dan, on the host, from 17:42 UTC):
+RECORDED (Dan, on the host, from 17:42 UTC on 2026-11-11; completed from reads on 2026-11-18):
 
 - **S9b:** the runner ran at 17:42:05 UTC, an hour after the watched run, so `.last` returned the
   **17:30 UTC run**, the second after the release and also on v675: start 17:30:32 UTC,
   `created_at` 17:35:33, `total_listings` 653, `total_updated` 0, `duration` 301 s. Every bound
   holds (start after 16:26:27, `created_at` in :34–:37, 653 against 652, 301 s in 270–420 s).
-  **The watched 16:30 run's row:** ___
+  **The watched 16:30 run's row** (Dan, 2026-11-18, a console query on `created_at` between 16:30
+  and 16:45 UTC of 11-11, which returned one row): id 212491, `organization_id` 70, `created_at`
+  16:35:46 UTC, `total_listings` 653, `total_updated` 1, `duration` 331 s, so its start is
+  16:30:15 UTC, after the release at 16:26:27. Every bound holds. **Pass.**
 - **S16:** `Regexp::TimeoutError` `0` in the buffer's 1,500 lines, `2026-11-11T16:45:00` …
   `2026-11-11T17:42:18` UTC. That covers the 17:30 run but starts after the 16:30 run would have
-  finished, so Papertrail since the push carries the watched run: ___
-- **S9:** ___
-- **The inbox:** ___
+  finished, so Papertrail since the push carries the watched run: "No matching events", searched
+  back to Nov 4 at 07:00 PM (Dan, 2026-11-18). Papertrail keeps seven days: the `status=5` search
+  the same morning hit "Oldest event reached … before Nov 11 at 08:49 AM" (its clock is UTC-5, so
+  13:49 UTC). The push, at 16:26 UTC, is inside that by about 2½ h, so the search covers the push
+  and the whole week after it, not the days before. **Pass.**
+- **S9:** read on 2026-11-18 only, as the check-in's state that day: `import_listings` "is
+  reporting", report period 1 hour, grace 30 minutes, last seen "1 hour ago". The check-in for the
+  watched hour itself was not read at the time; S9b's row for that hour is the evidence that the
+  run finished.
+- **The inbox:** Gmail search `SystemError:: after:2026/11/11` (Dan, 2026-11-18): "1–1 of 1", the
+  thread `SystemError::rails upgrade slice 5b - release v675` of Nov 11, which is steps 3 and 5's
+  own S6 emails. No `SystemError::` email from the import since the push. **Pass.**
 - **Honeybadger:** at about 1 h, only the marker (step 5), so neither run reported a login failure
   through commit 4's path or raised anything else.
-- **S7:** ___
+- **S7:** read on 2026-11-18, from Papertrail, because the buffer no longer reaches the hour. The
+  `status=5` search, scrolled to "Oldest event reached" (13:49 UTC of 11-11), has its first match
+  at **2026-11-13 21:35:36 UTC**, the database-connection burst of step 7. So there is no
+  `status=5` from before the push until then, the hour after the push included.
+  `Regexp::TimeoutError` is S16's search: none. The exception-class grep was not run for that
+  hour; Honeybadger at about 1 h listed only the marker (step 5). The buffer pulled the same day
+  (`2026-11-18T12:25:43` … `13:35:11` UTC) is a week late and clean: `status=5` `0`, no exception
+  class, `Regexp::TimeoutError` `0`. **Pass.**
+
+**Step 6 passes:** the watched import on S9b, S16 and the inbox, and S7. S9 for the watched hour
+stands as recorded above.
 
 ### 7. 24 hours after the push (SH, S18)
 
@@ -562,7 +584,73 @@ environment:"production" class:"RailsDeprecation" occurred.after:"<push>"
 Anything else is an old bug seen for the first time: record it here and fix it on its own branch.
 **The quiet week (§2.2) runs from this push to Wed 11-18.**
 
-RECORDED: ___
+RECORDED — SH (Dan, 2026-11-18, about seven days after the push; no read was taken at 24 h, so
+this one read is both SH and the quiet week's closing read). Each search was run once, with the
+push time `2026-11-11 16:26:27 UTC` and no `is:resolved` term, sorted newest first. Without that
+term a search returns resolved and unresolved faults together (Dan), so one search stands for the
+two this step asks for:
+
+- **`created.after`:** five faults, all `ActiveRecord::ConnectionNotEstablished`, message
+  `connection to server at "44.223.236.192", port 5432 failed: Connect…` (cut off in the list),
+  each "5d old" and last seen "5d", so about 11-13:
+
+  | Where | Count |
+  | :-- | --: |
+  | `orders#index` | 22 |
+  | `listings#virtual` | 6 |
+  | `photos#download_info` | 1 |
+  | `listings#custom_domain_exists` | 1 |
+  | `rake import_listings` | 1 |
+
+  Dan: a network issue on Heroku's side at the time, unrelated to the code. Papertrail dates it:
+  `status=500` from **2026-11-13 21:35:36 UTC**, on `web.1` and `web.2`, each `bytes=46` after
+  about 105–115 ms in `db` (`orders#index`, `orders#processing`, `listings#virtual` in the lines
+  read). Heroku Metrics for `web` has one H12 marker and a response-time spike to about 30 s in
+  the same hour. That is a failed connection to the Postgres host, across unrelated actions and
+  the Scheduler task, 31 occurrences in one burst and none since. The burst's end and the
+  backtraces were not read. **Not this slice's finding**; recorded as the pass condition's
+  "anything else". The `rake import_listings` occurrence means one hourly import failed, most
+  likely the 21:30 UTC run of 11-13 (an inference from the time; its `mls_imports` row and the
+  check-in were not read).
+- **`Regexp::TimeoutError`:** No Results. **Pass.**
+- **`ActiveRecord::MissingRequiredOrderError`:** No Results. **Pass.**
+- **`ActionController::Redirecting::UnsafeRedirectError`:** No Results. **Pass.**
+- **`RailsDeprecation`:** No Results. **Pass.**
+- **Commit 4's path:** no `Crmls Login Failure` notice among the faults created since the push, so
+  no login failure reached Honeybadger in the week.
+- **The inbox:** as step 6: `SystemError:: after:2026/11/11` returns only the S6 thread, so no
+  `SystemError::` email from the import since the push. **Pass.**
+
+**SH passes; the quiet week is clean on Honeybadger.**
+
+RECORDED — S18 (Dan, Heroku Metrics, 2026-11-18 at about 13:50 UTC: "Past 7 days" for both process
+types, and "Past 24hrs" for `backgroundworker`). The seven-day view begins just before the push,
+so the 24 h after it are its left edge, at coarse resolution; the levels below are read off the
+graphs and are approximate, the MB figures are the page's own:
+
+- **`web`** (2 dynos), seven days: max 880.7 MB (86.0 % of 1,024 MB), average 649.1 MB (63.4 %),
+  latest 618.1 MB; swap up to 17 MB. The same sawtooth as before the push, a reset about every
+  12 h, each cycle peaking at about 0.75–0.88 GB, with no rise across the week (the lowest
+  cycles are Sun–Mon). Against step 3's "before" (peak about 800 MB, average 665.6 MB): the
+  average is a little lower, and the highest peak is 83 MB over the "before" day's, taken over
+  about fourteen cycles, not two. **Pass: no sustained climb.**
+- **`backgroundworker`** (1 dyno), the 24 h after the push: about 0.2 GB from boot for about 19 h,
+  then steps to about 0.3–0.45 GB. That is below the "before" climb hour for hour (about 500 MB
+  within 2 h, about 690 MB by 13 h). **Pass.**
+- **`backgroundworker`, the rest of the week (an observation, outside S18's window).** The dyno
+  restarts about daily (seven markers, each at about 17:00–19:00 UTC), so each day is one climb.
+  Six cycles peak at about 0.45–0.58 GB. The seventh, booted at about 17:00 UTC on 11-17,
+  stepped to about 816 MB between about 21:00 and 22:30 UTC, while the dyno-load graph shows its
+  busiest hours of the day, and has held flat since: max 829.5 MB (81.0 %), latest 815.7 MB, the
+  week's highest and about 115 MB over the "before" max of 713.9 MB. One cycle of seven, and it
+  follows job load, so it is not a climb across cycles. The next daily restart resets it.
+- **Events:** a Config marker with a restart on Mon 11-16 at about 17:00 UTC, on both process
+  types: a release after v675 (UNVERIFIED which; `heroku releases`). `heroku rollback` with no
+  version therefore no longer goes back to v674 (Rollback's last case). `web` also shows two H27
+  markers (a client closing its connection), at about 03:00 UTC on 11-14 and 11-15, and App
+  Guidance counts 5 request timeouts in the seven days.
+
+**S18 passes.**
 
 ## Rollback
 
@@ -665,3 +753,17 @@ a rollback.
   lists only the marker. Step 6 in progress: the 17:30 run is inside S9b's bounds (653, 301 s) and
   the buffer has `0` `Regexp::TimeoutError` (16:45–17:42 UTC). The 16:30 run's row, S9, Papertrail,
   the inbox and S7 remain.
+- **2026-11-18 — steps 6 and 7 read, seven days after the push** (Dan). The watched 16:30 run's
+  row is in bounds (id 212491, start 16:30:15 UTC, 653, 331 s); Papertrail has no
+  `Regexp::TimeoutError` back to Nov 4; the inbox search shows no import email. S9 was read as
+  that day's state only, and S7's buffer is from 11-18, not the hour after the push. SH: the four
+  class searches return No Results; the only faults created since the push are five
+  `ActiveRecord::ConnectionNotEstablished` of about 11-13 (31 occurrences), which Dan attributes
+  to a Heroku network issue. **SH passes and the quiet week closes clean.**
+- **2026-11-18 — the remaining reads** (Dan). The inbox, searched from 11-11, holds only the S6
+  thread. Papertrail's first `status=5` since before the push is the connection burst at
+  2026-11-13 21:35:36 UTC, so **S7 passes** and the burst is dated. **S18 passes:** `web` keeps
+  its 12 h sawtooth (seven-day max 880.7 MB, average 649.1 MB), and `backgroundworker` ran lower
+  in the 24 h after the push than before it. One `backgroundworker` cycle, from 11-17, reached
+  829.5 MB after a busy evening; recorded as an observation. A config release landed on 11-16.
+  **Every step of this runbook is read.**
