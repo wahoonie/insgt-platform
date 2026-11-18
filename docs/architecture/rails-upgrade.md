@@ -1,14 +1,15 @@
 # Rails Upgrade — insgt-api 7.2.3 → 8.1.4
 
 **Repo:** `insgt-api` · **Platform:** Heroku app `insgtapi` (Render.com cutover follows, §2)
-**Status:** v9 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
+**Status:** v10 — slice 0 deployed (v659, 2026-10-26); slice 1 deployed (v662, 2026-10-27 08:15 -0400;
 S7, S9 and SH pass); slice 2 deployed (v663, 2026-10-28 08:53 -0400; S7, S9 and SH pass); slice 3
 deployed (v666, 2026-11-02 08:12 -0500; S7, S9 and SH pass); slice 4 deployed (v671, 2026-11-09
 08:27:45 -0500; S7, S9, SH and S13 pass); slice 5a deployed (v672, 2026-11-10 09:48:26 -0500; S7 and
-the watched import's four signals pass, SH pending); slice 5b implemented, verified and reviewed
-(2026-11-10, four commits off v672's `master`; push Wed 11-11 after 5a's SH); OD10 settled
-**Version:** 9 · **Last updated:** 2026-11-10
-**Supersedes:** v8 (2026-11-10). See §9.
+the watched import's four signals and SH pass); slice 5b deployed (v675, 2026-11-11 11:26:27 -0500;
+S7, the watched import, SH and S18 pass, with S7, SH and S18 read at seven days);
+the quiet week closed Wed 11-18 with no finding in Honeybadger; OD10 settled
+**Version:** 10 · **Last updated:** 2026-11-18
+**Supersedes:** v9 (2026-11-10). See §9.
 **Companion files:** `rails-upgrade-codebase-notes.md` (the `file:line` map; every repo claim below
 is sourced there), `rails-upgrade-slices/slice-{0,1,2,3,4,5}.md` (the slice prompts), and the
 contract spec `insgt-api/spec/architecture/rails_upgrade_spec.rb` (created by slice 1; later slices
@@ -1346,7 +1347,9 @@ reads the new login-failure notice from `lib/crmls.rb` by its context; **S18** r
 **Rollback.** `heroku rollback` per deploy (5b reverts to 5a's release, v672; 5a to slice 4's, v671).
 **v8:** a Scheduler one-off started under the rolled-back release keeps `Regexp.timeout = 1` until it
 exits (about seven minutes), so the rollback is verified after it has gone. **v9:** for 5b, verified by
-S3 → `7.2` and S14 → `1.0`, `false`; in git, the bump commit alone restores the shims.
+S3 → `7.2` and S14 → `1.0`, `false`; in git, the bump commit alone restores the shims. **v10:** 5b's
+rollback target was v674, not v672: v673–v674 set two config vars on v672's slug, and a rollback
+copies the target's config vars with its slug (runbook 5b, Rollback).
 
 **v8, as built — 5a** (insgt-api `chore/rails-upgrade-slice-5a`, one commit `c966bb6e` off `master`
 `316fa0e1` = v671, slice 4 merged; plan `docs/plans/rails-upgrade-slice-5.md`, which records every
@@ -1435,10 +1438,41 @@ every deviation; runbook `docs/runbooks/deploy-rails-upgrade-5b.md`; review reco
   character; the spec and doc files carrying such literals were restored by a script and checked by
   raw-character counts (the notes' "Slice 5b" section).
 
+**v10, as deployed — 5b** (runbook `docs/runbooks/deploy-rails-upgrade-5b.md`, steps 3–7). Merged as
+`24309546` (the branch's tree) and pushed Wed 2026-11-11 at 16:26:27 UTC (08:26 PST) as **v675**,
+over v674.
+
+- *Step 5, within the half hour: all pass.* One boot on 8.1.4.1; S10 `8.1`; S14 `1.0` and the
+  applied freshness `true`; YJIT on in production; `escape_json_responses` `false`. S15 is
+  byte-identical. S15b's body went from `\u003cb\u003e \u0026` to raw `<b> &` with the parsed
+  `errors` identical, so row 5 is live and no decoded value moved. S17's parsed diff is empty (76
+  photos). S6's email arrived, so the mailer templates render under `render_tracker = :ruby`.
+- *The watched import: passes.* The 16:30 UTC run, the first to start after the release:
+  `mls_imports` id 212491, start 16:30:15, 653 listings, 331 s. The 17:30 run is in bounds too
+  (653, 301 s). Papertrail has no `Regexp::TimeoutError` since the push, and ops@ holds no
+  `SystemError::` email from the import since 11-11. S9 was read only on 11-18, as that day's
+  state. S7, from Papertrail on 11-18: no `status=5` from the push until the burst below.
+- *SH: passes, read once at seven days* (2026-11-18), not at 24 h. No `Regexp::TimeoutError`,
+  `MissingRequiredOrderError`, `UnsafeRedirectError` or `RailsDeprecation`, and no
+  `Crmls Login Failure` notice through commit 4's path. The only faults created since the push are
+  five `ActiveRecord::ConnectionNotEstablished` (31 occurrences; four controllers and
+  `rake import_listings`), a failed connection to the Postgres host that Dan attributes to a
+  Heroku network issue. Papertrail dates the burst to 2026-11-13 21:35:36 UTC, on both web dynos.
+  It cost one hourly import, most likely the 21:30 UTC run. The backtraces were not read.
+- *S18: passes, read at seven days.* `web` keeps its 12 h sawtooth (seven-day max 880.7 MB,
+  average 649.1 MB, against a "before" peak of about 800 MB and average of 665.6 MB).
+  `backgroundworker` ran lower in the 24 h after the push than in the 24 h before. One
+  `backgroundworker` cycle, booted 11-17, reached 829.5 MB (81 % of quota, about 115 MB over the
+  "before" max) after a busy evening. It is one cycle of seven, so it is an observation, not a
+  climb (runbook 5b step 7).
+- *The push was before the 09:00 PT window and 26 minutes into the 08:00 PT delivery window*, on
+  Dan's decision (runbook 5b, Deploy log).
+
 **Gates.** All. **Effort (estimate):** 6 h plus two deploy mornings; the slice 5 plan's estimate is
 6.25 h (the gate's additions). **v8:** plan approved Fri 11-06; 5a implemented, verified and reviewed
 Mon 11-09, the day slice 4 deployed; push Tue 11-10. **v9:** 5a deployed Tue 11-10 as v672; 5b
-surveyed, implemented, verified and reviewed the same day; push Wed 11-11.
+surveyed, implemented, verified and reviewed the same day; push Wed 11-11. **v10:** 5b deployed Wed
+11-11 as v675.
 
 ---
 
@@ -1543,6 +1577,15 @@ were; the release also carried the `/cable` unmount and the Client-IP fix on Dan
 the same day, four commits off v672's `master`. **5b pushes Wed 11-11, 09:00–11:30 PT**, after 5a's
 watched run passes all four signals and its SH at about 06:48 PT; fallback Mon 11-16, which moves the
 quiet week and the rehearsal with it.
+
+**v10, as it went:** 5a's SH passed Wed 11-11, read by 15:54 UTC at about 25 h. 5b **deployed Wed
+11-11 at 08:26 PT** as v675, before the 09:00 window as slices 2–5a were, but the first push after a
+delivery window (08:00 PT) had begun, on Dan's decision. Its watched run, the 16:30 UTC import,
+passed (start 16:30:15, 653 listings, 331 s). No slot slipped: six deploy mornings, 10-26 to 11-11.
+**The quiet week ran from that push to Wed 11-18** and closed with one Honeybadger read that day:
+no finding from the upgrade, and one unrelated database-connection burst on 11-13 at 21:35 UTC
+(§4.6, as deployed). S7 and S18 pass, read the same day. The Render rehearsal's earliest day, Wed 11-18, stands; the slippage
+rule below gives the next Monday or Tuesday (11-23, 11-24) if it is not taken.
 
 Total ≈ 36 h of implementation plus six deploy mornings. 5a gets one day before 5b; the slice 5
 plan reads `lib/tasks/scheduler.rake` and the `import_listings` check-in history for the import
@@ -1779,14 +1822,17 @@ Not in any slice. Each is a candidate for its own small change after the Render 
     fourth commit (`27e45f1b`) adds the `Honeybadger.notify` inside the rescue, with the import errors
     as context; the swallow, the email and the early return stay. The item closes when 5b deploys; SH
     reads the new notice by its context (a `regexp match timeout` message is 5b's finding, anything
-    else an ordinary login failure seen by Honeybadger for the first time).
+    else an ordinary login failure seen by Honeybadger for the first time). **Closed (v10):** deployed
+    in v675 on 2026-11-11. No `Crmls Login Failure` notice reached Honeybadger in the quiet week, so
+    the new path has not fired in production yet. The missed hour of 10-31 stays UNVERIFIED.
 33. **`/cable` is mounted in production with nothing using it** (v8, after slice 4; v669's exposure
     read, §4.4). `rails/all` loads Action Cable, so `ActionCable.server.config.mount_path` →
     `"/cable"`, but insgt-api has no `app/channels` and no channel code. That route is
     GHSA-8474-xrp6-wh69's reachable surface. The advisory's own mitigation,
     `config.action_cable.mount_path = nil`, is already in `production.rb:36` as a comment, so the
     cleanup is uncommenting one line. Item 7 removes Action Cable altogether, later. **Ships with
-    5a** as `073ebe2f` (Dan, 2026-11-10; runbook 5a). The item closes when 5a deploys.
+    5a** as `073ebe2f` (Dan, 2026-11-10; runbook 5a). The item closes when 5a deploys. **Closed
+    (v10):** deployed in v672 on 2026-11-10.
 
 ---
 
@@ -1803,3 +1849,4 @@ Not in any slice. Each is a candidate for its own small change after the Render 
 | 7 | 2026-11-09 | Slice 4 implemented, verified and reviewed (insgt-api `chore/rails-upgrade-slice-4`, five commits `39b213f3`…`bd0859b8` off v667 `8b726308`, `master` merged in at v669 and v670; 2,099 examples, 2,100 on the v670 merge; two review rounds, round 2's finding fixed as commit 5); production read twice before the push (Thu 11-05, Mon 11-09), no STOP; push Mon 11-09. §4.5 as built: OD10 settled — the validation keyed on `resource_type` over user, property and photo, under the framework's condition; the shim's lines 14–16; the spec-fix list empty; S12 on `POST /areas_properties`; "unsaveable until repaired" narrowed to the new-row-or-changed-key semantics of `belongs_to_required_validates_foreign_key = false`; decision 5's dangling rule and its disposition; the null-count rule "on a table with rows"; the measured SELECT cost (+3 by id, +1 by object, `POST /orders` +11); the save-and-ignore sites and the `create_bulk` guard; the effort 7 h. §5 R2 narrowed. §7 OD10 settled; the slice 4 plan gate. §8 item 15's five candidates; items 26–30 new. Runbook `docs/runbooks/deploy-rails-upgrade-4.md` (`Ready`); plan `docs/plans/rails-upgrade-slice-4.md`. |
 | 8 | 2026-11-09 | Slice 5a implemented, verified and reviewed (insgt-api `chore/rails-upgrade-slice-5a`, one commit `c966bb6e` off `master` `316fa0e1` = v671, slice 4 merged; 2,103 examples; two review rounds, round 1's finding fixed by amending the commit); slice 4 deployed as v671 (S7 and S9 pass, SH pending); push Tue 11-10. The slice 5 plan gate (2026-11-06) recorded in §7; 5b's items wait for v9. §4.6: row 1 has no line in 8.1.4.1's 8.0 block; **row 2 is config-only in 5a** (the action_dispatch railtie copies the value before `config/initializers`; applied in 5b with `load_defaults 8.1`; row 8's line has the same shape, upstream rails/rails#59146 and #59147); row 3 narrowed (regex sites by file, the `rets` gem, Ruby 3.4.12's memoisation, the Float `1.0`); the 5a detection window becomes four signals (S9, S9b, S16 and the ops@ inbox), because a timeout in the CRMLS login is swallowed, and the watched run is the first that starts after the release; prerequisites at `8.1.4.1`; S14's applied freshness; the one-off-dyno rollback note; 5a as built, including the development replay (655 listings, 0 timeouts) and the import's production profile. §4.0 S3 reads YJIT; P-PROD gains eight lines and its exit status. §5's `Regexp.timeout` row narrowed. §6 as it went. §8 items 31 (AB 723 manifest coverage) and 32 (`Crmls#login`'s swallow; the 10-31 missed hour). Runbook `docs/runbooks/deploy-rails-upgrade-5a.md`; plan `docs/plans/rails-upgrade-slice-5.md`; review record `docs/architecture/reviews/2026-11-09-slice-5a-insgt-api.md`. |
 | 9 | 2026-11-10 | Slice 5a deployed as v672 (06:48 PT; S0–S6 and S14 pass; the watched import and SH pending), the release also carrying `/cable` unmounted and the Client-IP fix (§8 item 33). Slice 5b implemented, verified and reviewed (insgt-api `chore/rails-upgrade-slice-5b`, four commits `4d5eef28`…`27e45f1b` off `master` `808d383f`; 2,117 examples; two review rounds, no finding); push Wed 11-11. §4.6: row 4 (no shim line; YJIT off in test, kept in production), row 5 (70 renderer calls, `:284`, the consumers; row 5 masks row 8 on `render json:`; the deliberate break re-comments the shim line, since the writer deprecates), row 8 (config at the first commit, applied at the bump), the 5b scope as built (the Float `8.1`, four commits, scope call D), the row 5 proof as built, S3/S10/S14/S15/S15b/S17/S18 for 5b, the rollback to v672, 5b as built. §4.0 P-PROD's 5b tail and `582`; S3's renderer line. §6 as it went. §7 the 5b survey gate's seven amendments. §8 items 31 (S17 has no byte control; S15b) and 32 (the notify ships with 5b). Runbook `docs/runbooks/deploy-rails-upgrade-5b.md`; plan `docs/plans/rails-upgrade-slice-5.md` ("5b — amendments", "Implementation record — 5b"); review record `docs/architecture/reviews/2026-11-10-slice-5b-insgt-api.md`; the codebase notes' "Slice 5b" section. |
+| 10 | 2026-11-18 | Slice 5a's SH passes (2026-11-11, about 25 h). Slice 5b deployed as v675 (2026-11-11 08:26 PT, `24309546`; step 5, the watched 16:30 UTC import and SH pass; S7, SH and S18 read at seven days, all passing). The quiet week closed Wed 11-18 with no upgrade finding in Honeybadger; five `ActiveRecord::ConnectionNotEstablished` faults of 2026-11-13 21:35 UTC are recorded as unrelated, and one `backgroundworker` memory cycle of 829.5 MB on 11-17 as an observation. §4.6: 5b as deployed, the rollback target v674. §6 as it went. §8 items 32 and 33 closed. Runbook `docs/runbooks/deploy-rails-upgrade-5b.md` steps 6–7 and its Deploy log. |
